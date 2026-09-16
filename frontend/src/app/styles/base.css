@@ -1,0 +1,5 @@
+@import "./tokens.css";
+
+a { color: inherit; }
+p, h1, h2, h3 { margin: 0; }
+img { max-width: 100%; }
