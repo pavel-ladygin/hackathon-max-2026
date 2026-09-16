@@ -1,0 +1,29 @@
+import { mapDetail, mapEvent, mapPreferences, mapRoom, mapUser } from './mapper'
+import type { BootstrapRequestDto, EventDetailDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User } from './types'
+import { ApiError } from './errors'
+
+export interface ApiClientOptions { baseUrl?: string; fetchImpl?: typeof fetch; getToken?: () => string | null }
+let inMemoryAccessToken: string | null = null
+export class ApiClient {
+  private readonly baseUrl: string; private readonly fetchImpl: typeof fetch; private readonly getToken: () => string | null
+  constructor(options: ApiClientOptions = {}) { this.baseUrl = options.baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '/api/v1'; this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis); this.getToken = options.getToken ?? (() => inMemoryAccessToken) }
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const headers = new Headers(init.headers); headers.set('Accept', 'application/json'); if (init.body) headers.set('Content-Type', 'application/json')
+    const token = this.getToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, headers }); const body = await response.json().catch(() => null)
+    if (!response.ok) throw new ApiError(response.status, body ?? {}); return body as T
+  }
+  async bootstrap(input: BootstrapRequestDto): Promise<{ accessToken: string; user: User; onboardingState: 'new' | 'complete'; preferences: Preferences | null; inviteContext: unknown }> { const x = await this.request<any>('/auth/max/bootstrap', { method: 'POST', body: JSON.stringify(input) }); inMemoryAccessToken = x.access_token; return { accessToken: x.access_token, user: mapUser(x.user), onboardingState: x.onboarding_state, preferences: x.preferences ? mapPreferences(x.preferences) : null, inviteContext: x.invite_context } }
+  async replacePreferences(input: PreferencesRequestDto): Promise<Preferences> { return mapPreferences(await this.request('/me/preferences', { method: 'PUT', body: JSON.stringify(input) })) }
+  async getHomeFeed(params: Record<string, string | number | undefined> = {}): Promise<any> { const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])); const x = await this.request<any>(`/feed/home${q.size ? `?${q}` : ''}`); return { ...x, sections: x.sections.map((s: any) => ({ ...s, items: s.items.map(mapEvent) })), activeRoom: x.active_room ? mapRoom(x.active_room) : null } }
+  async getEvent(eventId: string): Promise<ReturnType<typeof mapDetail>> { return mapDetail(await this.request<EventDetailDto>(`/events/${eventId}`)) }
+  async recordBehavior(events: Array<{ client_event_id: string; type: 'impression' | 'open' | 'share'; occurred_at: string; event_id?: string | null; room_id?: string | null; metadata?: Record<string, unknown> }>): Promise<{ accepted: number; duplicates: number; rejected: number }> { return this.request('/behavior/events:batch', { method: 'POST', body: JSON.stringify({ events }) }) }
+  async createRoom(input: { name: string; city_id: string }, idempotencyKey = crypto.randomUUID()): Promise<{ room: ReturnType<typeof mapRoom>; invite: any }> { const x = await this.request<any>('/rooms', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) }); return { room: mapRoom(x.room), invite: x.invite } }
+  async joinRoom(token: string, idempotencyKey = crypto.randomUUID()): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/room-invites/${encodeURIComponent(token)}/join`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } })) }
+  async getRoom(roomId: string): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}`)) }
+  async replaceMyIntent(roomId: string, input: RoomIntentRequestDto): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}/intent/me`, { method: 'PUT', body: JSON.stringify(input) })) }
+  async getRoomEvents(roomId: string, params: { limit?: number; cursor?: string } = {}): Promise<RoomEventsResponseDto> { const q = new URLSearchParams(); if (params.limit) q.set('limit', String(params.limit)); if (params.cursor) q.set('cursor', params.cursor); return this.request(`/rooms/${roomId}/events${q.size ? `?${q}` : ''}`) }
+  async vote(roomId: string, eventId: string, input: { pool_version: number; vote: 'like' | 'dislike' }): Promise<any> { return this.request(`/rooms/${roomId}/events/${eventId}/vote`, { method: 'PUT', body: JSON.stringify(input) }) }
+  async recordTicketClick(eventId: string, input: { source: string; room_id?: string | null }): Promise<{ external_url: string }> { return this.request(`/events/${eventId}/ticket-click`, { method: 'POST', body: JSON.stringify(input) }) }
+}
+export const apiClient = new ApiClient()
