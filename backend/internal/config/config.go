@@ -30,7 +30,7 @@ func Load() (Config, error) {
 		HTTPAddr:          strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		DatabaseURL:       strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		MAXBotToken:       strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
-		MAXInitDataMaxAge: 5 * time.Minute,
+		MAXInitDataMaxAge: time.Hour,
 	}
 	logLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
 	if value := strings.TrimSpace(os.Getenv("MAX_INIT_DATA_MAX_AGE")); value != "" {

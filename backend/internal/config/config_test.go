@@ -21,8 +21,8 @@ func setValidConfigEnv(t *testing.T) {
 func TestMAXConfig(t *testing.T) {
 	setValidConfigEnv(t)
 	cfg, err := Load()
-	if err != nil || cfg.MAXInitDataMaxAge != 5*time.Minute {
-		t.Fatal("MAX max age default must be 5m")
+	if err != nil || cfg.MAXInitDataMaxAge != time.Hour {
+		t.Fatal("MAX max age default must be 1h")
 	}
 	// Migration commands use Config too and do not need a bot credential.
 	if cfg.MAXBotToken != "" {

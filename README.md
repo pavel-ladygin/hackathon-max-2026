@@ -8,20 +8,20 @@ application module). Contract validation needs Python 3.10+ and pip.
 
 ### Local stack
 
-Copy `.env.example` to `.env` to customize local settings. Set `MAX_BOT_TOKEN`
-in your shell to your development bot credential (never commit it). From this directory:
+From this directory, create your local configuration once (keep an existing `.env`):
 
 ```sh
-docker compose up -d postgres
-docker compose run --rm --build migrate
-docker compose run --rm --build --service-ports -e MAX_BOT_TOKEN -e MAX_INIT_DATA_MAX_AGE=5m backend
+cp .env.example .env
+# Manually set MAX_BOT_TOKEN in .env before starting.
+docker compose up --build
 curl http://localhost:8080/api/v1/health/ready
 ```
 
-These commands start PostgreSQL 17, apply embedded goose migrations, then start
-the backend. Database defaults use local-only development credentials. The shared
-Compose file does not forward auth variables yet, so the backend run command
-passes them explicitly. The backend and database
+Compose starts PostgreSQL 17, applies embedded goose migrations, then starts
+the backend. It passes `MAX_BOT_TOKEN` and `MAX_INIT_DATA_MAX_AGE` from your shell
+or local `.env` to the backend. A missing or empty token produces a clear Compose
+error; the max-age default is `1h`. Never commit `.env`. Database defaults use
+local-only development credentials. The backend and database
 ports bind to localhost. Readiness returns HTTP 200 only when PostgreSQL is
 reachable and the complete applied migration set matches the binary:
 
@@ -50,7 +50,7 @@ export HTTP_ADDR=:8080
 export DATABASE_URL='postgres://max_together:local-dev-only@localhost:5432/max_together?sslmode=disable'
 export LOG_LEVEL=info
 # Set MAX_BOT_TOKEN securely in this shell before starting the server.
-export MAX_INIT_DATA_MAX_AGE=5m
+export MAX_INIT_DATA_MAX_AGE=1h
 cd backend
 go run ./cmd/migrate
 go run ./cmd/server
@@ -122,7 +122,7 @@ percent-decode values once, exclude `hash`, sort keys, join `key=value` with new
 derive the HMAC-SHA256 key from `WebAppData` and the bot token, then verify the
 payload HMAC in constant time. Literal `+` remains a plus, following MAX's
 `decodeURIComponent` example. Duplicate parameters, malformed identity, future
-timestamps and init data older than `MAX_INIT_DATA_MAX_AGE` (default 5m) are rejected.
+timestamps and init data older than `MAX_INIT_DATA_MAX_AGE` (default 1h) are rejected.
 
 Bootstrap atomically upserts the user and inserts a 24h session. The response uses
 an opaque random 256-bit bearer token; PostgreSQL stores only its SHA-256 hash.
