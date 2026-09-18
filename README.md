@@ -29,7 +29,7 @@ reachable and the complete applied migration set matches the binary:
 {"status":"ready","database":"ready","migrations":"current"}
 ```
 
-The backend serves readiness and `POST /api/v1/auth/max/bootstrap` (phase A1).
+The backend serves readiness and `POST /api/v1/auth/max/bootstrap`.
 Other business endpoints in OpenAPI remain contracts for subsequent implementation.
 
 To reset this project's local database (deletes its stored data):
@@ -78,10 +78,13 @@ docker run --rm -v "${PWD}:/src" -w /src sqlc/sqlc:1.29.0 generate
 
 In PowerShell use `-v "${PWD}:/src"` with the same command.
 
-`sqlc.yaml` has two independent outputs: `internal/store/platform` for Backend A
-and `internal/store/rooms` for Backend B. Both use `migrations` as their schema.
+`sqlc.yaml` has two independent outputs: `internal/store/platform` for platform/auth
+data and `internal/store/rooms` for room/matching data. Both use `migrations` as their schema.
 Each owner edits their own `queries/*.sql`; generated Go files are committed.
-Platform includes health and A1 user/session queries; rooms retains its health query.
+The platform package includes health and user/session queries.
+The rooms package retains its health query and contains the transaction
+and persistence primitives described in
+[`backend/internal/rooms/README.md`](backend/internal/rooms/README.md).
 
 ### Validate and generate OpenAPI
 
@@ -114,8 +117,12 @@ go vet ./...
 Database smoke tests run when `TEST_DATABASE_URL` points to a disposable local
 PostgreSQL database (for example the Compose database after migrations); without
 it they skip. See `backend/tests/integration` for the exact exercised boundaries.
+Room persistence integration tests use the same variable to exercise row locks,
+membership constraints, round-scoped persistence, immutable votes/matches and
+transaction rollback on real PostgreSQL. These are repository tests; room HTTP
+handlers and the two-client release gate belong to subsequent phases.
 
-### A1 authentication
+### Authentication
 
 MAX signatures follow the [official validation algorithm](https://dev.max.ru/docs/webapps/validation):
 percent-decode values once, exclude `hash`, sort keys, join `key=value` with newlines,
@@ -127,12 +134,12 @@ timestamps and init data older than `MAX_INIT_DATA_MAX_AGE` (default 1h) are rej
 Bootstrap atomically upserts the user and inserts a 24h session. The response uses
 an opaque random 256-bit bearer token; PostgreSQL stores only its SHA-256 hash.
 Repeated login preserves the internal UUID and app-owned city/onboarding state.
-`preferences` and `invite_context` are `null` in A1; their domain integration is
-deferred. A supplied non-null `start_param` hint must match the signed value or
-the request returns `400 VALIDATION_FAILED`. No invite lookup occurs in A1.
+`preferences` and `invite_context` are currently `null`; their domain integration is deferred.
+A supplied non-null `start_param` hint must match the signed value or
+the request returns `400 VALIDATION_FAILED`. No invite lookup occurs at this stage.
 
-Backend B can register protected Chi routes with `authService.Middleware` and
-read the existing `contracts.PrincipalFromContext`; only the internal UUID crosses
+Protected room routes can reuse `authService.Middleware` and
+`contracts.PrincipalFromContext`; only the internal UUID crosses
 this boundary. Unknown/revoked tokens return `401 UNAUTHENTICATED`, expired tokens
 return `401 TOKEN_EXPIRED`, and database errors return a generic `500 INTERNAL`.
 The public bootstrap route limits requests to 20/minute/connection-peer IP per
@@ -146,8 +153,8 @@ resume-scenario testing. Integration tests use only synthetic bot credentials
 and the existing `TEST_DATABASE_URL` infrastructure.
 
 `internal/contracts` defines the internal UUID principal, `PoolBuilder`,
-`EventAvailability` and `BehaviorRecorder`. A computes ordered candidates and
-safe snapshots; B persists pools and changes room state. B passes its current
-`pgx.Tx` as `store.DBTX` when recording server behavior, so both changes commit
-atomically. An MVP room candidate needs published status, available tickets and
+`EventAvailability` and `BehaviorRecorder`. The recommendation layer computes
+ordered candidates and safe snapshots; the rooms layer persists pools and owns
+room state transitions. When recording server behavior, room transactions pass
+their current `pgx.Tx` as `store.DBTX`, so both changes commit atomically. An MVP room candidate needs published status, available tickets and
 a ticket/reservation URL; a zero price alone does not establish eligibility.
