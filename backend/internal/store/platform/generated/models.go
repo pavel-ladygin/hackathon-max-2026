@@ -9,6 +9,65 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type City struct {
+	ID        uuid.UUID
+	Name      string
+	Timezone  string
+	CenterLat float64
+	CenterLng float64
+}
+
+type Event struct {
+	ID              uuid.UUID
+	Source          string
+	ExternalID      string
+	SourceUpdatedAt pgtype.Timestamptz
+	IsDemo          bool
+	Title           string
+	Subtitle        pgtype.Text
+	Description     string
+	VenueID         uuid.UUID
+	StartsAt        pgtype.Timestamptz
+	EndsAt          pgtype.Timestamptz
+	Timezone        string
+	PriceFromMinor  pgtype.Int4
+	PriceToMinor    pgtype.Int4
+	Currency        string
+	TicketUrl       pgtype.Text
+	TicketAvailable bool
+	Status          string
+	AgeRating       pgtype.Text
+	Indoor          pgtype.Bool
+	LoudnessLevel   pgtype.Text
+	PublishedAt     pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type EventCategory struct {
+	EventID      uuid.UUID
+	CategorySlug string
+	Weight       float32
+	IsPrimary    bool
+}
+
+type EventImage struct {
+	ID       uuid.UUID
+	EventID  uuid.UUID
+	Url      string
+	Width    pgtype.Int4
+	Height   pgtype.Int4
+	Role     string
+	Position int32
+}
+
+type MetroStation struct {
+	ID        uuid.UUID
+	CityID    uuid.UUID
+	Name      string
+	Latitude  float64
+	Longitude float64
+}
+
 type User struct {
 	ID              uuid.UUID
 	MaxUserID       int64
@@ -19,4 +78,16 @@ type User struct {
 	OnboardingState string
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+}
+
+type Venue struct {
+	ID        uuid.UUID
+	CityID    uuid.UUID
+	Name      string
+	Address   string
+	Latitude  float64
+	Longitude float64
+	Metro     pgtype.Text
+	District  pgtype.Text
+	VenueType string
 }
