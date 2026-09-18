@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
 )
@@ -46,11 +48,17 @@ func run() error {
 	}
 	defer db.Close()
 
+	preferencesService := preferences.NewService(db)
 	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
 	if err != nil {
 		return err
 	}
-	server := httpapi.NewServer(cfg.HTTPAddr, httpapi.NewRouter(readiness{db: db}, logger, authService.RegisterRoutes))
+	preferencesHandler := preferences.NewHandler(preferencesService)
+	server := httpapi.NewServer(cfg.HTTPAddr, httpapi.NewRouter(
+		readiness{db: db}, logger,
+		authService.RegisterRoutes,
+		func(r chi.Router) { preferencesHandler.RegisterRoutes(r, authService.Middleware) },
+	))
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 	logger.Info("http server starting", "environment", cfg.AppEnv, "address", cfg.HTTPAddr)

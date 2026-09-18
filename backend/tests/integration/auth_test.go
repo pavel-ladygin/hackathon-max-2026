@@ -25,6 +25,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 )
 
 const integrationBotToken = "a1-integration-test-bot-not-a-production-secret"
@@ -48,11 +49,18 @@ func TestAuthPostgresBootstrapAndSessions(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 	maxID := time.Now().UnixNano()
+	cityID := uuid.New()
+	if _, err := db.Exec(ctx, "INSERT INTO cities (id,name,timezone,center_lat,center_lng) VALUES ($1,'auth-preferences','UTC',0,0)", cityID); err != nil {
+		t.Fatal("insert city:", err)
+	}
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, err := db.Exec(cleanupCtx, "DELETE FROM users WHERE max_user_id = $1", maxID); err != nil {
 			t.Error("clean test user:", err)
+		}
+		if _, err := db.Exec(cleanupCtx, "DELETE FROM cities WHERE id = $1", cityID); err != nil {
+			t.Error("clean test city:", err)
 		}
 	})
 	service, err := auth.NewService(db, integrationBotToken, 5*time.Minute)
@@ -101,13 +109,20 @@ func TestAuthPostgresBootstrapAndSessions(t *testing.T) {
 		}
 	}
 
-	// Re-bootstrap updates profile claims but preserves app-owned onboarding state.
-	if _, err := db.Exec(ctx, "UPDATE users SET onboarding_state='complete' WHERE id=$1", first.User.Id); err != nil {
+	// Re-bootstrap updates MAX claims while returning the atomically persisted app profile.
+	if _, err := preferences.NewService(db).Replace(ctx, first.User.Id, preferences.Input{
+		CityID: cityID, InterestSlugs: []string{"concerts", "food"}, BudgetMaxMinor: 350000,
+		UsualDayTypes: []string{"weekend"}, UsualTimeSlots: []string{"evening"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	res, second := bootstrap(signedMAXFixture(t, maxID, "Updated"))
 	if res.Code != 200 || second.User.Id != first.User.Id || second.User.DisplayName != "Updated Тест" || second.OnboardingState != "complete" || first.AccessToken == second.AccessToken {
 		t.Fatal("repeat bootstrap did not preserve identity/state or issue independent token")
+	}
+	saved, err := second.Preferences.Get()
+	if err != nil || saved.CityId != cityID || saved.Version != 1 || saved.BudgetMaxMinor != 350000 || len(saved.InterestSlugs) != 2 {
+		t.Fatalf("repeat bootstrap preferences = %#v, err=%v", saved, err)
 	}
 
 	var count int

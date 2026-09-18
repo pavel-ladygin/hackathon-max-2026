@@ -11,11 +11,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
 type fakeAuthRepo struct {
 	user            platform.User
+	preferences     *preferences.Value
 	bootstrapHashes [][]byte
 	byHash          map[[32]byte]platform.GetAuthSessionRow
 	bootstrapErr    error
@@ -24,12 +26,12 @@ type fakeAuthRepo struct {
 
 func validOpaqueToken() string { return base64.RawURLEncoding.EncodeToString(make([]byte, 32)) }
 
-func (f *fakeAuthRepo) bootstrap(_ context.Context, _ identity, hash []byte, _ time.Time) (platform.User, error) {
+func (f *fakeAuthRepo) bootstrap(_ context.Context, _ identity, hash []byte, _ time.Time) (bootstrapProfile, error) {
 	if f.bootstrapErr != nil {
-		return platform.User{}, f.bootstrapErr
+		return bootstrapProfile{}, f.bootstrapErr
 	}
 	f.bootstrapHashes = append(f.bootstrapHashes, append([]byte(nil), hash...))
-	return f.user, nil
+	return bootstrapProfile{user: f.user, preferences: f.preferences}, nil
 }
 func (f *fakeAuthRepo) session(_ context.Context, hash []byte) (platform.GetAuthSessionRow, error) {
 	if f.sessionErr != nil {
