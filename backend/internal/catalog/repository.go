@@ -1,0 +1,95 @@
+// Package catalog loads the platform catalog as a coherent city snapshot.
+package catalog
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
+	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
+)
+
+// Event is a catalog event with its denormalized category and image data.
+type Event struct {
+	platform.Event
+	Categories []platform.EventCategory
+	Images     []platform.EventImage
+}
+
+// Snapshot contains all catalog records belonging to one city.
+type Snapshot struct {
+	City          platform.City
+	MetroStations []platform.MetroStation
+	Venues        []platform.Venue
+	Events        []Event
+}
+
+// Repository loads catalog data from the platform database.
+type Repository struct {
+	db *store.Pool
+}
+
+// NewRepository creates a catalog repository backed by db.
+func NewRepository(db *store.Pool) *Repository {
+	return &Repository{db: db}
+}
+
+// LoadCity reads a city catalog from one repeatable-read, read-only transaction.
+// It returns pgx.ErrNoRows when cityID is not present.
+func (r *Repository) LoadCity(ctx context.Context, cityID uuid.UUID) (snapshot Snapshot, err error) {
+	err = r.db.InTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.RepeatableRead,
+		AccessMode: pgx.ReadOnly,
+	}, func(tx pgx.Tx) error {
+		queries := platform.New(tx)
+
+		city, err := queries.GetCatalogCity(ctx, cityID)
+		if err != nil {
+			return err
+		}
+		stations, err := queries.ListCatalogMetroStations(ctx, cityID)
+		if err != nil {
+			return err
+		}
+		venues, err := queries.ListCatalogVenues(ctx, cityID)
+		if err != nil {
+			return err
+		}
+		events, err := queries.ListCatalogEvents(ctx, cityID)
+		if err != nil {
+			return err
+		}
+		categories, err := queries.ListCatalogCategories(ctx, cityID)
+		if err != nil {
+			return err
+		}
+		images, err := queries.ListCatalogImages(ctx, cityID)
+		if err != nil {
+			return err
+		}
+
+		byEvent := make(map[uuid.UUID]*Event, len(events))
+		snapshot.Events = make([]Event, len(events))
+		for i, event := range events {
+			snapshot.Events[i].Event = event
+			byEvent[event.ID] = &snapshot.Events[i]
+		}
+		for _, category := range categories {
+			if event := byEvent[category.EventID]; event != nil {
+				event.Categories = append(event.Categories, category)
+			}
+		}
+		for _, image := range images {
+			if event := byEvent[image.EventID]; event != nil {
+				event.Images = append(event.Images, image)
+			}
+		}
+
+		snapshot.City = city
+		snapshot.MetroStations = stations
+		snapshot.Venues = venues
+		return nil
+	})
+	return snapshot, err
+}

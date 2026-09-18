@@ -62,6 +62,37 @@ Stop the Compose backend first if it already occupies port 8080.
 safely. Rebuild the binary/image after adding a migration. Schema changes require
 coordination between both backend owners; new migrations use the next free number.
 
+### Demo catalog
+
+After exporting the local environment above, run from `backend`:
+
+```sh
+go run ./cmd/migrate
+# Optional: pin a date for an exactly reproducible catalog.
+export DEMO_BASE_DATE=2026-09-18
+go run ./cmd/seed
+```
+
+PowerShell uses `$env:DEMO_BASE_DATE='2026-09-18'`. The seed reads process
+environment only and requires `APP_ENV=local` or `test` and `DATABASE_URL`;
+it does not need a bot token. If `DEMO_BASE_DATE` is omitted, it resolves once
+to today's date in `Europe/Moscow` and prints the effective date. Event starts
+are 1–20 days after that date. Use today's date (or omit the variable) for a
+fresh demo; an explicitly pinned past date is intentionally replayed unchanged.
+
+The catalog contains Moscow, 12 metro stations, 12 illustrative venues, 11
+category slugs, 44 events and 44 images. Every event has one primary category;
+some also have a secondary category. Data includes free, unknown and paid
+prices, all event statuses and loudness levels, and available/unavailable demo
+ticket states. All events carry `source=demo` and `is_demo=true`. Ticket URLs
+use the reserved `tickets.example.invalid` host and cannot sell real tickets.
+
+UUIDs derive from fixed fixture keys (Moscow has a fixed UUID), independently
+of dates. One transaction serializes seed runs and reconciles only these demo
+fixtures; identical base dates reproduce timestamps, changing the base date
+refreshes the same event IDs without duplicates. Schema migrations stay separate.
+The backend image also includes `/app/seed`, which accepts the same environment.
+
 ### Generate SQL access code
 
 From `backend`:
@@ -81,7 +112,7 @@ In PowerShell use `-v "${PWD}:/src"` with the same command.
 `sqlc.yaml` has two independent outputs: `internal/store/platform` for platform/auth
 data and `internal/store/rooms` for room/matching data. Both use `migrations` as their schema.
 Each owner edits their own `queries/*.sql`; generated Go files are committed.
-The platform package includes health and user/session queries.
+The platform package includes health, user/session, catalog reads and demo seed queries.
 The rooms package retains its health query and contains the transaction
 and persistence primitives described in
 [`backend/internal/rooms/README.md`](backend/internal/rooms/README.md).
