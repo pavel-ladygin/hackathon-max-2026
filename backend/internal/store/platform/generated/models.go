@@ -3,3 +3,20 @@
 //   sqlc v1.29.0
 
 package platform
+
+import (
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type User struct {
+	ID              uuid.UUID
+	MaxUserID       int64
+	DisplayName     string
+	AvatarUrl       pgtype.Text
+	CityID          pgtype.UUID
+	Locale          string
+	OnboardingState string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
