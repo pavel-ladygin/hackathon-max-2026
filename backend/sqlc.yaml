@@ -1,0 +1,32 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/store/platform/queries"
+    gen:
+      go:
+        package: "platform"
+        out: "internal/store/platform/generated"
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/store/rooms/queries"
+    gen:
+      go:
+        package: "rooms"
+        out: "internal/store/rooms/generated"
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
