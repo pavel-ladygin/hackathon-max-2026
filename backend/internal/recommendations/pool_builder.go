@@ -3,6 +3,7 @@ package recommendations
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,8 +20,9 @@ import (
 )
 
 const (
-	rankerVersion = "hard-filters-v1"
+	rankerVersion = "scoring-diversity-v1"
 	poolTarget    = 20
+	poolMax       = 24
 	metroLimitM   = 1200.0
 	// distanceEpsM only absorbs floating-point noise at an inclusive boundary;
 	// distances are never rounded before comparison.
@@ -35,11 +37,17 @@ type Catalog interface {
 // PoolBuilder applies room hard constraints. It has no room persistence or
 // lifecycle responsibilities; Backend B owns those concerns.
 type PoolBuilder struct {
-	catalog Catalog
+	catalog        Catalog
+	tieBreakSecret []byte
 }
 
 // NewPoolBuilder returns a contracts.PoolBuilder backed by catalog.
-func NewPoolBuilder(catalog Catalog) *PoolBuilder { return &PoolBuilder{catalog: catalog} }
+func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte) (*PoolBuilder, error) {
+	if len(tieBreakSecret) < 32 {
+		return nil, errors.New("pool builder tie-break secret must be at least 32 bytes")
+	}
+	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...)}, nil
+}
 
 var _ contracts.PoolBuilder = (*PoolBuilder)(nil)
 
@@ -93,11 +101,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		}
 	}
 
-	type selected struct {
-		event catalog.Event
-		start time.Time
-	}
-	items := make([]selected, 0, len(snapshot.Events))
+	items := make([]rankedEvent, 0, len(snapshot.Events))
 	for _, event := range snapshot.Events {
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
@@ -105,26 +109,32 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, first.radius, second.radius) {
 			continue
 		}
-		items = append(items, selected{event: event, start: event.StartsAt.Time})
+		venue := venues[event.VenueID]
+		item := scoreEvent(event, venue, first, second)
+		item.tieBreak = tieBreak(b.tieBreakSecret, input.RoomID, input.PoolVersion, event.ID)
+		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
-		if items[i].start.Equal(items[j].start) {
-			return items[i].event.ID.String() < items[j].event.ID.String()
+		if items[i].groupScore != items[j].groupScore {
+			return items[i].groupScore > items[j].groupScore
 		}
-		return items[i].start.Before(items[j].start)
+		return bytesCompare(items[i].tieBreak, items[j].tieBreak) < 0
 	})
-	if len(items) > poolTarget {
-		items = items[:poolTarget]
-	}
+	items = diversify(items)
 	candidates := make([]contracts.Candidate, len(items))
 	for i, item := range items {
-		candidates[i] = contracts.Candidate{EventID: item.event.ID}
+		candidates[i] = contracts.Candidate{
+			EventID:         item.event.ID,
+			Score:           item.score,
+			Explanation:     item.explanations,
+			FeatureSnapshot: item.features,
+		}
 	}
 
 	result := contracts.BuildResult{
 		Candidates:       candidates,
 		RankerVersion:    rankerVersion,
-		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, first.radius, second.radius),
+		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first.radius, second.radius),
 	}
 	switch len(candidates) {
 	case 0:
@@ -138,6 +148,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 type normalizedIntent struct {
 	dates                   map[string]bool
 	days, slots, exclusions map[string]bool
+	categories              map[string]bool
 	budget                  int32
 	radius                  radiusConstraint
 }
@@ -191,7 +202,7 @@ func normalizeIntent(in contracts.ParticipantIntent) (normalizedIntent, error) {
 			r.hasLocation, r.lat, r.lng = true, in.Location.Latitude, in.Location.Longitude
 		}
 	}
-	return normalizedIntent{dates: dates, days: days, slots: slots, exclusions: exclusions, budget: in.BudgetMaxMinor, radius: r}, nil
+	return normalizedIntent{dates: dates, days: days, slots: slots, categories: normalizeCategories(in.CategorySlugs), exclusions: exclusions, budget: in.BudgetMaxMinor, radius: r}, nil
 }
 
 func enumSet(values []string, valid map[string]bool) (map[string]bool, error) {
@@ -339,32 +350,45 @@ func uuidSet(values []uuid.UUID) map[uuid.UUID]bool {
 	return r
 }
 
-func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, radii ...radiusConstraint) string {
+func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, tieBreakSecret []byte, radii ...radiusConstraint) string {
 	type radiusFingerprint struct {
 		Meters    int32   `json:"m"`
 		Latitude  float64 `json:"a"`
 		Longitude float64 `json:"o"`
 	}
 	type payload struct {
-		RankerVersion, Room, City                string
-		Timezone                                 string
-		Round                                    int16
-		Pool                                     int32
-		FirstVersion, SecondVersion              int32
-		Dates, Days, Slots, Exclusions, Previous []string
-		Budget                                   int32
-		Radii                                    []radiusFingerprint
+		RankerVersion, Room, City, TieBreakKeyID    string
+		Timezone                                    string
+		Round                                       int16
+		Pool                                        int32
+		FirstUser, SecondUser                       string
+		FirstVersion, SecondVersion                 int32
+		FirstCategories, SecondCategories           []string
+		FirstBudget, SecondBudget                   int32
+		FirstTimeConstrained, SecondTimeConstrained bool
+		Dates, Days, Slots, Exclusions, Previous    []string
+		Budget                                      int32
+		Radii                                       []radiusFingerprint
 	}
 	previous := make([]string, 0, len(input.PreviousEventIDs))
 	for id := range uuidSet(input.PreviousEventIDs) {
 		previous = append(previous, id.String())
 	}
 	sort.Strings(previous)
+	keyMAC := hmac.New(sha256.New, tieBreakSecret)
+	_, _ = keyMAC.Write([]byte("recommendations-fingerprint-key-id"))
 	p := payload{
 		RankerVersion: rankerVersion, Room: input.RoomID.String(), City: input.CityID.String(), Timezone: timezone,
-		Round: input.RoundNo, Pool: input.PoolVersion,
+		TieBreakKeyID: hex.EncodeToString(keyMAC.Sum(nil)),
+		Round:         input.RoundNo, Pool: input.PoolVersion,
+		FirstUser: input.FirstIntent.UserID.String(), SecondUser: input.SecondIntent.UserID.String(),
 		FirstVersion: input.FirstIntent.Version, SecondVersion: input.SecondIntent.Version,
-		Dates: sortedKeys(c.dates), Days: sortedKeys(c.days), Slots: sortedKeys(c.slots),
+		FirstCategories:  sortedKeys(normalizeCategories(input.FirstIntent.CategorySlugs)),
+		SecondCategories: sortedKeys(normalizeCategories(input.SecondIntent.CategorySlugs)),
+		FirstBudget:      input.FirstIntent.BudgetMaxMinor, SecondBudget: input.SecondIntent.BudgetMaxMinor,
+		FirstTimeConstrained:  len(input.FirstIntent.DayTypes) > 0 || len(input.FirstIntent.TimeSlots) > 0,
+		SecondTimeConstrained: len(input.SecondIntent.DayTypes) > 0 || len(input.SecondIntent.TimeSlots) > 0,
+		Dates:                 sortedKeys(c.dates), Days: sortedKeys(c.days), Slots: sortedKeys(c.slots),
 		Exclusions: sortedKeys(c.exclusions), Previous: previous, Budget: c.budget,
 	}
 	for _, r := range radii {
@@ -372,15 +396,6 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 			p.Radii = append(p.Radii, radiusFingerprint{r.meters, r.lat, r.lng})
 		}
 	}
-	sort.Slice(p.Radii, func(i, j int) bool {
-		if p.Radii[i].Meters != p.Radii[j].Meters {
-			return p.Radii[i].Meters < p.Radii[j].Meters
-		}
-		if p.Radii[i].Latitude != p.Radii[j].Latitude {
-			return p.Radii[i].Latitude < p.Radii[j].Latitude
-		}
-		return p.Radii[i].Longitude < p.Radii[j].Longitude
-	})
 	encoded, _ := json.Marshal(p)
 	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:])

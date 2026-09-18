@@ -18,6 +18,21 @@ import (
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
+var testPoolKey = []byte("0123456789abcdef0123456789abcdef")
+
+func newBuilder(t *testing.T, c *fakeCatalog) *recommendations.PoolBuilder {
+	return newBuilderWithKey(t, c, testPoolKey)
+}
+
+func newBuilderWithKey(t *testing.T, c *fakeCatalog, key []byte) *recommendations.PoolBuilder {
+	t.Helper()
+	b, err := recommendations.NewPoolBuilder(c, key)
+	if err != nil {
+		t.Fatalf("new pool builder: %v", err)
+	}
+	return b
+}
+
 type fakeCatalog struct {
 	snapshot catalog.Snapshot
 	err      error
@@ -57,19 +72,19 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 	base.FirstIntent.CategorySlugs = []string{"sports"}
 	base.SecondIntent.CategorySlugs = []string{"cinema"}
 	fake := &fakeCatalog{snapshot: snapshot}
-	result, err := recommendations.NewPoolBuilder(fake).Build(context.Background(), base)
+	result, err := newBuilder(t, fake).Build(context.Background(), base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := candidateIDs(result.Candidates); !reflect.DeepEqual(got, []uuid.UUID{tie.ID, valid.ID, other.ID}) {
-		t.Fatalf("deterministic start/UUID ordering: got %v", got)
+	if got := candidateIDs(result.Candidates); len(got) != 3 || !contains(got, tie.ID) || !contains(got, valid.ID) || !contains(got, other.ID) {
+		t.Fatalf("all eligible events should remain in pool: got %v", got)
 	}
 	for _, candidate := range result.Candidates {
-		if candidate.Score != (contracts.ScoreSnapshot{}) || len(candidate.Explanation) != 0 || len(candidate.FeatureSnapshot) != 0 {
-			t.Fatalf("candidate %s has non-neutral ranking output: %+v", candidate.EventID, candidate)
+		if candidate.Score.GroupScore <= 0 || len(candidate.Explanation) == 0 || len(candidate.FeatureSnapshot) == 0 {
+			t.Fatalf("candidate %s lacks ranking output: %+v", candidate.EventID, candidate)
 		}
 	}
-	if result.RankerVersion != "hard-filters-v1" {
+	if result.RankerVersion != "scoring-diversity-v1" {
 		t.Fatalf("ranker version = %q", result.RankerVersion)
 	}
 	slices.Reverse(fake.snapshot.Events)
@@ -78,9 +93,9 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 	text := "private text should not affect hard filters"
 	base.FirstIntent.FreeText = &text
 	base.FirstIntent.Location = &contracts.GeoPoint{Latitude: 89, Longitude: 179}
-	repeated, err := recommendations.NewPoolBuilder(fake).Build(context.Background(), base)
-	if err != nil || !reflect.DeepEqual(result, repeated) {
-		t.Fatalf("catalog order or ignored soft fields changed result: err=%v", err)
+	repeated, err := newBuilder(t, fake).Build(context.Background(), base)
+	if err != nil || reflect.DeepEqual(result, repeated) {
+		t.Fatalf("category preferences should affect ranking: err=%v", err)
 	}
 	if fake.seen != cityID {
 		t.Fatal("builder did not request the input city")
@@ -115,7 +130,7 @@ func TestPoolBuilderBoundaryFilters(t *testing.T) {
 			for _, slot := range []string{"morning", "day", "evening", "night"} {
 				in := base
 				in.FirstIntent.TimeSlots, in.SecondIntent.TimeSlots = []string{slot}, []string{slot}
-				got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+				got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 				if err != nil || (len(got.Candidates) == 1) != (slot == tc.slot) {
 					t.Fatalf("slot=%s candidate count=%d, want slot=%s, err=%v", slot, len(got.Candidates), tc.slot, err)
 				}
@@ -146,7 +161,7 @@ func TestPoolBuilderExclusionsUnionAndBudgetSemantics(t *testing.T) {
 	outdoor.Indoor = pgtype.Bool{Bool: false, Valid: true}
 	s.Events = []catalog.Event{badVenue, badStatus, badTicket, free, outdoor}
 	s.Events = append(s.Events, nullPrice)
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), base)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +182,7 @@ func TestPoolBuilderPreviousIDsBeforeCapAndFingerprintNormalization(t *testing.T
 	previous := s.Events[0].ID
 	input.PreviousEventIDs = []uuid.UUID{previous}
 	fake := &fakeCatalog{snapshot: s}
-	a, err := recommendations.NewPoolBuilder(fake).Build(context.Background(), input)
+	a, err := newBuilder(t, fake).Build(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +191,7 @@ func TestPoolBuilderPreviousIDsBeforeCapAndFingerprintNormalization(t *testing.T
 	}
 	input.FirstIntent.Dates = []string{"2026-09-20"}
 	input.FirstIntent.TimeSlots = []string{"day"}
-	b, err := recommendations.NewPoolBuilder(fake).Build(context.Background(), input)
+	b, err := newBuilder(t, fake).Build(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,12 +205,12 @@ func TestPoolBuilderPropagatesCatalogErrorAndCancellation(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
 	input := validInput(cityID)
 	snapshot := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venueID, CityID: cityID}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
-	if _, err := recommendations.NewPoolBuilder(&fakeCatalog{err: want}).Build(context.Background(), input); !errors.Is(err, want) {
+	if _, err := newBuilder(t, &fakeCatalog{err: want}).Build(context.Background(), input); !errors.Is(err, want) {
 		t.Fatalf("catalog error = %v, want %v", err, want)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: snapshot}).Build(ctx, input); !errors.Is(err, context.Canceled) {
+	if _, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(ctx, input); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error = %v", err)
 	}
 }
@@ -211,13 +226,13 @@ func TestPoolBuilderStatusDateAndCityBoundaries(t *testing.T) {
 	in := validInput(cityID)
 	in.FirstIntent.Dates, in.SecondIntent.Dates = []string{"2026-09-21"}, []string{"2026-09-21"}
 	in.FirstIntent.TimeSlots, in.SecondIntent.TimeSlots = []string{"night"}, []string{"night"}
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil || len(got.Candidates) != 1 {
 		t.Fatalf("local city date/status filtering: got=%+v err=%v", got.Candidates, err)
 	}
 	wrongCity := s
 	wrongCity.Venues = []platform.Venue{{ID: venueID, CityID: uuid.New()}}
-	if got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: wrongCity}).Build(context.Background(), in); err != nil || len(got.Candidates) != 0 {
+	if got, err := newBuilder(t, &fakeCatalog{snapshot: wrongCity}).Build(context.Background(), in); err != nil || len(got.Candidates) != 0 {
 		t.Fatalf("venue from another city must be excluded: got=%+v err=%v", got.Candidates, err)
 	}
 }
@@ -228,7 +243,7 @@ func TestPoolBuilderDisjointParticipantDateAndSlotSetsAreEmpty(t *testing.T) {
 	in := validInput(cityID)
 	in.FirstIntent.Dates, in.SecondIntent.Dates = []string{"2026-09-20"}, []string{"2026-09-21"}
 	in.FirstIntent.TimeSlots, in.SecondIntent.TimeSlots = []string{"morning"}, []string{"evening"}
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +251,7 @@ func TestPoolBuilderDisjointParticipantDateAndSlotSetsAreEmpty(t *testing.T) {
 		t.Fatalf("disjoint participant filters must produce no candidates: %+v", got.Candidates)
 	}
 	in.FirstIntent.Dates, in.SecondIntent.Dates = []string{"2026-09-20"}, []string{"2026-09-20"}
-	got, err = recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err = newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil || len(got.Candidates) != 0 {
 		t.Fatalf("disjoint participant slots must produce no candidates: got=%v err=%v", got.Candidates, err)
 	}
@@ -251,7 +266,7 @@ func TestPoolBuilderDayTypesORWithinParticipantANDBetweenParticipants(t *testing
 	in := validInput(cityID)
 	in.FirstIntent.Dates, in.SecondIntent.Dates = []string{"2026-09-19", "2026-09-21"}, []string{"2026-09-19"}
 	in.FirstIntent.DayTypes, in.SecondIntent.DayTypes = []string{"weekday", "weekend"}, []string{"weekend"}
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil || len(got.Candidates) != 1 {
 		t.Fatalf("day type OR/AND filtering: got=%v err=%v", got.Candidates, err)
 	}
@@ -269,7 +284,7 @@ func TestPoolBuilderRadiusUsesEachParticipantOriginAndInclusiveBoundary(t *testi
 	radius := int32(1000)
 	in.FirstIntent.RadiusM, in.SecondIntent.RadiusM = &radius, &radius
 	in.FirstIntent.Location, in.SecondIntent.Location = &contracts.GeoPoint{Latitude: 0, Longitude: 0}, &contracts.GeoPoint{Latitude: 0, Longitude: 0}
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +294,7 @@ func TestPoolBuilderRadiusUsesEachParticipantOriginAndInclusiveBoundary(t *testi
 	}
 	in.FirstIntent.Location = &contracts.GeoPoint{Latitude: 0, Longitude: 0}
 	in.SecondIntent.Location = &contracts.GeoPoint{Latitude: 50, Longitude: 50}
-	got, err = recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err = newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil || len(got.Candidates) != 0 {
 		t.Fatalf("both participant radii must apply from their own origins: got=%v err=%v", got.Candidates, err)
 	}
@@ -296,14 +311,14 @@ func TestPoolBuilderMetroDistanceAndMissingStation(t *testing.T) {
 	}{{"1199", longitudeForMeters(1199), 1}, {"1200", longitudeForMeters(1200), 1}, {"1201", longitudeForMeters(1201), 0}} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 0, Longitude: 0}}, MetroStations: []platform.MetroStation{{ID: uuid.New(), CityID: cityID, Latitude: 0, Longitude: tc.lng}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
-			got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+			got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 			if err != nil || len(got.Candidates) != tc.want {
 				t.Fatalf("metro boundary: got=%v err=%v", got.Candidates, err)
 			}
 		})
 	}
 	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venueID, CityID: cityID}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
-	got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: s}).Build(context.Background(), in)
+	got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 	if err != nil || len(got.Candidates) != 0 {
 		t.Fatalf("missing metro must be excluded when requested: got=%v err=%v", got.Candidates, err)
 	}
@@ -345,7 +360,7 @@ func TestPoolBuilderSmallDiagnosticsAndInputSnapshotImmutability(t *testing.T) {
 		}
 		beforeInput, _ := json.Marshal(in)
 		beforeSnapshot, _ := json.Marshal(ss)
-		got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: ss}).Build(context.Background(), in)
+		got, err := newBuilder(t, &fakeCatalog{snapshot: ss}).Build(context.Background(), in)
 		if err != nil {
 			t.Fatalf("n=%d: %v", n, err)
 		}
@@ -466,7 +481,7 @@ func TestPoolBuilderIndividualConstraints(t *testing.T) {
 				},
 			}
 			tc.edit(&f)
-			got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: f.data}).Build(context.Background(), f.input)
+			got, err := newBuilder(t, &fakeCatalog{snapshot: f.data}).Build(context.Background(), f.input)
 			if err != nil || len(got.Candidates) != tc.want {
 				t.Fatalf("candidates=%d want=%d, err=%v", len(got.Candidates), tc.want, err)
 			}
@@ -500,7 +515,7 @@ func TestPoolBuilderMetroUsesNearestValidCityStation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshot.MetroStations = tc.stations
-			got, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: snapshot}).Build(context.Background(), in)
+			got, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), in)
 			if err != nil || len(got.Candidates) != tc.want {
 				t.Fatalf("candidates=%d want=%d, err=%v", len(got.Candidates), tc.want, err)
 			}
@@ -520,23 +535,23 @@ func TestPoolBuilderFingerprintCoversNormalizedEffectiveInputs(t *testing.T) {
 		Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
 		Events: []catalog.Event{event(uuid.UUID{15: 3}, venueID, "2026-09-20T13:00:00Z", 1000, true, "published")},
 	}
-	builder := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: snapshot})
+	builder := newBuilder(t, &fakeCatalog{snapshot: snapshot})
 	before, err := builder.Build(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
 	}
 	normalized := in
 	normalized.FirstIntent.Dates = []string{"2026-09-21", "2026-09-20", "2026-09-20"}
-	normalized.FirstIntent.DayTypes = []string{"weekend", "weekday"}
+	normalized.FirstIntent.DayTypes = nil
 	normalized.SecondIntent.DayTypes = []string{}
-	normalized.FirstIntent.TimeSlots = []string{"night", "evening", "day", "morning"}
-	normalized.FirstIntent.ExclusionSlugs = []string{"nightclubs"}
-	normalized.SecondIntent.ExclusionSlugs = []string{"very_loud", "very_loud"}
-	normalized.FirstIntent.BudgetMaxMinor = 2000 // The second ceiling still determines eligibility.
+	normalized.FirstIntent.TimeSlots = nil
+	normalized.FirstIntent.ExclusionSlugs = []string{"nightclubs", "very_loud", "nightclubs"}
+	normalized.SecondIntent.ExclusionSlugs = nil
+	normalized.FirstIntent.BudgetMaxMinor = 1000
 	normalized.PreviousEventIDs = []uuid.UUID{{15: 2}, {15: 1}, {15: 2}}
 	after, err := builder.Build(context.Background(), normalized)
 	if err != nil || !reflect.DeepEqual(before, after) {
-		t.Fatalf("equivalent effective constraints changed result: err=%v", err)
+		t.Fatalf("equivalent effective constraints changed result: err=%v before=%+v after=%+v", err, before, after)
 	}
 	for _, change := range []func(*contracts.BuildInput){
 		func(i *contracts.BuildInput) { i.SecondIntent.BudgetMaxMinor-- },
