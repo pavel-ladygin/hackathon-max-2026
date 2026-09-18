@@ -75,7 +75,9 @@ In PowerShell use `-v "${PWD}:/src"` with the same command.
 `sqlc.yaml` has two independent outputs: `internal/store/platform` for Backend A
 and `internal/store/rooms` for Backend B. Both use `migrations` as their schema.
 Each owner edits their own `queries/*.sql`; generated Go files are committed.
-The foundation includes only a minimal health query in each package.
+The platform package currently includes a health query. The rooms package also
+contains the Backend B transaction and persistence primitives described in
+[`backend/internal/rooms/README.md`](backend/internal/rooms/README.md).
 
 ### Validate and generate OpenAPI
 
@@ -107,6 +109,10 @@ go test ./...
 Database smoke tests run when `TEST_DATABASE_URL` points to a disposable local
 PostgreSQL database (for example the Compose database after migrations); without
 it they skip. See `backend/tests/integration` for the exact exercised boundaries.
+Backend B foundation tests use the same variable to exercise row locks,
+membership constraints, round-scoped persistence, immutable votes/matches and
+transaction rollback on real PostgreSQL. These are repository tests; room HTTP
+handlers and the two-client release gate belong to subsequent phases.
 
 `internal/contracts` defines the internal UUID principal, `PoolBuilder`,
 `EventAvailability` and `BehaviorRecorder`. A computes ordered candidates and
