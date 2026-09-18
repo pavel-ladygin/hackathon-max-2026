@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
@@ -55,6 +56,45 @@ func TestBootstrapRouterValidResponseContainsRequiredNullFields(t *testing.T) {
 	if value, ok := body["invite_context"]; !ok || value != nil {
 		t.Fatalf("invite_context must be explicit null: %#v", value)
 	}
+}
+
+func TestBootstrapReturnsPersistedPreferences(t *testing.T) {
+	s, raw := testRouterService(t)
+	repo := s.repo.(*fakeAuthRepo)
+	repo.user.OnboardingState = "complete"
+	repo.preferences = &preferences.Value{
+		CityID: uuid.MustParse("22222222-2222-4222-8222-222222222222"), InterestSlugs: []string{"concerts", "food"},
+		BudgetMaxMinor: 350000, UsualDayTypes: []string{}, UsualTimeSlots: []string{"evening"},
+		Version: 2, UpdatedAt: time.Unix(1_700_000_123, 0).UTC(),
+	}
+	router := httpapi.NewRouter(nil, slog.Default(), s.RegisterRoutes)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/max/bootstrap", strings.NewReader(`{"init_data":"`+raw+`"}`))
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	var body struct {
+		OnboardingState string                      `json:"onboarding_state"`
+		Preferences     *preferencesResponseForTest `json:"preferences"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.OnboardingState != "complete" || body.Preferences == nil || body.Preferences.Version != 2 || body.Preferences.CityID != "22222222-2222-4222-8222-222222222222" {
+		t.Fatalf("bootstrap preferences mismatch: %s", res.Body.String())
+	}
+	if len(body.Preferences.InterestSlugs) != 2 || len(body.Preferences.UsualDayTypes) != 0 || len(body.Preferences.UsualTimeSlots) != 1 {
+		t.Fatalf("bootstrap preference arrays mismatch: %s", res.Body.String())
+	}
+}
+
+type preferencesResponseForTest struct {
+	CityID         string   `json:"city_id"`
+	InterestSlugs  []string `json:"interest_slugs"`
+	UsualDayTypes  []string `json:"usual_day_types"`
+	UsualTimeSlots []string `json:"usual_time_slots"`
+	Version        int      `json:"version"`
 }
 
 func TestBootstrapRejectsUnknownTrailingAndMismatchedHintWithCanonicalRequestID(t *testing.T) {
