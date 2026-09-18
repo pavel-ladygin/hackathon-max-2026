@@ -8,26 +8,38 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // Config contains the configuration required to start a backend process.
 type Config struct {
-	AppEnv      string
-	HTTPAddr    string
-	DatabaseURL string
-	LogLevel    slog.Level
+	AppEnv            string
+	HTTPAddr          string
+	DatabaseURL       string
+	LogLevel          slog.Level
+	MAXBotToken       string
+	MAXInitDataMaxAge time.Duration
 }
 
 // Load reads and validates all required environment variables.
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:      strings.TrimSpace(os.Getenv("APP_ENV")),
-		HTTPAddr:    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
-		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		AppEnv:            strings.TrimSpace(os.Getenv("APP_ENV")),
+		HTTPAddr:          strings.TrimSpace(os.Getenv("HTTP_ADDR")),
+		DatabaseURL:       strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		MAXBotToken:       strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
+		MAXInitDataMaxAge: time.Hour,
 	}
 	logLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+	if value := strings.TrimSpace(os.Getenv("MAX_INIT_DATA_MAX_AGE")); value != "" {
+		age, err := time.ParseDuration(value)
+		if err != nil || age <= 0 {
+			return Config{}, fmt.Errorf("MAX_INIT_DATA_MAX_AGE is invalid")
+		}
+		cfg.MAXInitDataMaxAge = age
+	}
 	if cfg.AppEnv == "" {
 		return Config{}, fmt.Errorf("APP_ENV is required")
 	}

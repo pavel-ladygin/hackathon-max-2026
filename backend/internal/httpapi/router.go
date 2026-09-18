@@ -26,10 +26,13 @@ type Readiness interface {
 }
 
 // NewRouter creates the shared API router. Feature routes are registered by their owners.
-func NewRouter(readiness Readiness, logger *slog.Logger) http.Handler {
+func NewRouter(readiness Readiness, logger *slog.Logger, registerRoutes ...func(chi.Router)) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestID, recovery(logger))
 	r.Get("/api/v1/health/ready", readyHandler(readiness))
+	for _, register := range registerRoutes {
+		register(r)
+	}
 	return r
 }
 

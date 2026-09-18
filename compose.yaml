@@ -39,7 +39,10 @@ services:
 
   backend:
     <<: *backend-image
-    environment: *backend-environment
+    environment:
+      <<: *backend-environment
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?MAX_BOT_TOKEN is required; set it in .env}
+      MAX_INIT_DATA_MAX_AGE: ${MAX_INIT_DATA_MAX_AGE:-1h}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
     depends_on:

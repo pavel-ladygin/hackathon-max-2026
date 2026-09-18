@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
@@ -32,6 +33,9 @@ func run() error {
 		return err
 	}
 	logger := newLogger(cfg.LogLevel)
+	if cfg.MAXBotToken == "" {
+		return fmt.Errorf("MAX_BOT_TOKEN is required")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -42,7 +46,11 @@ func run() error {
 	}
 	defer db.Close()
 
-	server := httpapi.NewServer(cfg.HTTPAddr, httpapi.NewRouter(readiness{db: db}, logger))
+	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
+	if err != nil {
+		return err
+	}
+	server := httpapi.NewServer(cfg.HTTPAddr, httpapi.NewRouter(readiness{db: db}, logger, authService.RegisterRoutes))
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 	logger.Info("http server starting", "environment", cfg.AppEnv, "address", cfg.HTTPAddr)
