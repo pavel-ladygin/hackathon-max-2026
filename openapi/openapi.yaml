@@ -1,0 +1,2039 @@
+openapi: 3.1.0
+info:
+  title: MAX Together Backend API
+  version: 1.0.0-mvp
+  description: Финальный контракт MVP для персонального поиска событий и совместного выбора в комнате из двух участников в
+    MAX.
+servers:
+- url: https://api.example.ru/api/v1
+  description: Production
+- url: http://localhost:8080/api/v1
+  description: Local
+tags:
+- name: System
+- name: Auth
+- name: Preferences
+- name: Discovery
+- name: Behavior
+- name: Saved
+- name: Rooms
+security:
+- bearerAuth: []
+paths:
+  /health/ready:
+    get:
+      tags:
+      - System
+      operationId: getReadiness
+      security: []
+      summary: Проверить готовность API принимать трафик
+      responses:
+        '200':
+          description: Приложение и БД готовы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ready
+                database: ready
+                migrations: current
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /auth/max/bootstrap:
+    post:
+      tags:
+      - Auth
+      operationId: bootstrapMaxSession
+      security: []
+      summary: Проверить MAX init data и открыть пользовательскую сессию
+      description: Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только
+        из проверенной строки и возвращает безопасный invite_context. Отдельное поле start_param — необязательный hint, который
+        сверяется с подписанным значением. Не сохраняйте raw init data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapRequest'
+            example:
+              init_data: query_id=...&user=...&auth_date=...&hash=...
+              start_param: AB24
+      responses:
+        '200':
+          description: Сессия создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /me/preferences:
+    put:
+      tags:
+      - Preferences
+      operationId: replaceMyPreferences
+      summary: Полностью сохранить постоянные предпочтения
+      description: Одна ручка для завершения onboarding и редактирования профиля. Не меняет intent существующих комнат.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesRequest'
+            example:
+              city_id: 11111111-1111-7111-8111-111111111111
+              interest_slugs:
+              - concerts
+              - exhibitions
+              - food
+              budget_max_minor: 350000
+              usual_day_types:
+              - weekend
+              usual_time_slots:
+              - evening
+      responses:
+        '200':
+          description: Текущая сохранённая версия профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /feed/home:
+    get:
+      tags:
+      - Discovery
+      operationId: getHomeFeed
+      summary: Получить все секции домашней ленты
+      parameters:
+      - $ref: '#/components/parameters/CityId'
+      - name: lat
+        in: query
+        schema:
+          type: number
+          minimum: -90
+          maximum: 90
+        description: Необязательная координата для секции nearby; передаётся только вместе с lng и после согласия пользователя
+      - name: lng
+        in: query
+        schema:
+          type: number
+          minimum: -180
+          maximum: 180
+        description: Необязательная координата для секции nearby; передаётся только вместе с lat и после согласия пользователя
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Render-ready лента
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeFeedResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /events/search:
+    get:
+      tags:
+      - Discovery
+      operationId: searchEvents
+      summary: Найти события по тексту и фильтрам
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 120
+        description: Поиск по названию, описанию и площадке
+      - $ref: '#/components/parameters/CityId'
+      - name: date_from
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: date_to
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: day_types
+        in: query
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayType'
+        style: form
+        explode: false
+        description: Значения внутри массива объединяются OR; вместе с time_slots применяется AND
+      - name: time_slots
+        in: query
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+        style: form
+        explode: false
+      - name: category_slugs
+        in: query
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        style: form
+        explode: false
+      - name: price_max_minor
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+      - name: distance_m
+        in: query
+        schema:
+          type: integer
+          minimum: 100
+          maximum: 50000
+        description: Требует одновременно lat и lng; без пары координат API возвращает VALIDATION_FAILED
+      - name: lat
+        in: query
+        schema:
+          type: number
+          minimum: -90
+          maximum: 90
+      - name: lng
+        in: query
+        schema:
+          type: number
+          minimum: -180
+          maximum: 180
+      - name: free_only
+        in: query
+        schema:
+          type: boolean
+          default: false
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Страница результатов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSearchResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /events/{eventId}:
+    get:
+      tags:
+      - Discovery
+      operationId: getEvent
+      summary: Получить полную карточку события
+      parameters:
+      - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Детали события
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /behavior/events:batch:
+    post:
+      tags:
+      - Behavior
+      operationId: ingestBehaviorEvents
+      summary: Идемпотентно принять пачку рекомендательных сигналов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BehaviorBatchRequest'
+      responses:
+        '202':
+          description: Пачка обработана или поставлена в очередь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BehaviorBatchResponse'
+              example:
+                accepted: 8
+                duplicates: 1
+                rejected: 0
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /me/saved-events/{eventId}:
+    put:
+      tags:
+      - Saved
+      operationId: setSavedEvent
+      summary: Установить состояние saved события
+      parameters:
+      - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - saved
+              properties:
+                saved:
+                  type: boolean
+            example:
+              saved: true
+      responses:
+        '200':
+          description: Итоговое состояние
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /me/saved-events:
+    get:
+      tags:
+      - Saved
+      operationId: getMySavedEvents
+      summary: Получить сохранённые события или события из мэтчей
+      parameters:
+      - name: tab
+        in: query
+        schema:
+          type: string
+          enum:
+          - saved
+          - matches
+          default: saved
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Страница карточек
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedEventsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /events/{eventId}/ticket-click:
+    post:
+      tags:
+      - Discovery
+      operationId: recordTicketClick
+      summary: Зафиксировать переход к билетам и получить безопасный URL
+      parameters:
+      - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketClickRequest'
+            example:
+              source: event_detail
+              room_id: null
+      responses:
+        '200':
+          description: Проверенный внешний HTTPS URL разрешённого ticket-провайдера; приложение открывает его через MAX Bridge
+            или браузер с безопасным режимом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketClickResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /rooms:
+    post:
+      tags:
+      - Rooms
+      operationId: createRoom
+      summary: Создать комнату для двух участников
+      description: Пока у пользователя есть collecting/ranking/voting room, возвращает ACTIVE_ROOM_EXISTS. Если прежняя room
+        exhausted, успешный POST атомарно делает её неактивной и создаёт новую; restart старой после этого невозможен.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+            example:
+              name: Куда идём в субботу?
+              city_id: 11111111-1111-7111-8111-111111111111
+      responses:
+        '201':
+          description: Комната, creator membership и invite ссылка. Повторное получение ссылки creator делает через GET room.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /room-invites/{token}/join:
+    post:
+      tags:
+      - Rooms
+      operationId: joinRoomByInvite
+      summary: Идемпотентно вступить в комнату вторым участником
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 256
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Safe snapshot комнаты; также возвращается при повторном join
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Комната заполнена/истекла, конфликт активной комнаты или idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                full:
+                  value:
+                    error:
+                      code: ROOM_FULL
+                      message: Комната уже заполнена
+                      request_id: 01K5ABC
+                expired:
+                  value:
+                    error:
+                      code: INVITE_EXPIRED
+                      message: Срок приглашения истёк
+                      request_id: 01K5ABC
+                activeRoomExists:
+                  value:
+                    error:
+                      code: ACTIVE_ROOM_EXISTS
+                      message: Сначала завершите текущую активную комнату
+                      request_id: 01K5ABC
+                      details:
+                        active_room:
+                          id: 33333333-3333-7333-8333-333333333333
+                          name: Суббота
+                          city_id: 11111111-1111-7111-8111-111111111111
+                          state: voting
+      description: Повторный join в ту же комнату идемпотентен. Если пользователь уже состоит в другой collecting_intents/ranking/voting
+        комнате, вернуть ACTIVE_ROOM_EXISTS. Если предыдущая комната exhausted и ещё restartable, успешный join атомарно делает
+        её неактивной и присоединяет пользователя к новой комнате.
+  /rooms/{roomId}:
+    get:
+      tags:
+      - Rooms
+      operationId: getRoom
+      summary: Получить единый snapshot комнаты для рендера, polling и reconnect
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Safe snapshot. Для creator возвращается invite для повторного share; token и invite не видны другим
+            участникам.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{roomId}/intent/me:
+    put:
+      tags:
+      - Rooms
+      operationId: replaceMyRoomIntent
+      summary: Полностью заменить приватные условия текущего участника
+      description: При готовности обоих участников запускает построение первого или нового pool.
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomIntentRequest'
+            example:
+              dates:
+              - '2026-09-19'
+              - '2026-09-20'
+              day_types:
+              - weekend
+              time_slots:
+              - evening
+              category_slugs:
+              - concerts
+              - exhibitions
+              budget_max_minor: 350000
+              radius_m: 5000
+              location:
+                lat: 55.751244
+                lng: 37.618423
+              exclusion_slugs:
+              - nightclubs
+              - very_loud
+              free_text: Хочется спокойное место с живой музыкой
+      responses:
+        '200':
+          description: Intent сохранён; pool уже готов или второй участник ещё не готов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '202':
+          description: Intent сохранён, pool строится асинхронно
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Рекомендуемый polling interval в секундах
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Семантически невалидный intent, например прошедшая дата
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /rooms/{roomId}/events:
+    get:
+      tags:
+      - Rooms
+      operationId: getRoomEvents
+      summary: Получить страницу активного неизменяемого pool
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Одинаковый порядок для обоих участников
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomEventsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Pool ещё не готов, устарел или исчерпан. После окончания карточек одним участником room остаётся voting
+            до завершения второго.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                poolNotReady:
+                  summary: Оба intent ещё не подтверждены или pool строится
+                  value:
+                    error:
+                      code: POOL_NOT_READY
+                      message: Пул комнаты ещё не готов
+                      request_id: req_01
+                stalePoolVersion:
+                  summary: Клиент использует предыдущую версию пула
+                  value:
+                    error:
+                      code: STALE_POOL_VERSION
+                      message: Версия пула устарела
+                      request_id: req_02
+                      details:
+                        current_pool_version: 2
+                poolExhausted:
+                  summary: Текущий участник закончил карточки раунда
+                  value:
+                    error:
+                      code: POOL_EXHAUSTED
+                      message: Карточки текущего раунда закончились
+                      request_id: req_03
+                      details:
+                        my_pool_finished: true
+                        room_exhausted: false
+  /rooms/{roomId}/events/{eventId}/vote:
+    put:
+      tags:
+      - Rooms
+      operationId: voteForRoomEvent
+      summary: Оценить событие и получить результат либо match
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+            example:
+              pool_version: 1
+              vote: like
+      responses:
+        '200':
+          description: Результат не раскрывает одиночный голос другого участника
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoteResponse'
+              examples:
+                next:
+                  value:
+                    accepted_vote: like
+                    pool_version: 1
+                    my_pool_finished: false
+                    room_exhausted: false
+                    match: null
+                match:
+                  value:
+                    accepted_vote: like
+                    pool_version: 1
+                    my_pool_finished: false
+                    room_exhausted: false
+                    match:
+                      id: 44444444-4444-7444-8444-444444444444
+                      matched_at: '2026-09-15T19:00:00Z'
+                      event:
+                        id: 22222222-2222-7222-8222-222222222222
+                        title: Джазовый вечер
+                        category_slug: concerts
+                        starts_at: '2026-09-19T16:30:00Z'
+                        timezone: Europe/Moscow
+                        date_label: 19 сентября, 19:30
+                        venue_name: Оранжерея ВДНХ
+                        price_from_minor: 180000
+                        currency: RUB
+                        price_label: от 1 800 ₽
+                        image_url: https://cdn.example/event.jpg
+                        saved: false
+                        reasons: []
+                      participants:
+                      - id: 55555555-5555-4555-8555-555555555555
+                        display_name: Анна
+                        role: creator
+                        intent_ready: true
+                      - id: 66666666-6666-4666-8666-666666666666
+                        display_name: Иван
+                        role: participant
+                        intent_ready: true
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-session
+      description: Случайный bearer token сессии MAX, действующий 24 часа; хранится на сервере только в виде hash.
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CityId:
+      name: city_id
+      in: query
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 512
+      description: Opaque подписанный cursor
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+  responses:
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthenticated:
+      description: Token отсутствует, истёк или невалиден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ресурс не существует или недоступен пользователю
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Конфликт состояния ресурса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Превышен rate limit
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: API пока не готов
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+      - status
+      - database
+      - migrations
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+        database:
+          type: string
+          enum:
+          - ready
+        migrations:
+          type: string
+          enum:
+          - current
+    BootstrapRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - init_data
+      properties:
+        init_data:
+          type: string
+          minLength: 1
+          maxLength: 16384
+        start_param:
+          type:
+          - string
+          - 'null'
+          maxLength: 256
+          description: Необязательный client hint; backend не доверяет ему без совпадения с start_param из проверенного init_data
+    BootstrapResponse:
+      type: object
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      - user
+      - onboarding_state
+      - preferences
+      - invite_context
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          minimum: 86400
+          maximum: 86400
+          example: 86400
+        user:
+          $ref: '#/components/schemas/User'
+        onboarding_state:
+          type: string
+          enum:
+          - new
+          - complete
+        preferences:
+          anyOf:
+          - $ref: '#/components/schemas/PreferencesResponse'
+          - type: 'null'
+        invite_context:
+          anyOf:
+          - $ref: '#/components/schemas/InviteContext'
+          - type: 'null'
+    User:
+      type: object
+      required:
+      - id
+      - display_name
+      - locale
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        avatar_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+        city_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        locale:
+          type: string
+          example: ru-RU
+    InviteContext:
+      type: object
+      required:
+      - token
+      - room_name
+      - inviter
+      - expires_at
+      - already_joined
+      - status
+      properties:
+        token:
+          type: string
+        room_name:
+          type: string
+        inviter:
+          $ref: '#/components/schemas/PublicParticipant'
+        expires_at:
+          type: string
+          format: date-time
+        already_joined:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - joinable
+          - full
+          - expired
+    RoomInvite:
+      type: object
+      required:
+      - url
+      - max_deep_link
+      - expires_at
+      properties:
+        url:
+          type: string
+          format: uri
+        max_deep_link:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+    GeoPoint:
+      type: object
+      additionalProperties: false
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+          description: Передавайте вместе с lng; используется только для расчёта расстояния
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+          description: Передавайте вместе с lat; координаты не используются для профилирования вне подбора
+    PreferencesRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - city_id
+      - interest_slugs
+      - budget_max_minor
+      - usual_day_types
+      - usual_time_slots
+      properties:
+        city_id:
+          type: string
+          format: uuid
+        interest_slugs:
+          type: array
+          minItems: 1
+          maxItems: 11
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        budget_max_minor:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+        usual_day_types:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/DayType'
+        usual_time_slots:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+    PreferencesResponse:
+      type: object
+      required:
+      - city_id
+      - interest_slugs
+      - budget_max_minor
+      - usual_day_types
+      - usual_time_slots
+      - version
+      - updated_at
+      properties:
+        city_id:
+          type: string
+          format: uuid
+        interest_slugs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        budget_max_minor:
+          type: integer
+        usual_day_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayType'
+        usual_time_slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    CategorySlug:
+      type: string
+      enum:
+      - concerts
+      - cinema
+      - theatre
+      - standup
+      - exhibitions
+      - sports
+      - food
+      - parties
+      - festivals
+      - walks
+      - other
+    DayType:
+      type: string
+      enum:
+      - weekday
+      - weekend
+    TimeSlot:
+      type: string
+      enum:
+      - morning
+      - day
+      - evening
+      - night
+    VoteValue:
+      type: string
+      enum:
+      - like
+      - dislike
+    EventCard:
+      type: object
+      required:
+      - id
+      - title
+      - category_slug
+      - starts_at
+      - timezone
+      - date_label
+      - venue_name
+      - price_from_minor
+      - currency
+      - price_label
+      - image_url
+      - saved
+      - reasons
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        subtitle:
+          type:
+          - string
+          - 'null'
+        category_slug:
+          $ref: '#/components/schemas/CategorySlug'
+        starts_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          example: Europe/Moscow
+        date_label:
+          type: string
+          example: 19 сентября, 19:30
+        venue_name:
+          type: string
+        distance_m:
+          type:
+          - integer
+          - 'null'
+        distance_label:
+          type:
+          - string
+          - 'null'
+        price_from_minor:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        currency:
+          type: string
+          enum:
+          - RUB
+        price_label:
+          type: string
+          example: от 1 800 ₽
+        image_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+        saved:
+          type: boolean
+        reasons:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/RecommendationReason'
+    RecommendationReason:
+      type: object
+      required:
+      - code
+      - text
+      properties:
+        code:
+          type: string
+          enum:
+          - time_fit
+          - budget_fit
+          - shared_category
+          - nearby
+          - profile_affinity
+          - popular
+        text:
+          type: string
+    EventDetail:
+      allOf:
+      - $ref: '#/components/schemas/EventCard'
+      - type: object
+        required:
+        - description
+        - venue
+        - images
+        - ticket_available
+        - status
+        - data_provenance
+        properties:
+          description:
+            type: string
+          ends_at:
+            type:
+            - string
+            - 'null'
+            format: date-time
+          venue:
+            $ref: '#/components/schemas/Venue'
+          images:
+            type: array
+            items:
+              $ref: '#/components/schemas/EventImage'
+          ticket_available:
+            type: boolean
+          status:
+            type: string
+            enum:
+            - published
+            - sold_out
+            - cancelled
+          age_rating:
+            type:
+            - string
+            - 'null'
+            enum:
+            - 0+
+            - 6+
+            - 12+
+            - 16+
+            - 18+
+            - unknown
+            - null
+          data_provenance:
+            $ref: '#/components/schemas/DataProvenance'
+    DataProvenance:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      - is_demo
+      properties:
+        source:
+          type: string
+          maxLength: 64
+          description: Источник каталожной записи; demo для подготовленных данных
+        source_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        is_demo:
+          type: boolean
+          description: true означает тестовые или подготовленные данные, а не реальную интеграцию
+    Venue:
+      type: object
+      required:
+      - id
+      - name
+      - address
+      - latitude
+      - longitude
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        metro:
+          type:
+          - string
+          - 'null'
+        district:
+          type:
+          - string
+          - 'null'
+    EventImage:
+      type: object
+      required:
+      - url
+      - role
+      properties:
+        url:
+          type: string
+          format: uri
+        width:
+          type:
+          - integer
+          - 'null'
+        height:
+          type:
+          - integer
+          - 'null'
+        role:
+          type: string
+          enum:
+          - card
+          - hero
+          - gallery
+    HomeFeedResponse:
+      type: object
+      required:
+      - feed_id
+      - generated_at
+      - sections
+      properties:
+        feed_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        sections:
+          type: array
+          items:
+            type: object
+            required:
+            - type
+            - title
+            - items
+            properties:
+              type:
+                type: string
+                enum:
+                - hero
+                - popular
+                - for_you
+                - nearby
+              title:
+                type: string
+              items:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventCard'
+        active_room:
+          anyOf:
+          - $ref: '#/components/schemas/RoomSummary'
+          - type: 'null'
+    EventSearchResponse:
+      type: object
+      required:
+      - items
+      - applied_filters
+      - total_estimate
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventCard'
+        applied_filters:
+          type: object
+          additionalProperties: true
+        total_estimate:
+          type: integer
+          minimum: 0
+        next_cursor:
+          type:
+          - string
+          - 'null'
+    BehaviorBatchRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - events
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BehaviorEvent'
+    BehaviorEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - client_event_id
+      - type
+      - occurred_at
+      properties:
+        client_event_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          enum:
+          - impression
+          - open
+          - share
+        occurred_at:
+          type: string
+          format: date-time
+        event_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        room_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        metadata:
+          $ref: '#/components/schemas/BehaviorMetadata'
+    BehaviorMetadata:
+      type: object
+      additionalProperties: false
+      description: Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены.
+      properties:
+        surface:
+          type: string
+          maxLength: 32
+        position:
+          type: integer
+          minimum: 0
+        request_id:
+          type: string
+          maxLength: 128
+    BehaviorBatchResponse:
+      type: object
+      required:
+      - accepted
+      - duplicates
+      - rejected
+      properties:
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+        rejected:
+          type: integer
+          minimum: 0
+    SavedStateResponse:
+      type: object
+      required:
+      - event_id
+      - saved
+      - saved_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        saved:
+          type: boolean
+        saved_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    SavedEventsResponse:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+            - event
+            properties:
+              event:
+                $ref: '#/components/schemas/EventCard'
+              saved_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
+              match:
+                anyOf:
+                - $ref: '#/components/schemas/MatchSummary'
+                - type: 'null'
+        next_cursor:
+          type:
+          - string
+          - 'null'
+    TicketClickRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - source
+      properties:
+        source:
+          type: string
+          enum:
+          - event_detail
+          - match
+          - saved
+          - feed
+        room_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+    TicketClickResponse:
+      type: object
+      required:
+      - external_url
+      properties:
+        external_url:
+          type: string
+          format: uri
+          description: Внешний HTTPS URL провайдера из allowlist; не является внутренним redirect или временным токеном
+    CreateRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - city_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        city_id:
+          type: string
+          format: uuid
+    CreateRoomResponse:
+      type: object
+      required:
+      - room
+      - invite
+      properties:
+        room:
+          $ref: '#/components/schemas/RoomSnapshot'
+        invite:
+          type: object
+          required:
+          - token
+          - url
+          - max_deep_link
+          - expires_at
+          properties:
+            token:
+              type: string
+              description: Возвращается только при создании
+            url:
+              type: string
+              format: uri
+            max_deep_link:
+              type: string
+              format: uri
+            expires_at:
+              type: string
+              format: date-time
+    RoomState:
+      type: string
+      enum:
+      - collecting_intents
+      - ranking
+      - voting
+      - matched
+      - exhausted
+    RoomSummary:
+      type: object
+      required:
+      - id
+      - name
+      - city_id
+      - state
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        city_id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/RoomState'
+    PublicParticipant:
+      type: object
+      required:
+      - id
+      - display_name
+      - role
+      - intent_ready
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        avatar_url:
+          type:
+          - string
+          - 'null'
+          format: uri
+        role:
+          type: string
+          enum:
+          - creator
+          - participant
+        intent_ready:
+          type: boolean
+          description: Подтверждение intent для текущего round; не раскрывает содержимое intent
+    RoomSnapshot:
+      type: object
+      required:
+      - id
+      - name
+      - city_id
+      - state
+      - round_no
+      - version
+      - participants
+      - my_intent
+      - pool
+      - match
+      - invite
+      - allowed_actions
+      - created_at
+      - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        city_id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/RoomState'
+        round_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: Текущий round подтверждения intent и построения pool
+        version:
+          type: integer
+          minimum: 1
+        participants:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PublicParticipant'
+        my_intent:
+          anyOf:
+          - $ref: '#/components/schemas/MyIntent'
+          - type: 'null'
+        pool:
+          anyOf:
+          - $ref: '#/components/schemas/PoolSummary'
+          - type: 'null'
+        match:
+          anyOf:
+          - $ref: '#/components/schemas/MatchSummary'
+          - type: 'null'
+        invite:
+          anyOf:
+          - $ref: '#/components/schemas/RoomInvite'
+          - type: 'null'
+          description: Только creator; null для participant
+        allowed_actions:
+          type: array
+          items:
+            type: string
+            enum:
+            - invite
+            - join
+            - edit_intent
+            - wait
+            - view_pool
+            - vote
+            - view_match
+            - restart_with_new_intent
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: Invite и room истекают через 48 часов
+    RoomIntentRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - dates
+      - day_types
+      - time_slots
+      - category_slugs
+      - budget_max_minor
+      - exclusion_slugs
+      properties:
+        dates:
+          type: array
+          minItems: 1
+          maxItems: 14
+          uniqueItems: true
+          items:
+            type: string
+            format: date
+        day_types:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/DayType'
+          description: Пустой массив означает любой день; значения объединяются OR
+        time_slots:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+          description: Пустой массив означает любое время; значения объединяются OR
+        category_slugs:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        budget_max_minor:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+        radius_m:
+          type:
+          - integer
+          - 'null'
+          minimum: 100
+          maximum: 50000
+          description: null означает отсутствие distance filter; с location считается от координат, без location — от центра
+            room city
+        exclusion_slugs:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - nightclubs
+            - very_loud
+            - outdoor
+            - far_from_metro
+        location:
+          anyOf:
+          - $ref: '#/components/schemas/GeoPoint'
+          - type: 'null'
+          description: При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются
+            дольше необходимого ranking
+        free_text:
+          type:
+          - string
+          - 'null'
+          maxLength: 300
+    MyIntent:
+      type: object
+      additionalProperties: false
+      required:
+      - dates
+      - day_types
+      - time_slots
+      - category_slugs
+      - budget_max_minor
+      - exclusion_slugs
+      - version
+      - round_no
+      - submitted_at
+      properties:
+        dates:
+          type: array
+          minItems: 1
+          maxItems: 14
+          uniqueItems: true
+          items:
+            type: string
+            format: date
+        day_types:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/DayType'
+          description: Пустой массив означает любой день; значения объединяются OR
+        time_slots:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+          description: Пустой массив означает любое время; значения объединяются OR
+        category_slugs:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        budget_max_minor:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+        radius_m:
+          type:
+          - integer
+          - 'null'
+          minimum: 100
+          maximum: 50000
+          description: null означает отсутствие distance filter; с location считается от координат, без location — от центра
+            room city
+        exclusion_slugs:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - nightclubs
+            - very_loud
+            - outdoor
+            - far_from_metro
+        location:
+          anyOf:
+          - $ref: '#/components/schemas/GeoPoint'
+          - type: 'null'
+          description: При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются
+            дольше необходимого ranking
+        free_text:
+          type:
+          - string
+          - 'null'
+          maxLength: 300
+        version:
+          type: integer
+          minimum: 1
+        round_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+        submitted_at:
+          type: string
+          format: date-time
+    PoolSummary:
+      type: object
+      required:
+      - version
+      - round_no
+      - state
+      - total
+      - is_small
+      - voted_by_me
+      - my_pool_finished
+      - room_exhausted
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        round_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+        state:
+          type: string
+          enum:
+          - ranking
+          - ready
+          - exhausted
+        total:
+          type: integer
+          minimum: 0
+        voted_by_me:
+          type: integer
+          minimum: 0
+        my_pool_finished:
+          type: boolean
+          description: Текущий участник проголосовал по всем доступным карточкам
+        room_exhausted:
+          type: boolean
+          description: Оба участника завершили текущий pool без match
+        retry_after_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        exhaustion_reasons:
+          type: array
+          description: Только агрегированные причины без чужих данных
+          items:
+            type: object
+            required:
+            - code
+            - text
+            properties:
+              code:
+                type: string
+                enum:
+                - budget
+                - date
+                - categories
+                - radius
+                - catalog_shortage
+              text:
+                type: string
+        is_small:
+          type: boolean
+          description: true, если в pool только 1–2 доступных события
+    RoomEventsResponse:
+      type: object
+      required:
+      - room_id
+      - pool_version
+      - round_no
+      - items
+      - next_cursor
+      - total
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        pool_version:
+          type: integer
+          minimum: 1
+        round_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+        items:
+          type: array
+          items:
+            type: object
+            required:
+            - cursor
+            - position
+            - event
+            properties:
+              cursor:
+                type: string
+                description: Opaque pagination cursor; не передаётся в vote
+              position:
+                type: integer
+                minimum: 0
+              event:
+                $ref: '#/components/schemas/EventCard'
+        next_cursor:
+          type:
+          - string
+          - 'null'
+        total:
+          type: integer
+          minimum: 0
+    VoteRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - pool_version
+      - vote
+      properties:
+        pool_version:
+          type: integer
+          minimum: 1
+        vote:
+          $ref: '#/components/schemas/VoteValue'
+    VoteResponse:
+      type: object
+      required:
+      - accepted_vote
+      - pool_version
+      - my_pool_finished
+      - room_exhausted
+      - match
+      properties:
+        accepted_vote:
+          $ref: '#/components/schemas/VoteValue'
+        pool_version:
+          type: integer
+          minimum: 1
+        my_pool_finished:
+          type: boolean
+        room_exhausted:
+          type: boolean
+        match:
+          anyOf:
+          - $ref: '#/components/schemas/Match'
+          - type: 'null'
+    MatchSummary:
+      type: object
+      required:
+      - id
+      - room_id
+      - event_id
+      - matched_at
+      - participants
+      properties:
+        id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        matched_at:
+          type: string
+          format: date-time
+        participants:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PublicParticipant'
+          description: Только безопасные display_name/avatar/role; MAX ID и intent не раскрываются
+    Match:
+      type: object
+      required:
+      - id
+      - matched_at
+      - event
+      - participants
+      properties:
+        id:
+          type: string
+          format: uuid
+        matched_at:
+          type: string
+          format: date-time
+        event:
+          $ref: '#/components/schemas/EventCard'
+        participants:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PublicParticipant'
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - request_id
+          properties:
+            code:
+              type: string
+              enum:
+              - UNAUTHENTICATED
+              - TOKEN_EXPIRED
+              - FORBIDDEN
+              - VALIDATION_FAILED
+              - NOT_FOUND
+              - CONFLICT
+              - IDEMPOTENCY_CONFLICT
+              - ACTIVE_ROOM_EXISTS
+              - RATE_LIMITED
+              - ROOM_FULL
+              - INVITE_EXPIRED
+              - ROOM_EXPIRED
+              - ROOM_NOT_READY
+              - POOL_NOT_READY
+              - POOL_EXHAUSTED
+              - STALE_POOL_VERSION
+              - INTENT_LOCKED
+              - VOTE_ALREADY_CAST
+              - ALREADY_MATCHED
+              - ROUND_LIMIT_REACHED
+              - EVENT_UNAVAILABLE
+              - TICKETS_UNAVAILABLE
+              - INTERNAL
+            message:
+              type: string
+            request_id:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+              properties:
+                current_pool_version:
+                  type: integer
+                  minimum: 1
+                my_pool_finished:
+                  type: boolean
+                room_exhausted:
+                  type: boolean
+                field:
+                  type: string
+                fields:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - field
+                    - reason
+                    properties:
+                      field:
+                        type: string
+                      reason:
+                        type: string
+                active_room:
+                  anyOf:
+                  - $ref: '#/components/schemas/RoomSummary'
+                  - type: 'null'
+                match:
+                  anyOf:
+                  - $ref: '#/components/schemas/MatchSummary'
+                  - type: 'null'

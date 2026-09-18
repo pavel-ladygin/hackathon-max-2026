@@ -59,3 +59,8 @@ pnpm-debug.log*
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Local Python contract-validation environment
+.venv/
+__pycache__/
+*.pyc
