@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,7 +63,10 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		SecondIntent: contracts.ParticipantIntent{UserID: f.member, Version: 1, Dates: slices.Clone(dates), BudgetMaxMinor: 250000, CategorySlugs: []string{"theatre"}},
 	}
 	repo := catalog.NewRepository(db)
-	builder := recommendations.NewPoolBuilder(repo)
+	builder, err := recommendations.NewPoolBuilder(repo, []byte("a4-postgres-integration-key-32-bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	build := func(in contracts.BuildInput, count int) contracts.BuildResult {
 		t.Helper()
 		got, err := builder.Build(ctx, in)
@@ -75,8 +79,8 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		return got
 	}
 
-	full := build(input, 20)
-	if repeated := build(input, 20); !reflect.DeepEqual(full, repeated) {
+	full := build(input, 22)
+	if repeated := build(input, 22); !reflect.DeepEqual(full, repeated) {
 		t.Fatal("same effective input changed the result/order")
 	}
 	permuted := input
@@ -84,8 +88,15 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	slices.Reverse(permuted.FirstIntent.Dates)
 	permuted.FirstIntent.CategorySlugs = []string{"sports"}
 	permuted.SecondIntent.CategorySlugs = []string{"food"}
-	if got := build(permuted, 20); !reflect.DeepEqual(full, got) {
-		t.Fatal("date order or soft categories changed hard-filter result")
+	permutedResult := build(permuted, 22)
+	if reflect.DeepEqual(full, permutedResult) {
+		t.Fatal("changed category preferences did not affect ranking")
+	}
+	fullIDs, permutedIDs := candidateIDsFromResult(full), candidateIDsFromResult(permutedResult)
+	slices.Sort(fullIDs)
+	slices.Sort(permutedIDs)
+	if !slices.Equal(fullIDs, permutedIDs) {
+		t.Fatal("soft category preferences changed eligibility")
 	}
 
 	snapshot, err := repo.LoadCity(ctx, cityID)
@@ -96,15 +107,30 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	for _, event := range snapshot.Events {
 		events[event.ID] = event
 	}
-	for i, candidate := range full.Candidates {
+	preferredNearTop := 0
+	for _, candidate := range full.Candidates[:4] {
+		for _, category := range events[candidate.EventID].Categories {
+			if category.CategorySlug == "concerts" || category.CategorySlug == "theatre" {
+				preferredNearTop++
+				break
+			}
+		}
+	}
+	if preferredNearTop < 2 {
+		t.Fatalf("current category preferences did not rank both preferred categories near the top: %d", preferredNearTop)
+	}
+	allowedReasons := map[string]bool{"time_fit": true, "budget_fit": true, "shared_category": true, "nearby": true, "profile_affinity": true, "popular": true}
+	for _, candidate := range full.Candidates {
 		event := events[candidate.EventID]
 		if event.Status != "published" || !event.TicketAvailable || !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 > 250000 {
 			t.Fatalf("ineligible seeded event %s returned", candidate.EventID)
 		}
-		if i > 0 {
-			prev := events[full.Candidates[i-1].EventID]
-			if event.StartsAt.Time.Before(prev.StartsAt.Time) || (event.StartsAt.Time.Equal(prev.StartsAt.Time) && event.ID.String() < prev.ID.String()) {
-				t.Fatal("candidate order is not start time then ID")
+		if candidate.Score.GroupScore < 0 || candidate.Score.GroupScore > 1 || len(candidate.FeatureSnapshot) != 7 || len(candidate.Explanation) > 3 {
+			t.Fatalf("invalid ranking snapshot for %s: %+v", candidate.EventID, candidate)
+		}
+		for _, reason := range candidate.Explanation {
+			if !allowedReasons[reason.Code] || reason.Text == "" || strings.Contains(reason.Text, "250000") {
+				t.Fatalf("unsafe recommendation reason: %+v", reason)
 			}
 		}
 	}
@@ -148,7 +174,7 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 
 	next := input
 	next.PoolVersion = 2
-	for _, candidate := range full.Candidates {
+	for _, candidate := range full.Candidates[:20] {
 		next.PreviousEventIDs = append(next.PreviousEventIDs, candidate.EventID)
 	}
 	rest := build(next, 2)
@@ -172,6 +198,14 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		}
 		build(freeInput, 10-i)
 	}
+}
+
+func candidateIDsFromResult(result contracts.BuildResult) []string {
+	ids := make([]string, len(result.Candidates))
+	for i, candidate := range result.Candidates {
+		ids[i] = candidate.EventID.String()
+	}
+	return ids
 }
 
 func poolBuilderRoomSnapshot(t *testing.T, db *store.Pool, roomID uuid.UUID) string {
