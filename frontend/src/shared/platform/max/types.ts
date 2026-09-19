@@ -5,6 +5,8 @@ export type MaxViewport = {
   height: number;
 };
 
+export type GeoPosition = { lat: number; lng: number; accuracyM: number | null };
+
 export type MaxEnvironment = "max" | "browser";
 
 export type InviteSharePayload = {
@@ -36,6 +38,8 @@ export interface MaxPlatformAdapter {
   shareInvite(payload: InviteSharePayload): Promise<boolean>;
   openMaxLink(url: string): Promise<boolean>;
   openExternalLink(url: string): Promise<boolean>;
+  requestLocation(): Promise<GeoPosition | null>;
+  copyText(value: string): Promise<boolean>;
   setClosingConfirmation(enabled: boolean): void;
   snapshot(): MaxPlatformSnapshot;
 }

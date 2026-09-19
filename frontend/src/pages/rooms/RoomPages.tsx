@@ -6,34 +6,39 @@ import { useForm, useWatch } from 'react-hook-form'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
 import { useEventDetail } from '../../features/discovery/queries'
+import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
+import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { apiClient } from '../../shared/api/client'
+import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, RoomIntentRequestDto, RoomSnapshot, VoteValue } from '../../shared/api/types'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, Loading, PageContent, PageShell, PrivacyNote, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
-const CITY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa'
+const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
 
-const roomSchema = z.object({ name: z.string().trim().min(2, 'Введите название комнаты').max(80) })
+const roomSchema = z.object({ name: z.string().trim().min(1, 'Введите название комнаты').max(80, 'Не больше 80 символов') })
 type RoomForm = z.infer<typeof roomSchema>
 
 export function NewRoomPage() {
   const navigate = useNavigate()
+  const bootstrap = useBootstrap()
   const form = useForm<RoomForm>({ resolver: zodResolver(roomSchema), defaultValues: { name: 'Куда идём в субботу?' } })
   const create = useMutation({
-    mutationFn: (values: RoomForm) => apiClient.createRoom({ name: values.name, city_id: CITY_ID }),
+    mutationFn: (values: RoomForm) => apiClient.createRoom({ name: values.name.trim(), city_id: bootstrap.data?.preferences?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID }),
     onSuccess: ({ room }) => navigate(mockRoute(`/rooms/${room.id}/invite`)),
+    onError: (error) => { if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true }) },
   })
   return (
     <PageShell><TopBar title="Новая комната" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ ВЫБРАТЬ</p><h1 className={styles.title}>Создать комнату</h1><p className={styles.subtitle}>Пригласите друга. Каждый отдельно укажет пожелания, а система найдёт честное пересечение.</p>
       <form className={styles.formStack} onSubmit={form.handleSubmit((values) => create.mutate(values))}>
-        <label className={styles.fieldLabel}>Название комнаты<input className={styles.input} {...form.register('name')} />{form.formState.errors.name ? <span className={styles.error}>{form.formState.errors.name.message}</span> : null}</label>
+        <label className={styles.fieldLabel} htmlFor="room-name">Название комнаты<input id="room-name" className={styles.input} aria-invalid={Boolean(form.formState.errors.name)} {...form.register('name')} />{form.formState.errors.name ? <span className={styles.error} role="alert">{form.formState.errors.name.message}</span> : null}</label>
         <div className={styles.avatars} aria-label="Комната для двух участников"><span className={styles.avatar}>И</span><span className={styles.avatar}>+</span></div>
         <PrivacyNote>Сначала вы пригласите друга, затем каждый приватно заполнит свои условия.</PrivacyNote>
-        {create.isError ? <p className={styles.error}>Не удалось создать комнату.</p> : null}
+        {create.isError ? <p className={styles.error} role="alert">{roomErrorMessage(create.error, 'Не удалось создать комнату.')}</p> : null}
         <div className={styles.footer}><Button type="submit" disabled={create.isPending}>{create.isPending ? 'Создаём…' : 'Создать комнату'}</Button></div>
       </form>
     </PageContent></PageShell>
@@ -45,8 +50,9 @@ export function InvitePage() {
   const navigate = useNavigate()
   const room = useRoom(roomId)
   const [shared, setShared] = useState(false)
+  const [copied, setCopied] = useState(false)
   if (room.isPending) return <Loading label="Готовим приглашение…" />
-  if (room.isError || !room.data) return <Empty title="Комната не найдена" action={<Button onClick={() => navigate('/')}>На главную</Button>} />
+  if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
   const rawUrl = room.data.invite?.url ?? ''
   const demoUrl = mockInviteUrl(rawUrl)
   const share = async () => {
@@ -57,10 +63,10 @@ export function InvitePage() {
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>И</span><span className={styles.avatar}>{room.data.participants.length > 1 ? 'А' : '+'}</span></div>
       <h1 className={styles.title}>Пригласите друга</h1><p className={styles.subtitle}>Отправьте приглашение в MAX. После подключения каждый отдельно заполнит пожелания.</p>
-      <div className={styles.inviteLink}>{demoUrl || 'Ссылка появится после создания комнаты'}</div>
+      <div className={styles.inviteLink} data-testid="invite-url">{demoUrl || 'Ссылка появится после создания комнаты'}</div>
       <PrivacyNote>Предпочтения и оценки останутся скрытыми до взаимного лайка.</PrivacyNote>
-      {shared ? <p>✓ Приглашение отправлено или скопировано</p> : null}
-      <div className={styles.footer}><Button onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" onClick={() => navigate(mockRoute(`/rooms/${roomId}/intent`))}>Перейти к моим пожеланиям</Button></div>
+      <div aria-live="polite">{shared ? <p>✓ Приглашение отправлено</p> : copied ? <p>✓ Ссылка скопирована</p> : null}</div>
+      <div className={styles.footer}><Button onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" onClick={async () => setCopied(await maxPlatform.copyText(demoUrl))}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(mockRoute(`/rooms/${roomId}/intent`))}>Перейти к моим пожеланиям</Button></div>
     </PageContent></PageShell>
   )
 }
@@ -68,13 +74,20 @@ export function InvitePage() {
 export function JoinPage() {
   const { inviteToken } = useParams()
   const navigate = useNavigate()
-  const join = useMutation({ mutationFn: () => apiClient.joinRoom(inviteToken!), onSuccess: (room) => navigate(mockRoute(`/rooms/${room.id}/intent`), { replace: true }) })
+  const bootstrap = useBootstrap()
+  const inviteContext = bootstrap.data?.inviteContext
+  const context = inviteContext?.token === inviteToken ? inviteContext : null
+  const join = useMutation({ mutationFn: () => {
+    if (!inviteToken) throw new Error('Invite token is missing')
+    return apiClient.joinRoom(inviteToken)
+  }, onSuccess: (room) => navigate(mockRoute(`/rooms/${room.id}/intent`), { replace: true }) })
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
-      <div className={styles.avatars}><span className={styles.avatar}>И</span><span className={styles.avatar}>А</span></div>
-      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>Вас пригласили выбрать, куда сходить</h1><p className={styles.subtitle}>После подключения каждый самостоятельно укажет свои условия.</p>
-      <PrivacyNote />{join.isError ? <p className={styles.error}>Ссылка недействительна или комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending} onClick={() => join.mutate()}>{join.isPending ? 'Подключаем…' : 'Присоединиться'}</Button></div>
+      <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
+      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
+      <PrivacyNote />{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
+      {context?.status === 'expired' ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
+      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} onClick={() => join.mutate()}>{join.isPending ? 'Подключаем…' : context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button></div>
     </PageContent></PageShell>
   )
 }
@@ -83,7 +96,7 @@ export function RoomFlowPage() {
   const { roomId, roomScreen } = useParams()
   const room = useRoom(roomId)
   if (room.isPending) return <Loading label="Восстанавливаем комнату…" />
-  if (room.isError || !room.data) return <Empty title="Комната недоступна" description="Возможно, приглашение истекло." />
+  if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
   if (roomScreen !== expected) return <Navigate to={mockRoute(`/rooms/${roomId}/${expected}`)} replace />
   if (expected === 'intent') return <IntentScreen room={room.data} />
@@ -94,11 +107,12 @@ export function RoomFlowPage() {
 }
 
 const intentSchema = z.object({
-  dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату'),
-  time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])).min(1),
+  dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату').max(14).refine((dates) => new Set(dates).size === dates.length && dates.every((date) => date >= localDate(new Date())), 'Выберите будущие даты без повторов'),
+  day_types: z.array(z.enum(['weekday', 'weekend'])),
+  time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
   category_slugs: z.array(z.enum(['concerts', 'cinema', 'theatre', 'standup', 'exhibitions', 'sports', 'food', 'parties', 'festivals', 'walks', 'other'])).min(1),
-  budget: z.coerce.number().min(500).max(10_000),
-  radius: z.coerce.number().min(1_000).max(10_000),
+  budget: z.coerce.number().min(0).max(1_000_000),
+  radius: z.coerce.number().min(100).max(50_000),
   free_text: z.string().max(300),
 })
 type IntentForm = z.infer<typeof intentSchema>
@@ -106,8 +120,10 @@ type IntentForm = z.infer<typeof intentSchema>
 function IntentScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema), defaultValues: { dates: ['2026-09-19'], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' } })
+  const dateChoices = upcomingDates(7)
+  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema), defaultValues: { dates: [dateChoices[0][0]], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' } })
   const dates = useWatch({ control: form.control, name: 'dates' })
+  const dayTypes = useWatch({ control: form.control, name: 'day_types' })
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
@@ -115,19 +131,25 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const save = useMutation({
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(mockRoute(`/rooms/${room.id}/waiting`), { replace: true }) },
+    onError: (error) => {
+      if (!(error instanceof ApiError)) return
+      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', radius_m: 'radius', free_text: 'free_text' }
+      for (const [field, message] of Object.entries(error.fieldErrors)) if (mapping[field]) form.setError(mapping[field], { message })
+    },
   })
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={styles.title}>Мои предпочтения</h1><p className={styles.subtitle}>Укажите, что подходит именно сейчас. Другой участник не увидит ответы.</p><PrivacyNote />
       <form className={styles.formStack} onSubmit={form.handleSubmit((values) => save.mutate(values))}>
-        <ChoiceField title="Когда удобно" options={[['2026-09-19', '19 сентября'], ['2026-09-20', '20 сентября'], ['2026-09-21', '21 сентября']]} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value))} />
-        <ChoiceField title="Время" options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]))} />
-        <ChoiceField title="Что интересно" options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug))} />
-        <label className={styles.fieldLabel}>Бюджет · до {budget.toLocaleString('ru')} ₽<input className={styles.range} type="range" min="500" max="10000" step="500" {...form.register('budget')} /></label>
-        <label className={styles.fieldLabel}>Радиус · до {(radius / 1000).toFixed(0)} км<input className={styles.range} type="range" min="1000" max="10000" step="1000" {...form.register('radius')} /></label>
-        <label className={styles.fieldLabel}>Дополнительное пожелание<textarea className={styles.textarea} placeholder="Например: хочется спокойного места" {...form.register('free_text')} /></label>
-        {Object.keys(form.formState.errors).length ? <p className={styles.error}>Проверьте выбранные даты, время и интересы.</p> : null}
-        {save.isError ? <p className={styles.error}>Не удалось сохранить предпочтения.</p> : null}
+        <ChoiceField title="Когда удобно" error={form.formState.errors.dates?.message} options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} />
+        <ChoiceField title="Тип дня (необязательно)" error={form.formState.errors.day_types?.message} options={[['weekday', 'Будни'], ['weekend', 'Выходные']]} selected={dayTypes} onToggle={(value) => form.setValue('day_types', toggleValue(dayTypes, value as IntentForm['day_types'][number]), { shouldValidate: true })} />
+        <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
+        <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
+        <label className={styles.fieldLabel} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={styles.error} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
+        <label className={styles.fieldLabel} htmlFor="room-radius">Радиус · до {(radius / 1000).toFixed(0)} км<input id="room-radius" className={styles.range} type="range" min="100" max="50000" step="500" aria-invalid={Boolean(form.formState.errors.radius)} {...form.register('radius')} />{form.formState.errors.radius ? <span className={styles.error} role="alert">{form.formState.errors.radius.message}</span> : null}</label>
+        <label className={styles.fieldLabel} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={styles.error} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
+        {Object.keys(form.formState.errors).length ? <p className={styles.error} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}
+        {save.isError ? <p className={styles.error} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
         <div className={styles.footer}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button></div>
       </form>
     </PageContent></PageShell>
@@ -153,10 +175,10 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const vote = useMutation({
     mutationFn: ({ eventId, value }: { eventId: string; value: VoteValue }) => apiClient.vote(room.id, eventId, { pool_version: room.pool?.version ?? room.version, vote: value }),
     onSuccess: async () => { setPendingVote(null); await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) },
-    onError: () => setPendingVote(null),
+    onError: async (error) => { setPendingVote(null); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
   if (events.isPending) return <Loading label="Загружаем общий пул…" />
-  if (events.isError) return <Empty title="Пул пока не готов" action={<Button onClick={() => void events.refetch()}>Повторить</Button>} />
+  if (events.isError) return <Empty title={isRoomError(events.error, 'POOL_NOT_READY') ? 'Пул пока не готов' : 'Не удалось загрузить подборку'} description={roomErrorMessage(events.error)} action={<Button onClick={() => void events.refetch()}>Повторить</Button>} />
   const index = room.pool?.voted_by_me ?? 0
   const item = events.data.items[index]
   if (!item) return <WaitingScreen room={room} />
@@ -171,8 +193,8 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
         </motion.article>
       </AnimatePresence>
       <div className={styles.explain}><strong>Почему в подборке</strong>{item.event.reasons.map((reason) => <span key={reason.code}>✓ {reason.text}</span>)}</div>
-      <div className={styles.voteActions}><button className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('dislike')}><span className={styles.voteCircle}>×</span>Не подходит</button><button className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`}>♥</span>Хочу пойти</button></div>
-      {vote.isError ? <p className={styles.error}>Голос не сохранился. Повторите действие.</p> : null}<PrivacyNote title="Выбор скрыт">Друг узнает о вашем лайке только при взаимном совпадении.</PrivacyNote>
+      <div className={styles.voteActions}><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('dislike')}><span className={styles.voteCircle} aria-hidden="true">×</span>Не подходит</button><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`} aria-hidden="true">♥</span>Хочу пойти</button></div>
+      {vote.isError ? <p className={styles.error} role="alert">{roomErrorMessage(vote.error, 'Голос не сохранился. Повторите действие.')}</p> : null}<PrivacyNote title="Выбор скрыт">Друг узнает о вашем лайке только при взаимном совпадении.</PrivacyNote>
     </PageContent></PageShell>
   )
 }
@@ -201,15 +223,16 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Можно немного расширить только ваши условия и запустить новый приватный раунд.</p>
       <section className={styles.section}><h2 className={styles.sectionTitle}>Что ограничило подборку</h2><div className={styles.reason}><strong>Бюджет и время</strong><p>Пересечение получилось небольшим, а часть подходящих событий немного дороже.</p></div><div className={styles.reason}><strong>Категории и расстояние</strong><p>В выбранном радиусе мало событий с общими интересами.</p></div></section>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button key={item.id} className={`${styles.suggestion} ${selected === item.id ? styles.suggestionSelected : ''}`} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{item.meta}</small></span><span>{selected === item.id ? '✓' : '○'}</span></button>)}</section>
+      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selected === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{item.meta}</small></span><span aria-hidden="true">{selected === item.id ? '✓' : '○'}</span></button>)}</section>
       <PrivacyNote>Это только общие причины — ответы второго участника не раскрываются.</PrivacyNote>
+      {restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
       <div className={styles.footer}><Button disabled={restart.isPending} onClick={() => restart.mutate()}>{restart.isPending ? 'Обновляем…' : 'Применить и обновить подборку'}</Button></div>
     </PageContent></PageShell>
   )
 }
 
-function ChoiceField<T extends string>({ title, options, selected, onToggle }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void }) {
-  return <fieldset className={styles.fieldLabel}><legend>{title}</legend><ChipGroup>{options.map(([value, label]) => <Chip key={value} selected={selected.includes(value)} onClick={() => onToggle(value)}>{label}</Chip>)}</ChipGroup></fieldset>
+function ChoiceField<T extends string>({ title, options, selected, onToggle, error }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void; error?: string }) {
+  return <fieldset className={styles.fieldLabel} aria-invalid={Boolean(error)}><legend>{title}</legend><ChipGroup>{options.map(([value, label]) => <Chip key={value} selected={selected.includes(value)} onClick={() => onToggle(value)}>{label}</Chip>)}</ChipGroup>{error ? <span className={styles.error} role="alert">{error}</span> : null}</fieldset>
 }
 
 function expectedScreen(room: RoomSnapshot) {
@@ -221,19 +244,23 @@ function expectedScreen(room: RoomSnapshot) {
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
-  return { dates: values.dates, day_types: [], time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: values.radius, exclusion_slugs: [], location: null, free_text: values.free_text || null }
+  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: values.radius, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
 }
 
 function relaxedIntent(current: RoomSnapshot['myIntent'], kind: string): RoomIntentRequestDto {
-  const base: RoomIntentRequestDto = current ? { dates: current.dates, day_types: current.day_types, time_slots: current.time_slots, category_slugs: current.category_slugs, budget_max_minor: current.budget_max_minor, radius_m: current.radius_m, exclusion_slugs: current.exclusion_slugs, location: current.location, free_text: current.free_text } : { dates: ['2026-09-19'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 300_000, radius_m: 5_000, exclusion_slugs: [], location: null, free_text: null }
+  const base: RoomIntentRequestDto = current ? { dates: current.dates, day_types: current.day_types, time_slots: current.time_slots, category_slugs: current.category_slugs, budget_max_minor: current.budget_max_minor, radius_m: current.radius_m, exclusion_slugs: current.exclusion_slugs, location: current.location, free_text: current.free_text } : { dates: [localDate(new Date())], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 300_000, radius_m: 5_000, exclusion_slugs: [], location: null, free_text: null }
   if (kind === 'budget') base.budget_max_minor = 350_000
-  if (kind === 'date') base.dates = [...new Set([...base.dates, '2026-09-18'])]
+  if (kind === 'date') base.dates = [...new Set([...base.dates, localDate(addDays(new Date(), 1))])]
   if (kind === 'radius') base.radius_m = 10_000
   if (kind === 'category') base.category_slugs = [...new Set([...base.category_slugs, 'exhibitions' as CategorySlug])]
   return base
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }
+
+function addDays(date: Date, amount: number) { const next = new Date(date); next.setDate(next.getDate() + amount); return next }
+function localDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+function upcomingDates(count: number): Array<[string, string]> { return Array.from({ length: count }, (_, index) => { const date = addDays(new Date(), index); return [localDate(date), new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(date)] }) }
 
 function mockInviteUrl(raw: string) {
   if (!raw || (import.meta.env.VITE_API_MODE ?? 'mock') !== 'mock') return raw

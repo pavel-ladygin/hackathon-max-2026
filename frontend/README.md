@@ -11,6 +11,7 @@
 - MSW для API-моков;
 - MAX UI и адаптер MAX Bridge;
 - Motion для переходов и экрана совпадения;
+- Leaflet + OpenStreetMap для отложенно загружаемой карты;
 - CSS Modules и дизайн-токены;
 - Vitest + Testing Library, Playwright-конфигурация для e2e.
 
@@ -47,6 +48,18 @@ VITE_ALLOW_BROWSER_PREVIEW=true
 
 Между режимами нет скрытого fallback: ошибка реального API не подменяется мок-ответом.
 
+В development справа внизу доступна панель сценариев `normal / 429 / 500 / 401`. Тот же сценарий можно включить параметром `?mockScenario=rate-limited|internal|token-expired`. Базовый mock работает и в production build, но панель туда не включается.
+
+## OpenAPI
+
+`openapi/openapi.yaml` — источник транспортного контракта. Типы генерируются командой:
+
+```bash
+npm run generate:api
+```
+
+Результат находится в `src/shared/api/generated/schema.ts`. Ручные модели используются только как UI/domain boundary; URL, DTO и коды ошибок должны оставаться совместимыми с generated contract.
+
 ## Архитектура
 
 ```text
@@ -79,6 +92,15 @@ npm run check
 ```
 
 Unit-тест mock state покрывает полный переход: два участника → приватные интенты → независимые лайки → совпадение.
+
+Полный browser flow для desktop и mobile:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+Карта использует публичные tiles OpenStreetMap и при отсутствии сети не блокирует списковый режим.
 
 ## Что подключать backend-команде
 

@@ -1,13 +1,15 @@
 import type { EventCardDto, EventDetailDto, RoomSnapshotDto, UserDto } from '../shared/api/types'
 
-export const IVAN: UserDto = { id: '11111111-1111-7111-8111-111111111111', display_name: 'Иван', avatar_url: null, city_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', locale: 'ru-RU' }
-export const ANNA: UserDto = { id: '22222222-2222-7222-8222-222222222222', display_name: 'Анна', avatar_url: null, city_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', locale: 'ru-RU' }
+export const IVAN: UserDto = { id: '11111111-1111-7111-8111-111111111111', display_name: 'Иван', avatar_url: null, city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', locale: 'ru-RU' }
+export const ANNA: UserDto = { id: '22222222-2222-7222-8222-222222222222', display_name: 'Анна', avatar_url: null, city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', locale: 'ru-RU' }
 
 type EventSeed = Pick<EventDetailDto, 'id' | 'title' | 'subtitle' | 'category_slug' | 'date_label' | 'venue_name' | 'price_from_minor' | 'price_label' | 'image_url' | 'description'>
 
+const eventDate = (index: number) => { const value = new Date(); value.setHours(16 + (index % 5), 0, 0, 0); value.setDate(value.getDate() + index + 1); return value }
 const makeEvent = (seed: EventSeed, index: number): EventDetailDto => ({
   ...seed,
-  starts_at: `2026-09-${String(18 + index).padStart(2, '0')}T16:00:00Z`,
+  starts_at: eventDate(index).toISOString(),
+  date_label: new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(eventDate(index)),
   timezone: 'Europe/Moscow',
   distance_m: 1800 + index * 650,
   distance_label: `${(1.8 + index * 0.65).toFixed(1).replace('.', ',')} км`,
@@ -22,8 +24,8 @@ const makeEvent = (seed: EventSeed, index: number): EventDetailDto => ({
     id: `44444444-4444-7444-8444-44444444444${index}`,
     name: seed.venue_name,
     address: 'Москва, центр города',
-    latitude: 55.75,
-    longitude: 37.62,
+    latitude: 55.71 + index * .018,
+    longitude: 37.56 + index * .024,
     metro: 'Центр',
     district: 'Центральный',
   },
@@ -62,4 +64,4 @@ export const eventCards = (): EventCardDto[] => EVENTS.map((event) => ({
   reasons: event.reasons,
 }))
 export const now = () => new Date().toISOString()
-export type MockRoom = { id: string; name: string; city_id: string; token: string; creator: string; participant: string | null; intents: Record<string, unknown>; votes: Record<string, Record<string, 'like' | 'dislike'>>; state: RoomSnapshotDto['state']; version: number; round_no: number; created_at: string; expires_at: string; match: { id: string; matched_at: string; event: EventDetailDto; participants: unknown[] } | null }
+export type MockRoom = { id: string; name: string; city_id: string; token: string; creator: string; participant: string | null; intents: Record<string, any>; votes: Record<string, Record<string, 'like' | 'dislike'>>; state: RoomSnapshotDto['state'] | (string & {}); version: number; round_no: number; created_at: string; expires_at: string; match: { id: string; matched_at: string; event: EventDetailDto; participants: any[] } | null }

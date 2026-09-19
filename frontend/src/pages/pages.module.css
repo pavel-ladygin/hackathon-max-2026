@@ -22,7 +22,7 @@
 .heroCopy strong { font-size: 26px; letter-spacing: -.04em; }
 .sectionHead { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 10px; }
 .eventGrid { display: grid; gap: 8px; }
-.roomCta { margin: 28px 0 76px; padding: 22px; border-radius: 22px; background: #eeebe6; }
+.roomCta { margin: 8px 0 26px; padding: 22px; border-radius: 22px; background: #eeebe6; }
 .roomCta p { margin: 8px 0 18px; color: var(--color-muted); font-size: 12px; line-height: 1.55; }
 .detailHero { width: 100%; height: min(48vh, 430px); object-fit: cover; }
 .detailMeta { display: grid; gap: 12px; margin: 22px 0; padding: 16px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); font-size: 13px; font-weight: 700; }
@@ -54,6 +54,17 @@
 .suggestion small { display: block; margin-top: 4px; color: #8e806f; }
 .center { text-align: center; }
 .narrow { max-width: 640px; margin: 0 auto; }
+.searchLabel { display: block; margin: 8px 0; font-size: 12px; font-weight: 800; }
+.searchInput { width: 100%; height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 14px; background: var(--color-paper); color: var(--color-ink); font: inherit; }
+.filterRow { display: flex; gap: 8px; margin: 12px 0 8px; }
+.catalogChips { margin-bottom: 22px; }
+.catalogItem { position: relative; }
+.catalogItem .eventCard { padding-right: 44px; }
+.saveButton { position: absolute; top: 18px; right: 14px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--color-soft); color: var(--color-ink); font-size: 20px; line-height: 1; }
+.saveButton:disabled { opacity: .55; }
+.tabs { display: flex; gap: 8px; margin: 6px 0 22px; }
+.matchNote { display: block; margin: -3px 12px 10px; color: #8e806f; font-size: 11px; }
+.fieldError { margin: -3px 0 0; color: #b42318; font-size: 11px; }
 
 @media (min-width: 768px) {
   .footer { margin-right: 0; margin-left: 0; border-radius: 20px; }
@@ -64,3 +75,7 @@
 @media (min-width: 1200px) {
   .eventGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+.viewSwitch { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0; }
+.mapWrap { min-height: 430px; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-paper); }
+.map { width: 100%; height: min(62vh, 620px); min-height: 430px; }

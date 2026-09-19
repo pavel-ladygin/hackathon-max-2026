@@ -127,6 +127,27 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
     return opened !== null;
   }
 
+  async requestLocation(): Promise<{ lat: number; lng: number; accuracyM: number | null } | null> {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude, accuracyM: Number.isFinite(coords.accuracy) ? coords.accuracy : null }),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+      );
+    });
+  }
+
+  async copyText(value: string): Promise<boolean> {
+    try {
+      if (!navigator.clipboard) return false;
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   setClosingConfirmation(enabled: boolean): void {
     if (typeof window === "undefined") return;
     const webApp = getWebApp();
