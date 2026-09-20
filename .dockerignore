@@ -1,0 +1,11 @@
+# Only the backend enters the product build context.
+**
+!backend/
+!backend/**
+backend/**/.env*
+backend/**/__pycache__/
+backend/**/.venv/
+backend/**/*.exe
+backend/**/*.test
+backend/**/*.log
+backend/**/.cache/
