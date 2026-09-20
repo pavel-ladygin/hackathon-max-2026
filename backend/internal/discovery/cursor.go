@@ -30,7 +30,11 @@ func NewCursorCodec(key []byte) (*CursorCodec, error) {
 	if len(key) < 16 {
 		return nil, errors.New("discovery cursor key must be at least 16 bytes")
 	}
-	return &CursorCodec{key: append([]byte(nil), key...)}, nil
+	// Derive a domain-specific key so the server master key is never reused
+	// directly across invite encryption and discovery cursor authentication.
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte("max-together/discovery-cursor/v1"))
+	return &CursorCodec{key: mac.Sum(nil)}, nil
 }
 
 func (c *CursorCodec) Encode(cursor Cursor) (string, error) {
