@@ -254,7 +254,7 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            VITE_API_MODE=mock
+            VITE_DISCOVERY_SOURCE=mock
             VITE_API_BASE_URL=/api/v1
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
