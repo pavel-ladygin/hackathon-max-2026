@@ -32,14 +32,14 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 	if principal.UserID == uuid.Nil {
 		return snapshot, false, ErrUnauthenticated
 	}
-	if s == nil || s.pool == nil || s.recorder == nil || s.invites == nil {
+	if s == nil || s.pool == nil || s.recorder == nil || s.invites == nil || s.builder == nil {
 		return snapshot, false, ErrCreateUnavailable
 	}
 	base, err := normalizeIntent(request)
 	if err != nil {
 		return snapshot, false, err
 	}
-	err = s.WithTx(ctx, func(repo *Repository) error {
+	err = s.withRoomBuildTx(ctx, func(repo *Repository) error {
 		room, err := repo.Queries.LockRoom(ctx, roomID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRoomNotFound
@@ -113,16 +113,13 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 			return err
 		}
 		if both.Valid && both.Bool {
-			changed, err := repo.Queries.TransitionCollectingRoomToRanking(ctx, room.ID)
-			if err != nil {
+			if err := s.buildRoomPool(ctx, repo, room); err != nil {
 				return err
 			}
-			transitioned = changed == 1
-			if transitioned {
-				room, err = repo.Queries.GetRoom(ctx, room.ID)
-				if err != nil {
-					return err
-				}
+			transitioned = true
+			room, err = repo.Queries.GetRoom(ctx, room.ID)
+			if err != nil {
+				return err
 			}
 		}
 		if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "intent_submit", RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now}); err != nil {

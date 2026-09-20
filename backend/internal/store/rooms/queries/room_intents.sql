@@ -50,6 +50,11 @@ FROM room_member_round_state AS s
 JOIN room_members AS m ON m.room_id = s.room_id AND m.user_id = s.user_id
 WHERE s.room_id = $1 AND s.round_no = $2 AND m.is_active = true;
 
+-- name: ResetRoundPoolFinished :execrows
+UPDATE room_member_round_state
+SET pool_finished = false, finished_at = NULL
+WHERE room_id = $1 AND round_no = $2;
+
 -- name: ClearRoomIntentCoordinates :execrows
 UPDATE room_intents
 SET location_lat = NULL, location_lng = NULL

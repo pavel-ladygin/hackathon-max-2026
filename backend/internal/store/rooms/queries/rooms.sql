@@ -33,6 +33,12 @@ UPDATE rooms
 SET state = 'ranking', version = version + 1
 WHERE id = $1 AND state = 'collecting_intents';
 
+-- name: ActivateRoomPool :execrows
+UPDATE rooms
+SET active_pool_version = $2, state = $3, version = version + 1
+WHERE id = $1;
+
+
 -- name: ClockNow :one
 SELECT clock_timestamp()::timestamptz;
 

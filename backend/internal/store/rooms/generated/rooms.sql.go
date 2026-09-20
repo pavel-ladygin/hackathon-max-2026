@@ -26,6 +26,26 @@ func (q *Queries) BumpRoomVersion(ctx context.Context, id uuid.UUID) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const activateRoomPool = `-- name: ActivateRoomPool :execrows
+UPDATE rooms
+SET active_pool_version = $2, state = $3, version = version + 1
+WHERE id = $1
+`
+
+type ActivateRoomPoolParams struct {
+	ID                uuid.UUID
+	ActivePoolVersion int32
+	State             string
+}
+
+func (q *Queries) ActivateRoomPool(ctx context.Context, arg ActivateRoomPoolParams) (int64, error) {
+	result, err := q.db.Exec(ctx, activateRoomPool, arg.ID, arg.ActivePoolVersion, arg.State)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cityExists = `-- name: CityExists :one
 SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1)
 `
