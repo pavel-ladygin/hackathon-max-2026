@@ -1,0 +1,42 @@
+package discovery
+
+import (
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+func TestSearchArgumentsPreserveUserFilterAndExclusiveCursor(t *testing.T) {
+	user, city, eventID := uuid.New(), uuid.New(), uuid.New()
+	startsAt := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
+	price := int32(0)
+	distance := int32(500)
+	filter := SearchFilter{
+		UserID: user, CityID: city, Query: stringPtr("music"),
+		CategorySlugs: []string{"concerts"}, PriceMaxMinor: &price, FreeOnly: true,
+		Location: &Location{Latitude: 55.75, Longitude: 37.61}, DistanceMeters: &distance,
+		Cursor: &Cursor{StartsAt: startsAt, EventID: eventID},
+	}
+	params := searchParams(filter, 21)
+	if params.UserID != user || params.CityID != city || !params.Query.Valid || params.Query.String != "music" ||
+		len(params.CategorySlugs) != 1 || params.CategorySlugs[0] != "concerts" || !params.PriceMaxMinor.Valid || params.PriceMaxMinor.Int32 != 0 ||
+		!params.FreeOnly || !params.DistanceMeters.Valid || params.DistanceMeters.Int32 != 500 || params.LimitCount != 21 {
+		t.Fatalf("search params lost bindings: %#v", params)
+	}
+	if !params.CursorStartsAt.Valid || !params.CursorStartsAt.Time.Equal(startsAt) || !params.CursorEventID.Valid || uuid.UUID(params.CursorEventID.Bytes) != eventID {
+		t.Fatalf("cursor params = %#v / %#v", params.CursorStartsAt, params.CursorEventID)
+	}
+}
+
+func TestLocationArgumentsDoNotPersistCoordinatesWhenLocationAbsent(t *testing.T) {
+	latitude, longitude := locationValues(nil)
+	if latitude.Valid || longitude.Valid {
+		t.Fatalf("nil location arguments = (%v, %v), want nil pair", latitude, longitude)
+	}
+	location := &Location{Latitude: 55.75, Longitude: 37.61}
+	latitude, longitude = locationValues(location)
+	if !latitude.Valid || !longitude.Valid || latitude.Float64 != location.Latitude || longitude.Float64 != location.Longitude {
+		t.Fatalf("location arguments = (%v, %v)", latitude, longitude)
+	}
+}
