@@ -34,17 +34,12 @@ func (s *Service) ReplaceMyRoomIntent(w http.ResponseWriter, r *http.Request) {
 		writeIntentError(w, r, ErrValidation)
 		return
 	}
-	snapshot, transitioned, err := s.ReplaceIntent(r.Context(), principal, roomID, request)
+	snapshot, _, err := s.ReplaceIntent(r.Context(), principal, roomID, request)
 	if err != nil {
 		writeIntentError(w, r, err)
 		return
 	}
-	status := http.StatusOK
-	if transitioned {
-		status = http.StatusAccepted
-		w.Header().Set("Retry-After", "1")
-	}
-	httpapi.WriteJSON(w, status, snapshot)
+	httpapi.WriteJSON(w, http.StatusOK, snapshot)
 }
 
 func decodeIntentRequest(w http.ResponseWriter, r *http.Request) (api.RoomIntentRequest, error) {

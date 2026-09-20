@@ -12,6 +12,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activateRoomPool = `-- name: ActivateRoomPool :execrows
+UPDATE rooms
+SET active_pool_version = $2, state = $3, version = version + 1
+WHERE id = $1
+`
+
+type ActivateRoomPoolParams struct {
+	ID                uuid.UUID
+	ActivePoolVersion int32
+	State             string
+}
+
+func (q *Queries) ActivateRoomPool(ctx context.Context, arg ActivateRoomPoolParams) (int64, error) {
+	result, err := q.db.Exec(ctx, activateRoomPool, arg.ID, arg.ActivePoolVersion, arg.State)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const bumpRoomVersion = `-- name: BumpRoomVersion :execrows
 UPDATE rooms
 SET version = version + 1
@@ -260,6 +280,39 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const markRoomExhausted = `-- name: MarkRoomExhausted :execrows
+UPDATE rooms
+SET state = 'exhausted', version = version + 1
+WHERE id = $1 AND state = 'voting'
+`
+
+func (q *Queries) MarkRoomExhausted(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoomExhausted, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markRoomMatched = `-- name: MarkRoomMatched :execrows
+UPDATE rooms
+SET state = 'matched', matched_event_id = $2, version = version + 1
+WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL
+`
+
+type MarkRoomMatchedParams struct {
+	ID      uuid.UUID
+	EventID uuid.UUID
+}
+
+func (q *Queries) MarkRoomMatched(ctx context.Context, arg MarkRoomMatchedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoomMatched, arg.ID, arg.EventID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const transitionCollectingRoomToRanking = `-- name: TransitionCollectingRoomToRanking :execrows

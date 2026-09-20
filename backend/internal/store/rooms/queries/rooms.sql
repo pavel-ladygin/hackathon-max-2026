@@ -20,6 +20,19 @@ UPDATE rooms
 SET state = $2, version = version + 1
 WHERE id = $1;
 
+-- name: MarkRoomMatched :execrows
+-- The caller must have locked the room and verified the active pool/mutual like.
+-- The state predicate keeps this transition terminal and idempotent under retries.
+UPDATE rooms
+SET state = 'matched', matched_event_id = $2, version = version + 1
+WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL;
+
+-- name: MarkRoomExhausted :execrows
+-- Exhaustion is only valid from voting; callers must verify both users finished.
+UPDATE rooms
+SET state = 'exhausted', version = version + 1
+WHERE id = $1 AND state = 'voting';
+
 -- name: CityExists :one
 SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1);
 
@@ -32,6 +45,12 @@ WHERE id = $1;
 UPDATE rooms
 SET state = 'ranking', version = version + 1
 WHERE id = $1 AND state = 'collecting_intents';
+
+-- name: ActivateRoomPool :execrows
+UPDATE rooms
+SET active_pool_version = $2, state = $3, version = version + 1
+WHERE id = $1;
+
 
 -- name: ClockNow :one
 SELECT clock_timestamp()::timestamptz;

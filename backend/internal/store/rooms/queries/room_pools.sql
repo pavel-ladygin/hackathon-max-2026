@@ -32,6 +32,38 @@ FROM room_pool_events
 WHERE pool_id = $1
 ORDER BY position;
 
+-- name: GetRoomPoolEvent :one
+-- The caller must lock the room and active pool before checking membership.
+-- The composite primary key makes this a strict pool snapshot membership check.
+SELECT *
+FROM room_pool_events
+WHERE pool_id = $1 AND event_id = $2;
+
+-- name: GetRoomEventCards :many
+SELECT pe.event_id, pe.position, pe.explanation, pe.feature_snapshot,
+       e.title, e.subtitle, e.starts_at, e.timezone, e.price_from_minor, e.currency,
+       v.name AS venue_name,
+       (SELECT ec.category_slug FROM event_categories ec
+        WHERE ec.event_id = e.id AND ec.is_primary
+        ORDER BY ec.category_slug LIMIT 1) AS category_slug,
+       coalesce(image.url, '') AS image_url,
+       EXISTS (SELECT 1 FROM saved_events se
+               WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = e.id) AS saved,
+       EXISTS (SELECT 1 FROM room_votes rv
+               WHERE rv.pool_id = pe.pool_id AND rv.event_id = pe.event_id
+                 AND rv.user_id = sqlc.arg('user_id')) AS voted
+FROM room_pool_events pe
+JOIN events e ON e.id = pe.event_id
+JOIN venues v ON v.id = e.venue_id
+LEFT JOIN LATERAL (
+    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END,
+             ei.position, ei.id LIMIT 1
+) image ON true
+WHERE pe.pool_id = sqlc.arg('pool_id')
+  AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary)
+ORDER BY pe.position;
+
 -- name: GetOldRoomPoolEventIDs :many
 SELECT e.event_id
 FROM room_pool_events AS e

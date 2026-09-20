@@ -80,12 +80,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 			if err != nil {
 				return err
 			}
-			snapshot.Pool = nullable.NewNullableWithValue(api.PoolSummary{
-				Version: int(pool.Version), RoundNo: int(pool.RoundNo), State: api.PoolSummaryState(pool.State),
-				Total: int(pool.CandidateCount), IsSmall: pool.IsSmall, VotedByMe: int(voted),
-				MyPoolFinished: myPoolFinished, RoomExhausted: room.State == string(api.RoomStateExhausted) || (bothFinished.Valid && bothFinished.Bool),
-				RetryAfterSeconds: nullable.NewNullNullable[int](),
-			})
+			snapshot.Pool = nullable.NewNullableWithValue(poolSummary(pool, int(voted), myPoolFinished, room.State == string(api.RoomStateExhausted) || (bothFinished.Valid && bothFinished.Bool)))
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}

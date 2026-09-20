@@ -149,6 +149,25 @@ func (q *Queries) InsertRoomRoundState(ctx context.Context, arg InsertRoomRoundS
 	return i, err
 }
 
+const resetRoundPoolFinished = `-- name: ResetRoundPoolFinished :execrows
+UPDATE room_member_round_state
+SET pool_finished = false, finished_at = NULL
+WHERE room_id = $1 AND round_no = $2
+`
+
+type ResetRoundPoolFinishedParams struct {
+	RoomID  uuid.UUID
+	RoundNo int16
+}
+
+func (q *Queries) ResetRoundPoolFinished(ctx context.Context, arg ResetRoundPoolFinishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetRoundPoolFinished, arg.RoomID, arg.RoundNo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setRoundReady = `-- name: SetRoundReady :one
 UPDATE room_member_round_state
 SET ready = $4,

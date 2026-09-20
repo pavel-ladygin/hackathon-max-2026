@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,10 +15,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/saved"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
@@ -106,6 +109,12 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	homeHandler := discovery.NewHomeHandler(discovery.NewHomeService(discoveryService, discoveryRepository, preferencesService))
 	searchHandler := discovery.NewSearchHandler(discoveryService, discoveryRepository)
 	detailHandler := discovery.NewDetailHandler(discoveryService)
+	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
+	poolKey := sha256.Sum256(poolKeyInput)
+	poolBuilder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), poolKey[:])
+  if err != nil {
+	return nil, err
+  }
 	behaviorRecorder := behavior.Recorder{}
 	behaviorService, err := behavior.NewService(db)
 	if err != nil {
@@ -122,8 +131,16 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 		return nil, err
 	}
 	ticketHandler := tickets.NewHandler(ticketService)
-	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites)
+
+  roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)	
+  if err != nil {
+		return nil, err
+	}
+	roomEventsCursor, err := rooms.NewRoomEventsCursorCodec(cfg.InviteEncryptionKey)
 	if err != nil {
+		return nil, err
+	}
+	if err := roomService.EnableRoomEvents(catalog.NewRepository(db), roomEventsCursor); err != nil {
 		return nil, err
 	}
 	return httpapi.NewRouter(
