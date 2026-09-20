@@ -46,7 +46,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
+	authService, err := auth.NewServiceWithTrustedProxyCIDRs(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge, cfg.TrustedProxyCIDRs)
 	if err != nil {
 		return err
 	}

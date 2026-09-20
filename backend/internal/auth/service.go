@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,17 +26,25 @@ type repository interface {
 
 // Service validates MAX credentials and resolves opaque sessions to internal principals.
 type Service struct {
-	validator maxValidator
-	repo      repository
-	now       func() time.Time
+	validator         maxValidator
+	repo              repository
+	now               func() time.Time
+	trustedProxyCIDRs []net.IPNet
 }
 
 func NewService(db *store.Pool, botToken string, maxAge time.Duration) (*Service, error) {
+	return NewServiceWithTrustedProxyCIDRs(db, botToken, maxAge, nil)
+}
+
+// NewServiceWithTrustedProxyCIDRs configures the optional proxy networks used
+// to safely derive the client IP from X-Forwarded-For. An empty list preserves
+// the direct-connection behavior of NewService.
+func NewServiceWithTrustedProxyCIDRs(db *store.Pool, botToken string, maxAge time.Duration, trustedProxyCIDRs []net.IPNet) (*Service, error) {
 	validator, err := newMAXValidator(botToken, maxAge)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{validator: validator, repo: postgresRepository{db}, now: time.Now}, nil
+	return &Service{validator: validator, repo: postgresRepository{db}, now: time.Now, trustedProxyCIDRs: trustedProxyCIDRs}, nil
 }
 
 type bootstrapResult struct {

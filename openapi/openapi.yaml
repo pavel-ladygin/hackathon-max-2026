@@ -5,7 +5,7 @@ info:
   description: Финальный контракт MVP для персонального поиска событий и совместного выбора в комнате из двух участников в
     MAX.
 servers:
-- url: https://api.example.ru/api/v1
+- url: https://worknet.team/api/v1
   description: Production
 - url: http://localhost:8080/api/v1
   description: Local

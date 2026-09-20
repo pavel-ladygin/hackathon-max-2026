@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 )
 
 // limitBootstrap enforces the canonical 20 requests/minute/IP per process.
-// Only the connection peer is trusted; proxy headers need deployment-level trust configuration.
 func (s *Service) limitBootstrap(next http.HandlerFunc) http.HandlerFunc {
 	type bucket struct {
 		count int
@@ -21,10 +21,7 @@ func (s *Service) limitBootstrap(next http.HandlerFunc) http.HandlerFunc {
 	buckets := make(map[string]bucket)
 	var cleanupAt time.Time
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
+		ip := s.clientIP(r)
 		now := s.now()
 		mu.Lock()
 		if !now.Before(cleanupAt) {
@@ -60,4 +57,50 @@ func (s *Service) limitBootstrap(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+func (s *Service) clientIP(r *http.Request) string {
+	peer := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		peer = host
+	}
+	peerIP := net.ParseIP(peer)
+	if peerIP == nil || !s.isTrustedProxy(peerIP) {
+		return peer
+	}
+	for _, value := range reverseForwardedFor(r.Header.Values("X-Forwarded-For")) {
+		candidate := net.ParseIP(value)
+		if candidate == nil {
+			continue
+		}
+		if !s.isTrustedProxy(candidate) {
+			return candidate.String()
+		}
+	}
+	return peerIP.String()
+}
+
+func reverseForwardedFor(headers []string) []string {
+	var values []string
+	for _, header := range headers {
+		for _, value := range strings.Split(header, ",") {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				values = append(values, value)
+			}
+		}
+	}
+	for left, right := 0, len(values)-1; left < right; left, right = left+1, right-1 {
+		values[left], values[right] = values[right], values[left]
+	}
+	return values
+}
+
+func (s *Service) isTrustedProxy(ip net.IP) bool {
+	for _, network := range s.trustedProxyCIDRs {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

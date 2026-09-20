@@ -173,10 +173,11 @@ Protected room routes can reuse `authService.Middleware` and
 `contracts.PrincipalFromContext`; only the internal UUID crosses
 this boundary. Unknown/revoked tokens return `401 UNAUTHENTICATED`, expired tokens
 return `401 TOKEN_EXPIRED`, and database errors return a generic `500 INTERNAL`.
-The public bootstrap route limits requests to 20/minute/connection-peer IP per
-process and returns `429 RATE_LIMITED` with `Retry-After`. Forwarded IP headers
-are not trusted; reverse-proxy deployments must arrange trusted client-IP rate
-limiting at the edge. No credentials or raw init data are logged or persisted.
+The public bootstrap route limits requests to 20/minute/client IP per process
+and returns `429 RATE_LIMITED` with `Retry-After`. Forwarded IP headers are used
+only when the direct peer belongs to `TRUSTED_PROXY_CIDRS`; the default is empty,
+so local development keeps trusting the connection peer only. Production Nginx
+also applies an edge limit. No credentials or raw init data are logged or persisted.
 
 `cmd/server` requires `MAX_BOT_TOKEN`; `cmd/migrate` does not. Session TTL is fixed
 at 24h by the HTTP contract. Init-data freshness remains configurable for MAX
@@ -189,3 +190,50 @@ ordered candidates and safe snapshots; the rooms layer persists pools and owns
 room state transitions. When recording server behavior, room transactions pass
 their current `pgx.Tx` as `store.DBTX`, so both changes commit atomically. An MVP room candidate needs published status, available tickets and
 a ticket/reservation URL; a zero price alone does not establish eligibility.
+
+## Production deployment
+
+Production is served at `https://worknet.team`; the public API base URL is
+`https://worknet.team/api/v1`. Host Nginx terminates TLS and proxies only to the
+loopback bindings of the frontend (`127.0.0.1:8081`) and backend
+(`127.0.0.1:8080`). PostgreSQL has no host port.
+
+The deployed frontend is temporarily built with `VITE_API_MODE=mock`, so the
+complete demonstration flow uses the explicitly marked MSW demo dataset while
+the backend business endpoints are still being implemented. The public backend
+and readiness endpoint remain deployed at `/api/v1`. Switching production to the
+real API later requires changing the frontend image build argument to `http` and
+passing the full release gate against the implemented API.
+
+The deployment assets are:
+
+- `compose.production.yaml` for PostgreSQL, migrations, backend and frontend;
+- `deploy/nginx/` for the host Nginx configuration;
+- `deploy/bootstrap-vps.sh` for one-time Ubuntu package/firewall setup;
+- `deploy/enable-https.sh` for initial certificate issuance and final Nginx setup;
+- `deploy/deploy.sh <40-character-commit-sha>` for backup, migration, rollout,
+  public smoke checks and application-image rollback.
+
+Create `/opt/worknet/.env.production` directly on the server with mode `0600`.
+It must contain at least `POSTGRES_PASSWORD` and `MAX_BOT_TOKEN`; it may also set
+`POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`, `MAX_INIT_DATA_MAX_AGE` and
+`TRUSTED_PROXY_CIDRS`. Never commit this file. Authenticate Docker to GHCR with a
+token limited to `read:packages`.
+
+After DNS resolves to the VPS, replace the temporary HTTP-only site with the
+certificate-backed production site and verify renewal with:
+
+```sh
+sudo ./deploy/enable-https.sh
+```
+
+GitHub Actions runs checks for pull requests and pushes to `main` or `dev`.
+Only a successful push to `main` publishes commit-SHA images and calls the VPS
+deployment script. Required GitHub environment secrets are `DEPLOY_HOST`,
+`DEPLOY_USER`, `DEPLOY_SSH_KEY` and a pinned `DEPLOY_HOST_KEY` known-hosts line.
+The manual rollback workflow accepts a previously published full commit SHA.
+
+The runtime currently exposes readiness and MAX bootstrap. Do not present the
+remaining OpenAPI operations as deployed checks until their handlers are
+implemented; add the hackathon `DATA-API.yaml` only after that mandatory scenario
+and the evaluator's exact configuration schema are fixed.

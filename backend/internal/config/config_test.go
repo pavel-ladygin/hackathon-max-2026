@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -93,5 +94,25 @@ func TestLoadDoesNotExposeDatabaseSecret(t *testing.T) {
 	}
 	if _, parseErr := pgx.ParseConfig("postgres://user:" + secret + "@%zz"); parseErr == nil {
 		t.Fatal("test URL unexpectedly parsed")
+	}
+}
+
+func TestLoadParsesTrustedProxyCIDRs(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.0/8, 2001:db8::/32")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrustedProxyCIDRs) != 2 || !cfg.TrustedProxyCIDRs[0].Contains(net.ParseIP("127.0.0.1")) || !cfg.TrustedProxyCIDRs[1].Contains(net.ParseIP("2001:db8::1")) {
+		t.Fatalf("unexpected trusted proxy CIDRs: %#v", cfg.TrustedProxyCIDRs)
+	}
+}
+
+func TestLoadRejectsInvalidTrustedProxyCIDRs(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1")
+	if _, err := Load(); err == nil || err.Error() != "TRUSTED_PROXY_CIDRS is invalid" {
+		t.Fatalf("Load() error = %v, want invalid CIDR error", err)
 	}
 }
