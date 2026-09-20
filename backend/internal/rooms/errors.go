@@ -8,4 +8,7 @@ var (
 	ErrActiveRoomExists    = errors.New("active room exists")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
 	ErrCreateUnavailable   = errors.New("create room dependencies unavailable")
+	ErrInviteNotFound      = errors.New("invite not found")
+	ErrInviteExpired       = errors.New("invite expired")
+	ErrRoomFull            = errors.New("room full")
 )

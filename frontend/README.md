@@ -1,6 +1,6 @@
 # Вместе — frontend
 
-Мобильное приложение внутри MAX для персональной афиши и приватного совместного выбора события. Текущая версия полностью работает без backend: HTTP-контракт эмулируется через MSW, а состояние комнаты синхронизируется между двумя вкладками одного браузера.
+Мобильное приложение внутри MAX для персональной афиши и приватного совместного выбора события. Авторизация MAX, bootstrap и предпочтения работают через backend. Пока каталог событий работает на локальном адаптере discovery, чтобы интерфейс можно было отлаживать без готового каталожного API. Комнаты временно отключены.
 
 ## Стек
 
@@ -8,7 +8,7 @@
 - React Router;
 - TanStack Query для server state, polling и инвалидации;
 - React Hook Form + Zod для форм и валидации;
-- MSW для API-моков;
+- локальный discovery-адаптер для демо-афиши;
 - MAX UI и адаптер MAX Bridge;
 - Motion для переходов и экрана совпадения;
 - Leaflet + OpenStreetMap для отложенно загружаемой карты;
@@ -23,32 +23,22 @@ cp .env.example .env.local
 npm run dev
 ```
 
-По умолчанию используется mock API. Приложение доступно на адресе, который напечатает Vite.
+По умолчанию используется реальная авторизация и mock discovery. Приложение доступно на адресе, который напечатает Vite; вне MAX реальный bootstrap ожидаемо отклонит пустой `initData`, поэтому полноценную ручную проверку выполняйте из клиента MAX.
 
-Для проверки двух пользователей:
-
-1. Откройте `/?resetMock=1&mockUser=ivan`, завершите онбординг и создайте комнату.
-2. Откройте показанную ссылку-приглашение во второй вкладке — в ней уже будет `mockUser=anna`.
-3. В обеих вкладках сохраните пожелания и поставьте лайк одному событию.
-4. Обе вкладки перейдут на экран «Это мэтч!».
-
-Mock-сценарий рассчитан на вкладки одного браузера: он использует общий `localStorage` и `BroadcastChannel`. Для разных устройств нужен backend.
+Онбординг сохраняет предпочтения через реальный `PUT /api/v1/me/preferences`. Афиша, поиск, карточки событий, избранное, behavior и переход к билету используют локальный discovery-адаптер и не требуют Service Worker. Комнаты не мокируются и не вызывают room endpoints; их сценарий будет подключён после готовности backend.
 
 ## Режимы API
 
 ```dotenv
-VITE_API_MODE=mock
+VITE_DISCOVERY_SOURCE=mock
 VITE_API_BASE_URL=/api/v1
-VITE_ALLOW_BROWSER_PREVIEW=true
 ```
 
-- `VITE_API_MODE=mock` запускает MSW.
-- `VITE_API_MODE=http` отключает MSW и отправляет запросы в `VITE_API_BASE_URL`.
-- `VITE_ALLOW_BROWSER_PREVIEW=false` показывает вне MAX отдельный экран «Откройте в MAX».
+- `VITE_DISCOVERY_SOURCE=mock` использует локальную демо-афишу.
+- `VITE_DISCOVERY_SOURCE=http` отправляет только discovery-запросы в `VITE_API_BASE_URL`.
+- Авторизация, bootstrap, preferences и health всегда отправляются в `VITE_API_BASE_URL`.
 
-Между режимами нет скрытого fallback: ошибка реального API не подменяется мок-ответом.
-
-В development справа внизу доступна панель сценариев `normal / 429 / 500 / 401`. Тот же сценарий можно включить параметром `?mockScenario=rate-limited|internal|token-expired`. Базовый mock работает и в production build, но панель туда не включается.
+Между источниками нет скрытого fallback: ошибка реального backend не подменяется мок-ответом. Локальный discovery mock хранит избранное и дедупликацию behavior в `localStorage`.
 
 ## OpenAPI
 
@@ -71,10 +61,10 @@ src/
     api/                DTO, мапперы, HTTP-клиент
     platform/max/       адаптер MAX Bridge с browser fallback
     ui/                 базовые компоненты и дизайн-токены
-  mocks/                MSW handlers, fixtures, two-tab state
+  mocks/                discovery fixtures and test-only mock helpers
 ```
 
-DTO остаются в `snake_case` на границе API, а мапперы преобразуют их в удобные для UI модели. Компоненты не знают, работает приложение через MSW или настоящий HTTP. Токен bootstrap хранится только в памяти.
+DTO остаются в `snake_case` на границе API, а мапперы преобразуют их в удобные для UI модели. Компоненты не знают, выбран ли HTTP или локальный discovery-адаптер. Токен bootstrap хранится только в памяти.
 
 ## Проверки
 
@@ -91,7 +81,7 @@ npm run build
 npm run check
 ```
 
-Unit-тест mock state покрывает полный переход: два участника → приватные интенты → независимые лайки → совпадение.
+Unit-тесты discovery-адаптера покрывают афишу, поиск, детали, избранное, behavior и ticket-click. Room API не используется в активном приложении.
 
 Полный browser flow для desktop и mobile:
 
@@ -104,7 +94,7 @@ npm run test:e2e
 
 ## Что подключать backend-команде
 
-1. Реализовать endpoints, уже описанные в `shared/api/client.ts`.
+1. Реализовать discovery endpoints, описанные в `shared/api/client.ts`.
 2. Согласовать DTO из `shared/api/types.ts` с итоговой OpenAPI-схемой.
-3. Задать `VITE_API_MODE=http` и URL gateway.
-4. Оставить текущий polling комнаты на 1 секунду либо заменить transport внутри feature-слоя на SSE/WebSocket, не меняя страницы.
+3. Задать `VITE_DISCOVERY_SOURCE=http` и URL gateway.
+4. После реализации join, snapshot, intent, events и vote вернуть room-навигацию отдельным этапом.

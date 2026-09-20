@@ -26,12 +26,6 @@ export function HomePage() {
           <div><span className={styles.eyebrow}>Ваш город</span><h3>Москва</h3></div>
           <button className={styles.profileButton} aria-label="Настройки предпочтений" onClick={() => navigate('/preferences')}>{bootstrap.data?.user.displayName.slice(0, 1) ?? 'И'}</button>
         </header>
-        <section className={styles.roomCta}>
-          <span className={styles.eyebrow}>{feed.data.activeRoom ? 'АКТИВНАЯ КОМНАТА' : 'ВМЕСТЕ ЛЕГЧЕ ВЫБРАТЬ'}</span>
-          <h2>{feed.data.activeRoom ? feed.data.activeRoom.name : 'Куда сходить вдвоём?'}</h2>
-          <p>{feed.data.activeRoom ? 'Продолжите совместный выбор с того места, где остановились.' : 'Пригласите друга. Вы независимо укажете пожелания и увидите только взаимное совпадение.'}</p>
-          <Button onClick={() => navigate(feed.data.activeRoom ? `/rooms/${feed.data.activeRoom.id}` : '/rooms/new')}>{feed.data.activeRoom ? 'Продолжить выбор' : 'Создать комнату'}</Button>
-        </section>
         {hero ? (
           <button className={styles.hero} onClick={() => navigate(`/events/${hero.id}`)}>
             <img className={styles.heroImage} src={hero.imageUrl ?? '/events/concert-singer.png'} alt="" />
@@ -42,7 +36,7 @@ export function HomePage() {
         <div className={styles.eventGrid}>
           {allEvents.slice(1).map((event) => <EventCard key={event.id} event={{ id: event.id, title: event.title, image: event.imageUrl ?? '/events/concert-singer.png', eyebrow: `${categoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} />)}
         </div>
-        <BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: '⌂' }, { id: 'catalog', label: 'Афиша', icon: '⌕' }, { id: 'room', label: 'Комната', icon: '+' }, { id: 'saved', label: 'Моё', icon: '♡' }]} onChange={(id) => id === 'catalog' ? navigate('/events') : id === 'saved' ? navigate('/saved') : id === 'room' ? navigate(feed.data.activeRoom ? `/rooms/${feed.data.activeRoom.id}` : '/rooms/new') : navigate('/')} />
+        <BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: '⌂' }, { id: 'catalog', label: 'Афиша', icon: '⌕' }, { id: 'saved', label: 'Моё', icon: '♡' }]} onChange={(id) => id === 'catalog' ? navigate('/events') : id === 'saved' ? navigate('/saved') : navigate('/')} />
       </PageContent>
     </PageShell>
   )

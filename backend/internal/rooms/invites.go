@@ -105,6 +105,18 @@ func (c *InviteCodec) OpenToken(roomID uuid.UUID, ciphertext []byte, keyVersion 
 	return string(plain), nil
 }
 
+func (c *InviteCodec) Recover(roomID uuid.UUID, ciphertext []byte, keyVersion int16, expiresAt time.Time) (InviteMaterial, error) {
+	token, err := c.OpenToken(roomID, ciphertext, keyVersion)
+	if err != nil {
+		return InviteMaterial{}, err
+	}
+	hash := sha256.Sum256([]byte(token))
+	return InviteMaterial{
+		Token: token, Hash: hash[:], Ciphertext: ciphertext, KeyVersion: keyVersion,
+		URL: strings.Replace(c.publicTemplate, "{token}", token, 1), MaxDeepLink: strings.Replace(c.maxTemplate, "{token}", token, 1), ExpiresAt: expiresAt,
+	}, nil
+}
+
 type encryptedCreateResponse struct {
 	KeyVersion int16  `json:"key_version"`
 	Ciphertext []byte `json:"ciphertext"`
@@ -126,6 +138,22 @@ func (c *InviteCodec) OpenResponse(user uuid.UUID, key string, envelope []byte) 
 	return c.open(encrypted.Ciphertext, c.responseAAD(user, key))
 }
 
+func (c *InviteCodec) SealJoinResponse(user uuid.UUID, key string, response []byte) ([]byte, error) {
+	ciphertext, err := c.seal(response, c.joinResponseAAD(user, key))
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(encryptedCreateResponse{KeyVersion: c.version, Ciphertext: ciphertext})
+}
+
+func (c *InviteCodec) OpenJoinResponse(user uuid.UUID, key string, envelope []byte) ([]byte, error) {
+	var encrypted encryptedCreateResponse
+	if err := json.Unmarshal(envelope, &encrypted); err != nil || encrypted.KeyVersion != c.version {
+		return nil, errInviteCiphertext
+	}
+	return c.open(encrypted.Ciphertext, c.joinResponseAAD(user, key))
+}
+
 func (c *InviteCodec) inviteAAD(roomID uuid.UUID) []byte {
 	return []byte("rooms/invite/" + strconv.Itoa(int(c.version)) + "/" + roomID.String())
 }
@@ -133,6 +161,11 @@ func (c *InviteCodec) inviteAAD(roomID uuid.UUID) []byte {
 func (c *InviteCodec) responseAAD(user uuid.UUID, key string) []byte {
 	// Fixed-shape JSON avoids ambiguous concatenation of arbitrary header values.
 	aad, _ := json.Marshal([]string{"rooms/create-response", strconv.Itoa(int(c.version)), user.String(), "/api/v1/rooms", key})
+	return aad
+}
+
+func (c *InviteCodec) joinResponseAAD(user uuid.UUID, key string) []byte {
+	aad, _ := json.Marshal([]string{"rooms/join-response", strconv.Itoa(int(c.version)), user.String(), joinRoute, key})
 	return aad
 }
 

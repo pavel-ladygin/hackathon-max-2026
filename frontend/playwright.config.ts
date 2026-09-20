@@ -12,6 +12,9 @@ export default defineConfig({
     command: 'npm run dev -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: true,
+    env: {
+      VITE_DISCOVERY_SOURCE: 'mock',
+    },
   },
   projects: [
     { name: 'mobile-chrome', use: { ...devices['Pixel 7'] } },
