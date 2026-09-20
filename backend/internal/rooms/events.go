@@ -42,8 +42,12 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 	if input.Limit == 0 {
 		input.Limit = defaultRoomEventsLimit
 	}
-	err := s.WithReadTx(ctx, func(repo *Repository) error {
-		room, err := repo.Queries.GetRoom(ctx, roomID)
+	var committedError error
+	err := s.WithTx(ctx, func(repo *Repository) error {
+		// Serialize exhaustion with votes and with the other participant's
+		// exhaustion check.  This keeps the per-member marker and the room
+		// transition in one transaction.
+		room, err := repo.Queries.LockRoom(ctx, roomID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRoomNotFound
 		}
@@ -93,7 +97,7 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 		if room.State != string(RoomStateVoting) {
 			return ErrPoolNotReady
 		}
-		pool, err := repo.Queries.GetActivePool(ctx, room.ID)
+		pool, err := repo.Queries.LockActivePool(ctx, room.ID)
 		if errors.Is(err, pgx.ErrNoRows) || err == nil && pool.State != "ready" {
 			return ErrPoolNotReady
 		}
@@ -142,8 +146,25 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 				remaining = append(remaining, row)
 			}
 		}
+		if len(eligible) == 0 {
+			// Only a globally empty eligible set means that this member has
+			// exhausted the pool.  A cursor positioned after the last item is
+			// merely an empty page and must not persist completion.
+			finish := api.VoteResponse{}
+			if err := s.updatePoolFinished(ctx, repo, room, pool, principal.UserID, budget, &finish); err != nil {
+				return err
+			}
+			// Availability is deliberately checked again by updatePoolFinished.
+			// If it changed between reads, do not return or persist a false
+			// exhausted result.
+			if !finish.MyPoolFinished {
+				return nil
+			}
+			committedError = poolExhaustedState{MyPoolFinished: true, RoomExhausted: finish.RoomExhausted}
+			return nil
+		}
 		if len(remaining) == 0 {
-			return poolExhaustedState{MyPoolFinished: true, RoomExhausted: finished.RoomExhausted}
+			return nil
 		}
 		page := remaining
 		if len(page) > input.Limit {
@@ -169,7 +190,10 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 		}
 		return nil
 	})
-	return response, err
+	if err != nil {
+		return response, err
+	}
+	return response, committedError
 }
 
 func (s poolExhaustedState) Error() string { return ErrPoolExhausted.Error() }

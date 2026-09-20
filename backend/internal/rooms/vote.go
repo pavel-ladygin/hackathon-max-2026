@@ -171,7 +171,9 @@ func (s *Service) updatePoolFinished(ctx context.Context, repo *Repository, room
 	if err != nil {
 		return err
 	}
-	response.MyPoolFinished = finished
+	if response != nil {
+		response.MyPoolFinished = finished
+	}
 	if !finished {
 		return nil
 	}
@@ -191,16 +193,27 @@ func (s *Service) updatePoolFinished(ctx context.Context, repo *Repository, room
 		}
 		return ErrPoolNotReady
 	}
-	response.RoomExhausted = true
-	if room.RoundNo == 3 {
-		if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
-			return err
-		}
-		if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
-			return err
-		}
+	if response != nil {
+		response.RoomExhausted = true
+	}
+	if err := s.finalizeExhaustedRoom(ctx, repo, room); err != nil {
+		return err
 	}
 	return nil
+}
+
+// finalizeExhaustedRoom applies terminal cleanup only to the final round.
+// Earlier rounds remain restartable and retain their active memberships and
+// intent coordinates.
+func (s *Service) finalizeExhaustedRoom(ctx context.Context, repo *Repository, room roomsql.Room) error {
+	if room.RoundNo != 3 {
+		return nil
+	}
+	if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
+		return err
+	}
+	_, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID)
+	return err
 }
 
 func (s *Service) memberFinishedPool(ctx context.Context, repo *Repository, room roomsql.Room, pool roomsql.RoomPool, userID uuid.UUID, budget int32) (bool, error) {
