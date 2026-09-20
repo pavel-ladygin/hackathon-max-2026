@@ -67,7 +67,7 @@ func (s *Service) Get(ctx context.Context, userID, eventID uuid.UUID, location *
 func normalizeFilter(filter *SearchFilter) error {
 	if filter.UserID == uuid.Nil || filter.CityID == uuid.Nil || filter.Limit < 0 || filter.Limit > maxLimit || filter.PriceMaxMinor != nil && *filter.PriceMaxMinor < 0 ||
 		filter.DistanceMeters != nil && (*filter.DistanceMeters < 100 || *filter.DistanceMeters > 50_000) ||
-		filter.Location != nil && !validLocation(*filter.Location) || (filter.DistanceMeters != nil) != (filter.Location != nil) {
+		filter.Location != nil && !validLocation(*filter.Location) || filter.DistanceMeters != nil && filter.Location == nil {
 		return ErrInvalidFilter
 	}
 	if filter.Cursor != nil && (filter.Cursor.StartsAt.IsZero() || filter.Cursor.EventID == uuid.Nil || filter.Cursor.FilterHash == "") {

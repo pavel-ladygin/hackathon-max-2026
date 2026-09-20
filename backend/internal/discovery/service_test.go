@@ -57,6 +57,9 @@ func TestNormalizeFilterPreservesZeroPriceAndRequiresGeoPair(t *testing.T) {
 	if err := normalizeFilter(&SearchFilter{UserID: uuid.New(), CityID: uuid.New(), DistanceMeters: &distance}); !errors.Is(err, ErrInvalidFilter) {
 		t.Fatalf("distance without location error = %v", err)
 	}
+	if err := normalizeFilter(&SearchFilter{UserID: uuid.New(), CityID: uuid.New(), Location: &Location{Latitude: 55.75, Longitude: 37.61}}); err != nil {
+		t.Fatalf("location without radius error = %v", err)
+	}
 }
 
 func TestNormalizeFilterRejectsMissingUserAndInvalidCursorKey(t *testing.T) {
@@ -164,8 +167,11 @@ func TestPriceLabelPreservesNullableAndFreePrices(t *testing.T) {
 	if got := priceLabel(pgtype.Int4{Int32: 0, Valid: true}); got != "Бесплатно" {
 		t.Fatalf("zero price label = %q", got)
 	}
-	if got := priceLabel(pgtype.Int4{Int32: 180000, Valid: true}); got != "от 180 000 ₽" {
+	if got := priceLabel(pgtype.Int4{Int32: 180000, Valid: true}); got != "от 1 800 ₽" {
 		t.Fatalf("paid price label = %q", got)
+	}
+	if got := priceLabel(pgtype.Int4{Int32: 180050, Valid: true}); got != "от 1 800,50 ₽" {
+		t.Fatalf("paid price label with kopecks = %q", got)
 	}
 }
 

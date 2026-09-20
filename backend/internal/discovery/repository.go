@@ -225,7 +225,11 @@ func priceLabel(price pgtype.Int4) string {
 	if price.Int32 == 0 {
 		return "Бесплатно"
 	}
-	return fmt.Sprintf("от %s ₽", formatThousands(price.Int32))
+	rubles, kopecks := price.Int32/100, price.Int32%100
+	if kopecks == 0 {
+		return fmt.Sprintf("от %s ₽", formatThousands(rubles))
+	}
+	return fmt.Sprintf("от %s,%02d ₽", formatThousands(rubles), kopecks)
 }
 func distanceLabel(meters int) string {
 	if meters < 1000 {
