@@ -2,7 +2,7 @@
 
 ## Разработка backend
 
-Требования: Docker Desktop/Engine с Compose v2; Go 1.24 для backend.
+Требования: Docker Desktop/Engine с Compose v2; Go 1.26 для backend.
 Для повторной генерации типов OpenAPI нужен Go 1.25+ (генератор запускается отдельно
 от модуля приложения). Для проверки контракта нужны Python 3.10+ и pip.
 
