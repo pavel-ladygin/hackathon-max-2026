@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -26,6 +27,14 @@ type poolBuilderFake struct {
 	inputs        []contracts.BuildInput
 	started       chan struct{}
 	continueBuild chan struct{}
+}
+
+func jsonEquivalent(tested, expected []byte) bool {
+	var gotValue, wantValue any
+	if json.Unmarshal(tested, &gotValue) != nil || json.Unmarshal(expected, &wantValue) != nil {
+		return false
+	}
+	return reflect.DeepEqual(gotValue, wantValue)
 }
 
 // poolBuilderPoolProbe models a production builder that performs a catalog
@@ -234,7 +243,7 @@ func TestB6PoolBuilderScenariosAndPersistence(t *testing.T) {
 				if err := db.QueryRow(context.Background(), "SELECT group_score,explanation,feature_snapshot FROM room_pool_events WHERE pool_id=(SELECT id FROM room_pools WHERE room_id=$1) AND position=0", f.room).Scan(&score, &explanation, &features); err != nil {
 					t.Fatal(err)
 				}
-				if score == 0 || string(explanation) != `[{"code":"popular","text":"safe"}]` || string(features) != `{"x":1}` {
+				if score == 0 || !jsonEquivalent(explanation, []byte(`[{"code":"popular","text":"safe"}]`)) || !jsonEquivalent(features, []byte(`{"x":1}`)) {
 					t.Fatalf("persisted event snapshot score=%v explanation=%s features=%s", score, explanation, features)
 				}
 			}
@@ -273,7 +282,7 @@ func TestB6BuildInputPrivacyVersionRoundCityAndPreviousIDs(t *testing.T) {
 	if _, err := db.Exec(context.Background(), "INSERT INTO room_pool_events(pool_id,event_id,position,group_score,participant_score_min,participant_score_mean,explanation,feature_snapshot) VALUES($1,$2,0,0,0,0,'{}','{}')", oldPoolID, old); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(context.Background(), "UPDATE rooms SET active_pool_version=0 WHERE id=$1", f.room); err != nil {
+	if _, err := db.Exec(context.Background(), "UPDATE rooms SET active_pool_version=1 WHERE id=$1", f.room); err != nil {
 		t.Fatal(err)
 	}
 	builder := &poolBuilderFake{result: contracts.BuildResult{RankerVersion: "fake", InputFingerprint: "new-fp", Candidates: []contracts.Candidate{{EventID: f.newEvent(t)}}}}
@@ -286,7 +295,7 @@ func TestB6BuildInputPrivacyVersionRoundCityAndPreviousIDs(t *testing.T) {
 		t.Fatalf("Build calls=%d", len(inputs))
 	}
 	in := inputs[0]
-	if in.RoomID != f.room || in.CityID != f.city || in.RoundNo != 1 || in.PoolVersion != 1 || !reflect.DeepEqual(in.PreviousEventIDs, []uuid.UUID{old}) {
+	if in.RoomID != f.room || in.CityID != f.city || in.RoundNo != 1 || in.PoolVersion != 2 || !reflect.DeepEqual(in.PreviousEventIDs, []uuid.UUID{old}) {
 		t.Fatalf("BuildInput metadata=%+v", in)
 	}
 	intentsByUser := map[uuid.UUID]contracts.ParticipantIntent{
@@ -341,7 +350,7 @@ func TestB6MalformedOrUnknownDiagnosticsAreSafeOnReconnect(t *testing.T) {
 		name        string
 		diagnostics string
 	}{
-		{name: "malformed", diagnostics: `{"reasons":`},
+		{name: "malformed", diagnostics: `{"reasons":"not-an-array"}`},
 		{name: "unknown code", diagnostics: `{"reasons":[{"code":"private_intent","text":"must not leak"}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -431,28 +440,42 @@ func TestB6BuilderDeterminismAndNoDuplicateConcurrentBuild(t *testing.T) {
 	event := f.newEvent(t)
 	builder := &poolBuilderFake{result: contracts.BuildResult{RankerVersion: "fake", InputFingerprint: "stable", Candidates: []contracts.Candidate{{EventID: event}}}}
 	svc := poolService(t, db, builder)
+	if _, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || transitioned {
+		t.Fatalf("first intent transitioned=%v err=%v; want committed non-terminal intent", transitioned, err)
+	}
 	start := make(chan struct{})
-	errs := make(chan error, 2)
+	type intentResult struct {
+		transitioned bool
+		err          error
+	}
+	results := make(chan intentResult, 2)
 	var wg sync.WaitGroup
 	for _, user := range []uuid.UUID{f.creator, f.member} {
 		wg.Add(1)
 		go func(user uuid.UUID) {
 			defer wg.Done()
 			<-start
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
-			errs <- err
+			_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
+			results <- intentResult{transitioned: transitioned, err: err}
 		}(user)
 	}
 	close(start)
 	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
+	close(results)
+	var transitions int
+	for result := range results {
+		if result.err != nil && !errors.Is(result.err, rooms.ErrIntentLocked) {
+			t.Fatal(result.err)
+		}
+		if result.transitioned {
+			transitions++
 		}
 	}
 	if got := len(builder.calls()); got != 1 {
-		t.Fatalf("concurrent Build calls=%d, want 1", got)
+		t.Fatalf("concurrent Build calls=%d, want 1 (transitions=%d)", got, transitions)
+	}
+	if transitions != 1 {
+		t.Fatalf("concurrent transitions=%d, want 1", transitions)
 	}
 	var pools int
 	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM room_pools WHERE room_id=$1", f.room).Scan(&pools); err != nil || pools != 1 {

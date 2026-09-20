@@ -40,7 +40,11 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 			return err
 		}
 		membership, err := repo.Queries.GetRoomMembership(ctx, roomsql.GetRoomMembershipParams{RoomID: room.ID, UserID: principal.UserID})
-		if errors.Is(err, pgx.ErrNoRows) || err == nil && !membership.IsActive || !room.ExpiresAt.Time.After(now.Time) {
+		// Membership is intentionally checked before the terminal-state branch:
+		// historical members must still receive ALREADY_MATCHED after their
+		// memberships are retired, while users who never joined must remain
+		// indistinguishable from a missing room.
+		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRoomNotFound
 		}
 		if err != nil {
@@ -48,6 +52,9 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		}
 		if room.State == string(RoomStateMatched) {
 			return ErrAlreadyMatched
+		}
+		if !membership.IsActive || !room.ExpiresAt.Time.After(now.Time) {
+			return ErrRoomNotFound
 		}
 		if room.State == string(RoomStateExhausted) {
 			return ErrPoolExhausted
@@ -124,24 +131,31 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 				if err != nil {
 					return err
 				}
-				if inserted == 1 {
-					if n, err := repo.Queries.MarkRoomMatched(ctx, roomsql.MarkRoomMatchedParams{ID: room.ID, EventID: eventID}); err != nil || n != 1 {
-						if err != nil {
-							return err
-						}
-						return ErrAlreadyMatched
-					}
-					if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
-						return err
-					}
-					if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
-						return err
-					}
-					if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "match", EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time}); err != nil {
-						return err
-					}
+				if inserted != 1 {
+					return ErrAlreadyMatched
 				}
-				return s.currentVoteResponse(ctx, repo, room, pool, principal.UserID, &response)
+				if n, err := repo.Queries.MarkRoomMatched(ctx, roomsql.MarkRoomMatchedParams{ID: room.ID, EventID: eventID}); err != nil || n != 1 {
+					if err != nil {
+						return err
+					}
+					return ErrAlreadyMatched
+				}
+				// Build the response while memberships are still active. The
+				// terminal side effects below retire them as part of this same
+				// transaction, so any response error still rolls everything back.
+				if err := s.currentVoteResponse(ctx, repo, room, pool, principal.UserID, &response); err != nil {
+					return err
+				}
+				if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
+					return err
+				}
+				if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
+					return err
+				}
+				if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "match", EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time}); err != nil {
+					return err
+				}
+				return nil
 			}
 		}
 		return s.updatePoolFinished(ctx, repo, room, pool, principal.UserID, budget, &response)

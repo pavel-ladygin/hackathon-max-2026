@@ -51,6 +51,12 @@ func seedB8VotingPool(t *testing.T, db *store.Pool, eventCount int) (*roomFixtur
 		if _, err := db.Exec(ctx, "UPDATE events SET price_from_minor=100,currency='RUB',ticket_url='https://tickets.example/vote',ticket_available=true WHERE id=$1", events[i]); err != nil {
 			t.Fatal(err)
 		}
+		// Vote responses return a full EventCard. Keep the fixture aligned with
+		// the catalog invariant enforced by GetRoomEventCards: every card has a
+		// primary category.
+		if _, err := db.Exec(ctx, "INSERT INTO event_categories (event_id,category_slug,is_primary) VALUES ($1,'music',true)", events[i]); err != nil {
+			t.Fatal(err)
+		}
 		rows = append(rows, roomsql.InsertRoomPoolEventsParams{
 			PoolID: poolID, EventID: events[i], Position: int32(i),
 			Explanation: []byte(`[]`), FeatureSnapshot: []byte(`{}`),
