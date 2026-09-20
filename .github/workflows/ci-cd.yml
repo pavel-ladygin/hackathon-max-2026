@@ -138,31 +138,31 @@ jobs:
     needs: [backend, contract, generated-contracts, frontend]
     permissions:
       contents: read
+    env:
+      MAX_BOT_TOKEN: ci-dummy-token
+      INVITE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      INVITE_ENCRYPTION_KEY_VERSION: "1"
+      INVITE_URL_TEMPLATE: https://worknet.team/invite?token=%s
+      MAX_DEEP_LINK_TEMPLATE: https://max.ru/?startapp=%s
+      POSTGRES_PASSWORD: ci-only-password
+      BACKEND_IMAGE: ci-backend:local
+      FRONTEND_IMAGE: ci-frontend:local
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Validate Compose configuration
         working-directory: .
-        env:
-          MAX_BOT_TOKEN: ci-dummy-token
-          POSTGRES_PASSWORD: ci-only-password
-          BACKEND_IMAGE: ci-backend:local
-          FRONTEND_IMAGE: ci-frontend:local
         run: |
           docker compose config --quiet
           docker compose -f compose.production.yaml config --quiet
       - uses: docker/setup-buildx-action@v3.10.0
       - name: Build application images
         working-directory: .
-        env:
-          MAX_BOT_TOKEN: ci-dummy-token
         run: |
           docker compose build --pull
           docker build --tag ci-backend:local --file backend/Dockerfile .
           docker build --tag ci-frontend:local --file frontend/Dockerfile frontend
       - name: Start smoke stack
         working-directory: .
-        env:
-          MAX_BOT_TOKEN: ci-dummy-token
         run: |
           docker compose up --detach postgres migrate backend
           docker run --detach --name ci-frontend --publish 127.0.0.1:8081:80 ci-frontend:local
@@ -194,8 +194,6 @@ jobs:
       - name: Stop smoke stack
         if: always()
         working-directory: .
-        env:
-          MAX_BOT_TOKEN: ci-dummy-token
         run: |
           docker rm --force ci-frontend 2>/dev/null || true
           docker compose down --volumes
