@@ -16,6 +16,10 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "INFO")
 	t.Setenv("MAX_INIT_DATA_MAX_AGE", "")
 	t.Setenv("MAX_BOT_TOKEN", "")
+	t.Setenv("INVITE_ENCRYPTION_KEY", "")
+	t.Setenv("INVITE_ENCRYPTION_KEY_VERSION", "")
+	t.Setenv("INVITE_URL_TEMPLATE", "")
+	t.Setenv("MAX_DEEP_LINK_TEMPLATE", "")
 }
 
 func TestMAXConfig(t *testing.T) {

@@ -12,6 +12,117 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bumpRoomVersion = `-- name: BumpRoomVersion :execrows
+UPDATE rooms
+SET version = version + 1
+WHERE id = $1
+`
+
+func (q *Queries) BumpRoomVersion(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, bumpRoomVersion, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cityExists = `-- name: CityExists :one
+SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1)
+`
+
+func (q *Queries) CityExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, cityExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const clockNow = `-- name: ClockNow :one
+SELECT clock_timestamp()::timestamptz
+`
+
+func (q *Queries) ClockNow(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, clockNow)
+	var column_1 pgtype.Timestamptz
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const deleteExpiredCreateIdempotency = `-- name: DeleteExpiredCreateIdempotency :execrows
+DELETE FROM idempotency_records
+WHERE user_id = $1 AND key = $2 AND route = $3 AND expires_at <= $4
+`
+
+type DeleteExpiredCreateIdempotencyParams struct {
+	UserID    uuid.UUID
+	Key       string
+	Route     string
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) DeleteExpiredCreateIdempotency(ctx context.Context, arg DeleteExpiredCreateIdempotencyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredCreateIdempotency,
+		arg.UserID,
+		arg.Key,
+		arg.Route,
+		arg.ExpiresAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expireRoomForReplacement = `-- name: ExpireRoomForReplacement :execrows
+UPDATE rooms
+SET expires_at = LEAST(expires_at, $2), version = version + 1
+WHERE id = $1
+`
+
+type ExpireRoomForReplacementParams struct {
+	ID        uuid.UUID
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ExpireRoomForReplacement(ctx context.Context, arg ExpireRoomForReplacementParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireRoomForReplacement, arg.ID, arg.ExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getCreateIdempotency = `-- name: GetCreateIdempotency :one
+SELECT request_hash, response_status, response_body, expires_at
+FROM idempotency_records
+WHERE user_id = $1 AND key = $2 AND route = $3
+`
+
+type GetCreateIdempotencyParams struct {
+	UserID uuid.UUID
+	Key    string
+	Route  string
+}
+
+type GetCreateIdempotencyRow struct {
+	RequestHash    string
+	ResponseStatus int32
+	ResponseBody   []byte
+	ExpiresAt      pgtype.Timestamptz
+}
+
+func (q *Queries) GetCreateIdempotency(ctx context.Context, arg GetCreateIdempotencyParams) (GetCreateIdempotencyRow, error) {
+	row := q.db.QueryRow(ctx, getCreateIdempotency, arg.UserID, arg.Key, arg.Route)
+	var i GetCreateIdempotencyRow
+	err := row.Scan(
+		&i.RequestHash,
+		&i.ResponseStatus,
+		&i.ResponseBody,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const getRoom = `-- name: GetRoom :one
 SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
 FROM rooms
@@ -35,6 +146,36 @@ func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const insertCreateIdempotency = `-- name: InsertCreateIdempotency :exec
+INSERT INTO idempotency_records (
+  user_id, key, route, request_hash, response_status, response_body, expires_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertCreateIdempotencyParams struct {
+	UserID         uuid.UUID
+	Key            string
+	Route          string
+	RequestHash    string
+	ResponseStatus int32
+	ResponseBody   []byte
+	ExpiresAt      pgtype.Timestamptz
+}
+
+func (q *Queries) InsertCreateIdempotency(ctx context.Context, arg InsertCreateIdempotencyParams) error {
+	_, err := q.db.Exec(ctx, insertCreateIdempotency,
+		arg.UserID,
+		arg.Key,
+		arg.Route,
+		arg.RequestHash,
+		arg.ResponseStatus,
+		arg.ResponseBody,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const insertRoom = `-- name: InsertRoom :one

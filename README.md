@@ -12,15 +12,15 @@ From this directory, create your local configuration once (keep an existing `.en
 
 ```sh
 cp .env.example .env
-# Manually set MAX_BOT_TOKEN in .env before starting.
+# Set MAX_BOT_TOKEN, INVITE_ENCRYPTION_KEY and both invite URL templates in .env.
 docker compose up --build
 curl http://localhost:8080/api/v1/health/ready
 ```
 
 Compose starts PostgreSQL 17, applies embedded goose migrations, then starts
-the backend. It passes `MAX_BOT_TOKEN` and `MAX_INIT_DATA_MAX_AGE` from your shell
-or local `.env` to the backend. A missing or empty token produces a clear Compose
-error; the max-age default is `1h`. Never commit `.env`. Database defaults use
+the backend. It passes auth and invite configuration from your shell or local
+`.env` to the backend. Missing required credentials/templates produce a clear
+Compose error; the auth max-age default is `1h`. Never commit `.env`. Database defaults use
 local-only development credentials. The backend and database
 ports bind to localhost. Readiness returns HTTP 200 only when PostgreSQL is
 reachable and the complete applied migration set matches the binary:
@@ -29,8 +29,18 @@ reachable and the complete applied migration set matches the binary:
 {"status":"ready","database":"ready","migrations":"current"}
 ```
 
-The backend serves readiness and `POST /api/v1/auth/max/bootstrap`.
+The backend serves readiness, `POST /api/v1/auth/max/bootstrap` and authenticated
+`POST /api/v1/rooms` with a required `Idempotency-Key` header.
 Other business endpoints in OpenAPI remain contracts for subsequent implementation.
+
+Generate the invite encryption key once with `openssl rand -base64 32` and store
+it as `INVITE_ENCRYPTION_KEY` in your local environment or deployment secret
+store. Keep it stable across restarts. `INVITE_ENCRYPTION_KEY_VERSION` defaults to
+1. Set `INVITE_URL_TEMPLATE` and `MAX_DEEP_LINK_TEMPLATE` to your deployment's
+public invite and MAX mini-app URLs; each must contain `{token}` exactly once
+outside the hostname. HTTPS is required except for loopback development URLs.
+The service does not invent a MAX bot or app domain. Room/invite TTL is 48 hours.
+See [room transaction and idempotency details](backend/internal/rooms/README.md).
 
 To reset this project's local database (deletes its stored data):
 
@@ -49,8 +59,10 @@ export APP_ENV=local
 export HTTP_ADDR=:8080
 export DATABASE_URL='postgres://max_together:local-dev-only@localhost:5432/max_together?sslmode=disable'
 export LOG_LEVEL=info
-# Set MAX_BOT_TOKEN securely in this shell before starting the server.
+# Set MAX_BOT_TOKEN and INVITE_ENCRYPTION_KEY securely before starting the server.
+# Export INVITE_URL_TEMPLATE and MAX_DEEP_LINK_TEMPLATE for your deployment.
 export MAX_INIT_DATA_MAX_AGE=1h
+export INVITE_ENCRYPTION_KEY_VERSION=1
 cd backend
 go run ./cmd/migrate
 go run ./cmd/server
@@ -178,7 +190,7 @@ process and returns `429 RATE_LIMITED` with `Retry-After`. Forwarded IP headers
 are not trusted; reverse-proxy deployments must arrange trusted client-IP rate
 limiting at the edge. No credentials or raw init data are logged or persisted.
 
-`cmd/server` requires `MAX_BOT_TOKEN`; `cmd/migrate` does not. Session TTL is fixed
+`cmd/server` requires `MAX_BOT_TOKEN` and invite configuration; `cmd/migrate` does not. Session TTL is fixed
 at 24h by the HTTP contract. Init-data freshness remains configurable for MAX
 resume-scenario testing. Integration tests use only synthetic bot credentials
 and the existing `TEST_DATABASE_URL` infrastructure.
