@@ -19,6 +19,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/saved"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
 )
@@ -104,6 +105,11 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	homeHandler := discovery.NewHomeHandler(discovery.NewHomeService(discoveryService, discoveryRepository, preferencesService))
 	searchHandler := discovery.NewSearchHandler(discoveryService, discoveryRepository)
 	detailHandler := discovery.NewDetailHandler(discoveryService)
+	savedService, err := saved.NewService(db, cfg.InviteEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	savedHandler := saved.NewHandler(savedService)
 	roomService, err := rooms.NewCreateService(db, behavior.Recorder{}, invites)
 	if err != nil {
 		return nil, err
@@ -116,6 +122,7 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 		func(r chi.Router) { homeHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { searchHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { detailHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) { savedHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)
