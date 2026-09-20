@@ -32,6 +32,13 @@ FROM room_pool_events
 WHERE pool_id = $1
 ORDER BY position;
 
+-- name: GetRoomPoolEvent :one
+-- The caller must lock the room and active pool before checking membership.
+-- The composite primary key makes this a strict pool snapshot membership check.
+SELECT *
+FROM room_pool_events
+WHERE pool_id = $1 AND event_id = $2;
+
 -- name: GetRoomEventCards :many
 SELECT pe.event_id, pe.position, pe.explanation, pe.feature_snapshot,
        e.title, e.subtitle, e.starts_at, e.timezone, e.price_from_minor, e.currency,

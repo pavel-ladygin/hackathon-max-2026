@@ -282,6 +282,39 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 	return i, err
 }
 
+const markRoomExhausted = `-- name: MarkRoomExhausted :execrows
+UPDATE rooms
+SET state = 'exhausted', version = version + 1
+WHERE id = $1 AND state = 'voting'
+`
+
+func (q *Queries) MarkRoomExhausted(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoomExhausted, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markRoomMatched = `-- name: MarkRoomMatched :execrows
+UPDATE rooms
+SET state = 'matched', matched_event_id = $2, version = version + 1
+WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL
+`
+
+type MarkRoomMatchedParams struct {
+	ID      uuid.UUID
+	EventID uuid.UUID
+}
+
+func (q *Queries) MarkRoomMatched(ctx context.Context, arg MarkRoomMatchedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoomMatched, arg.ID, arg.EventID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const transitionCollectingRoomToRanking = `-- name: TransitionCollectingRoomToRanking :execrows
 UPDATE rooms
 SET state = 'ranking', version = version + 1
