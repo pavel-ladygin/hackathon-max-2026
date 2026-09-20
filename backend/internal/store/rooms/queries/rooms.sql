@@ -23,6 +23,16 @@ WHERE id = $1;
 -- name: CityExists :one
 SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1);
 
+-- name: GetCityTimezone :one
+SELECT timezone
+FROM cities
+WHERE id = $1;
+
+-- name: TransitionCollectingRoomToRanking :execrows
+UPDATE rooms
+SET state = 'ranking', version = version + 1
+WHERE id = $1 AND state = 'collecting_intents';
+
 -- name: ClockNow :one
 SELECT clock_timestamp()::timestamptz;
 

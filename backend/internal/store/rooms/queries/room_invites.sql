@@ -10,6 +10,13 @@ SELECT *
 FROM room_invites
 WHERE token_hash = $1;
 
+-- name: GetRoomInviteForCreator :one
+SELECT *
+FROM room_invites
+WHERE room_id = $1 AND created_by = $2
+ORDER BY created_at DESC
+LIMIT 1;
+
 -- name: LockRoomInviteByHash :one
 SELECT *
 FROM room_invites

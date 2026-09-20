@@ -123,7 +123,7 @@ func TestNewHandlerFailsClosedForInviteStartupConfiguration(t *testing.T) {
 }
 
 func serverTestConfig() config.Config {
-	return config.Config{MAXBotToken: "server-test-bot", MAXInitDataMaxAge: time.Hour, InviteEncryptionKey: bytes.Repeat([]byte{0x54}, 32), InviteEncryptionKeyVersion: 1, InviteURLTemplate: "https://app.test/invite/{token}", MAXDeepLinkTemplate: "https://max.test/bot?startapp={token}"}
+	return config.Config{MAXBotToken: "server-test-bot", MAXInitDataMaxAge: time.Hour, InviteEncryptionKey: bytes.Repeat([]byte{0x54}, 32), InviteEncryptionKeyVersion: 1, InviteURLTemplate: "https://app.test/invite/{token}", MAXDeepLinkTemplate: "https://max.test/bot?startapp={token}", TicketProviderAllowlist: []string{"tickets.example.test"}}
 }
 
 func openServerTestDB(t *testing.T) *store.Pool {

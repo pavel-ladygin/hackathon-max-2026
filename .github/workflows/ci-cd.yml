@@ -183,6 +183,8 @@ jobs:
           docker build --tag ci-frontend:local --file frontend/Dockerfile frontend
       - name: Start smoke stack
         working-directory: .
+        env:
+          TICKET_PROVIDER_ALLOWLIST: tickets.example.invalid
         run: |
           docker compose up --detach postgres migrate backend
           docker run --detach --name ci-frontend --publish 127.0.0.1:8081:80 ci-frontend:local

@@ -55,6 +55,37 @@ func (q *Queries) GetRoomInviteByHash(ctx context.Context, tokenHash []byte) (Ro
 	return i, err
 }
 
+const getRoomInviteForCreator = `-- name: GetRoomInviteForCreator :one
+SELECT id, room_id, token_hash, token_ciphertext, encryption_key_version, created_by, expires_at, consumed_by, consumed_at, created_at
+FROM room_invites
+WHERE room_id = $1 AND created_by = $2
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type GetRoomInviteForCreatorParams struct {
+	RoomID    uuid.UUID
+	CreatedBy uuid.UUID
+}
+
+func (q *Queries) GetRoomInviteForCreator(ctx context.Context, arg GetRoomInviteForCreatorParams) (RoomInvite, error) {
+	row := q.db.QueryRow(ctx, getRoomInviteForCreator, arg.RoomID, arg.CreatedBy)
+	var i RoomInvite
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.TokenHash,
+		&i.TokenCiphertext,
+		&i.EncryptionKeyVersion,
+		&i.CreatedBy,
+		&i.ExpiresAt,
+		&i.ConsumedBy,
+		&i.ConsumedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertRoomInvite = `-- name: InsertRoomInvite :one
 INSERT INTO room_invites (
   id, room_id, token_hash, token_ciphertext, encryption_key_version, created_by, expires_at

@@ -22,11 +22,12 @@ type Config struct {
 	LogLevel                   slog.Level
 	MAXBotToken                string
 	MAXInitDataMaxAge          time.Duration
-  TrustedProxyCIDRs []net.IPNet
+	TrustedProxyCIDRs          []net.IPNet
 	InviteEncryptionKey        []byte
 	InviteEncryptionKeyVersion int16
 	InviteURLTemplate          string
 	MAXDeepLinkTemplate        string
+	TicketProviderAllowlist    []string
 }
 
 // Load reads and validates all required environment variables.
@@ -41,6 +42,7 @@ func Load() (Config, error) {
 		InviteURLTemplate:          strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
 		MAXDeepLinkTemplate:        strings.TrimSpace(os.Getenv("MAX_DEEP_LINK_TEMPLATE")),
 	}
+	cfg.TicketProviderAllowlist = splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))
 	// Migration and seed commands do not need invite credentials. The server
 	// requires them when constructing its routes; malformed provided values
 	// always fail without including secret values in errors.
@@ -114,4 +116,14 @@ func parseCIDRs(raw string) ([]net.IPNet, error) {
 		result = append(result, *network)
 	}
 	return result, nil
+}
+
+func splitList(raw string) []string {
+	var result []string
+	for _, value := range strings.Split(raw, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
