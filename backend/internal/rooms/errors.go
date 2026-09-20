@@ -11,4 +11,5 @@ var (
 	ErrInviteNotFound      = errors.New("invite not found")
 	ErrInviteExpired       = errors.New("invite expired")
 	ErrRoomFull            = errors.New("room full")
+	ErrRoomNotFound        = errors.New("room not found")
 )

@@ -33,3 +33,10 @@ func (s *Service) WithTx(ctx context.Context, fn func(*Repository) error) error 
 		return fn(NewRepository(tx))
 	})
 }
+
+// WithReadTx gives multi-query room reads one consistent database snapshot.
+func (s *Service) WithReadTx(ctx context.Context, fn func(*Repository) error) error {
+	return s.pool.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		return fn(NewRepository(tx))
+	})
+}

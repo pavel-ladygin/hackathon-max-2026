@@ -29,6 +29,24 @@ func (q *Queries) CountPoolLikes(ctx context.Context, arg CountPoolLikesParams) 
 	return count, err
 }
 
+const countPoolVotesByUser = `-- name: CountPoolVotesByUser :one
+SELECT count(*)
+FROM room_votes
+WHERE pool_id = $1 AND user_id = $2
+`
+
+type CountPoolVotesByUserParams struct {
+	PoolID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) CountPoolVotesByUser(ctx context.Context, arg CountPoolVotesByUserParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPoolVotesByUser, arg.PoolID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getRoomVote = `-- name: GetRoomVote :one
 SELECT pool_id, room_id, event_id, user_id, vote, created_at
 FROM room_votes

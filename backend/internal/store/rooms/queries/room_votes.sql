@@ -12,3 +12,8 @@ WHERE pool_id = $1 AND event_id = $2 AND user_id = $3;
 SELECT count(*)
 FROM room_votes
 WHERE pool_id = $1 AND event_id = $2 AND vote = 'like';
+
+-- name: CountPoolVotesByUser :one
+SELECT count(*)
+FROM room_votes
+WHERE pool_id = $1 AND user_id = $2;
