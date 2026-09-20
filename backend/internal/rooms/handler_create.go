@@ -19,7 +19,12 @@ const createRequestLimit = 16 * 1024
 
 // RegisterRoutes mounts create-room. Authentication middleware is installed by
 // the application around this feature router.
-func (s *Service) RegisterRoutes(r chi.Router) { r.Post(createRoute, s.CreateRoom) }
+func (s *Service) RegisterRoutes(r chi.Router) {
+	r.Post(createRoute, s.CreateRoom)
+	r.Post("/api/v1/room-invites/{token}/join", s.JoinRoomByInvite)
+	r.Get("/api/v1/rooms/{roomId}", s.GetRoom)
+	r.Put("/api/v1/rooms/{roomId}/intent/me", s.ReplaceMyRoomIntent)
+}
 
 func (s *Service) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")

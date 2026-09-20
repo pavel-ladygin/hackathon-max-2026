@@ -263,17 +263,9 @@ function localDate(date: Date) { return `${date.getFullYear()}-${String(date.get
 function upcomingDates(count: number): Array<[string, string]> { return Array.from({ length: count }, (_, index) => { const date = addDays(new Date(), index); return [localDate(date), new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(date)] }) }
 
 function mockInviteUrl(raw: string) {
-  if (!raw || (import.meta.env.VITE_API_MODE ?? 'mock') !== 'mock') return raw
-  const url = new URL(raw, window.location.origin)
-  url.searchParams.set('mockUser', 'anna')
-  return url.toString()
+  return raw
 }
 
 function mockRoute(path: string) {
-  if ((import.meta.env.VITE_API_MODE ?? 'mock') !== 'mock') return path
-  const queryUser = new URLSearchParams(window.location.search).get('mockUser')
-  const user = queryUser === 'anna' || queryUser === 'ivan' ? queryUser : sessionStorage.getItem('max-together-mock-user') ?? 'ivan'
-  const url = new URL(path, window.location.origin)
-  url.searchParams.set('mockUser', user)
-  return `${url.pathname}${url.search}`
+  return path
 }
