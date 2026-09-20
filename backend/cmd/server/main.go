@@ -22,7 +22,9 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/saved"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/tickets"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
 )
 
@@ -110,11 +112,28 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
 	poolKey := sha256.Sum256(poolKeyInput)
 	poolBuilder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), poolKey[:])
+  if err != nil {
+	return nil, err
+  }
+	behaviorRecorder := behavior.Recorder{}
+	behaviorService, err := behavior.NewService(db)
 	if err != nil {
 		return nil, err
 	}
-	roomService, err := rooms.NewCreateService(db, behavior.Recorder{}, invites, poolBuilder)
+	behaviorHandler := behavior.NewHandler(behaviorService)
+	savedService, err := saved.NewService(db, behaviorRecorder, cfg.InviteEncryptionKey)
 	if err != nil {
+		return nil, err
+	}
+	savedHandler := saved.NewHandler(savedService)
+	ticketService, err := tickets.NewService(db, behaviorRecorder, cfg.TicketProviderAllowlist)
+	if err != nil {
+		return nil, err
+	}
+	ticketHandler := tickets.NewHandler(ticketService)
+
+  roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)	
+  if err != nil {
 		return nil, err
 	}
 	roomEventsCursor, err := rooms.NewRoomEventsCursorCodec(cfg.InviteEncryptionKey)
@@ -132,6 +151,9 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 		func(r chi.Router) { homeHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { searchHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { detailHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) { behaviorHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) { savedHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)
