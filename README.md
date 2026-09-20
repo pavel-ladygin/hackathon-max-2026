@@ -1,142 +1,144 @@
 # hackathon-max-2026
 
-## Backend development
+## Разработка backend
 
-Requirements: Docker Desktop/Engine with Compose v2; Go 1.24 for the backend.
-Regenerating OpenAPI types needs Go 1.25+ (the generator runs separately from the
-application module). Contract validation needs Python 3.10+ and pip.
+Требования: Docker Desktop/Engine с Compose v2; Go 1.24 для backend.
+Для повторной генерации типов OpenAPI нужен Go 1.25+ (генератор запускается отдельно
+от модуля приложения). Для проверки контракта нужны Python 3.10+ и pip.
 
-### Local stack
+### Локальный стек
 
-From this directory, create your local configuration once (keep an existing `.env`):
+Из этой директории один раз создайте локальную конфигурацию (существующий `.env` сохраните):
 
 ```sh
 cp .env.example .env
-# Manually set MAX_BOT_TOKEN in .env before starting.
+# Перед запуском вручную задайте MAX_BOT_TOKEN в .env.
 docker compose up --build
 curl http://localhost:8080/api/v1/health/ready
 ```
 
-Compose starts PostgreSQL 17, applies embedded goose migrations, then starts
-the backend. It passes `MAX_BOT_TOKEN` and `MAX_INIT_DATA_MAX_AGE` from your shell
-or local `.env` to the backend. A missing or empty token produces a clear Compose
-error; the max-age default is `1h`. Never commit `.env`. Database defaults use
-local-only development credentials. The backend and database
-ports bind to localhost. Readiness returns HTTP 200 only when PostgreSQL is
-reachable and the complete applied migration set matches the binary:
+Compose запускает PostgreSQL 17, применяет встроенные миграции goose, затем запускает
+backend. Переменные `MAX_BOT_TOKEN` и `MAX_INIT_DATA_MAX_AGE` передаются из оболочки
+или локального `.env` в backend. Отсутствующий или пустой токен вызывает понятную
+ошибку Compose; значение max-age по умолчанию — `1h`. Никогда не коммитьте `.env`.
+Значения базы данных по умолчанию предназначены только для локальной разработки.
+Порты backend и базы данных привязаны к localhost. Readiness возвращает HTTP 200,
+только если PostgreSQL доступен и полный набор применённых миграций совпадает с бинарным файлом:
 
 ```json
 {"status":"ready","database":"ready","migrations":"current"}
 ```
 
-The backend serves readiness and `POST /api/v1/auth/max/bootstrap`.
-Other business endpoints in OpenAPI remain contracts for subsequent implementation.
+Backend предоставляет readiness и `POST /api/v1/auth/max/bootstrap`.
+Остальные бизнес-методы в OpenAPI пока остаются контрактами для последующей реализации.
 
-To reset this project's local database (deletes its stored data):
+Чтобы сбросить локальную базу этого проекта (удалит сохранённые данные):
 
 ```sh
 docker compose down -v
-# Repeat the startup commands above.
+# Повторите приведённые выше команды запуска.
 ```
 
-### Run Go directly
+### Прямой запуск Go
 
-Start PostgreSQL with `docker compose up -d postgres`. Export these environment
-variables in your shell; the Go process does not load `.env` automatically:
+Запустите PostgreSQL командой `docker compose up -d postgres`. Экспортируйте эти
+переменные окружения в оболочке; процесс Go не загружает `.env` автоматически:
 
 ```sh
 export APP_ENV=local
 export HTTP_ADDR=:8080
 export DATABASE_URL='postgres://max_together:local-dev-only@localhost:5432/max_together?sslmode=disable'
 export LOG_LEVEL=info
-# Set MAX_BOT_TOKEN securely in this shell before starting the server.
+# Перед запуском сервера безопасно задайте MAX_BOT_TOKEN в этой оболочке.
 export MAX_INIT_DATA_MAX_AGE=1h
 cd backend
 go run ./cmd/migrate
 go run ./cmd/server
 ```
 
-PowerShell uses `$env:APP_ENV='local'` (and the equivalent for each variable).
-Stop the Compose backend first if it already occupies port 8080.
-`cmd/migrate` applies the versioned SQL embedded in its binary; it can be rerun
-safely. Rebuild the binary/image after adding a migration. Schema changes require
-coordination between both backend owners; new migrations use the next free number.
+В PowerShell используется `$env:APP_ENV='local'` (и аналогичная запись для каждой переменной).
+Сначала остановите backend из Compose, если он уже занял порт 8080.
+`cmd/migrate` применяет версионный SQL, встроенный в бинарный файл; его можно безопасно
+запускать повторно. После добавления миграции пересоберите бинарный файл/образ.
+Изменения схемы требуют согласования между обоими владельцами backend; новые миграции
+используют следующий свободный номер.
 
-### Demo catalog
+### Демо-каталог
 
-After exporting the local environment above, run from `backend`:
+После экспорта указанного выше локального окружения выполните из `backend`:
 
 ```sh
 go run ./cmd/migrate
-# Optional: pin a date for an exactly reproducible catalog.
+# Необязательно: зафиксируйте дату для полностью воспроизводимого каталога.
 export DEMO_BASE_DATE=2026-09-18
 go run ./cmd/seed
 ```
 
-PowerShell uses `$env:DEMO_BASE_DATE='2026-09-18'`. The seed reads process
-environment only and requires `APP_ENV=local` or `test` and `DATABASE_URL`;
-it does not need a bot token. If `DEMO_BASE_DATE` is omitted, it resolves once
-to today's date in `Europe/Moscow` and prints the effective date. Event starts
-are 1–20 days after that date. Use today's date (or omit the variable) for a
-fresh demo; an explicitly pinned past date is intentionally replayed unchanged.
+В PowerShell используется `$env:DEMO_BASE_DATE='2026-09-18'`. Seed читает только
+окружение процесса и требует `APP_ENV=local` или `test` и `DATABASE_URL`; токен бота
+не нужен. Если `DEMO_BASE_DATE` не задана, она один раз устанавливается равной текущей
+дате в `Europe/Moscow`, а фактическая дата выводится в консоль. Начало событий — через
+1–20 дней после этой даты. Для свежего демо используйте текущую дату (или не задавайте
+переменную); явно зафиксированная прошлая дата намеренно воспроизводится без изменений.
 
-The catalog contains Moscow, 12 metro stations, 12 illustrative venues, 11
-category slugs, 44 events and 44 images. Every event has one primary category;
-some also have a secondary category. Data includes free, unknown and paid
-prices, all event statuses and loudness levels, and available/unavailable demo
-ticket states. All events carry `source=demo` and `is_demo=true`. Ticket URLs
-use the reserved `tickets.example.invalid` host and cannot sell real tickets.
+Каталог содержит Москву, 12 станций метро, 12 демонстрационных площадок, 11
+slug категорий, 44 события и 44 изображения. У каждого события есть одна основная
+категория; у некоторых есть также дополнительная. Данные включают бесплатные,
+неизвестные и платные цены, все статусы событий и уровни громкости, а также доступные
+и недоступные состояния демо-билетов. Все события имеют `source=demo` и `is_demo=true`.
+URL билетов используют зарезервированный хост `tickets.example.invalid` и не могут
+продавать настоящие билеты.
 
-UUIDs derive from fixed fixture keys (Moscow has a fixed UUID), independently
-of dates. One transaction serializes seed runs and reconciles only these demo
-fixtures; identical base dates reproduce timestamps, changing the base date
-refreshes the same event IDs without duplicates. Schema migrations stay separate.
-The backend image also includes `/app/seed`, which accepts the same environment.
+UUID выводятся из фиксированных ключей фикстур (у Москвы фиксированный UUID) независимо
+от дат. Одна транзакция сериализует запуски seed и синхронизирует только эти демо-фикстуры;
+одинаковые базовые даты воспроизводят временные метки, а изменение базовой даты обновляет
+те же ID событий без дубликатов. Миграции схемы остаются отдельными. Образ backend также
+содержит `/app/seed`, принимающий те же переменные окружения.
 
-### Generate SQL access code
+### Генерация кода доступа к SQL
 
-From `backend`:
+Из директории `backend`:
 
 ```sh
 go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate
 ```
 
-Alternatively, use the pinned official image from `backend` (POSIX shell):
+Или используйте зафиксированный официальный образ из `backend` (оболочка POSIX):
 
 ```sh
 docker run --rm -v "${PWD}:/src" -w /src sqlc/sqlc:1.29.0 generate
 ```
 
-In PowerShell use `-v "${PWD}:/src"` with the same command.
+В PowerShell используйте `-v "${PWD}:/src"` с той же командой.
 
-`sqlc.yaml` has two independent outputs: `internal/store/platform` for platform/auth
-data and `internal/store/rooms` for room/matching data. Both use `migrations` as their schema.
-Each owner edits their own `queries/*.sql`; generated Go files are committed.
-The platform package includes health, user/session, catalog reads and demo seed queries.
-The rooms package retains its health query and contains the transaction
-and persistence primitives described in
+В `sqlc.yaml` настроены два независимых результата: `internal/store/platform` для данных
+платформы/авторизации и `internal/store/rooms` для данных комнат/совпадений. Оба используют
+`migrations` как схему. Каждый владелец редактирует свои `queries/*.sql`; сгенерированные
+файлы Go коммитятся. Пакет platform включает health, пользователя/сессию, чтение каталога
+и запросы демо-seed. Пакет rooms сохраняет health-запрос и содержит примитивы транзакций
+и хранения, описанные в
 [`backend/internal/rooms/README.md`](backend/internal/rooms/README.md).
 
-### Validate and generate OpenAPI
+### Проверка и генерация OpenAPI
 
-`openapi/openapi.yaml` is the canonical OpenAPI 3.1 contract. From the repository root:
+`openapi/openapi.yaml` — канонический контракт OpenAPI 3.1. Из корня репозитория:
 
 ```sh
 python -m venv .venv
-# Activate .venv in your shell, then:
+# Активируйте .venv в оболочке, затем:
 python -m pip install -r backend/tests/contract/requirements.txt
 python -m unittest discover -s backend/tests/contract -v
 cd backend
 go generate ./internal/httpapi/openapi
 ```
 
-Validation uses `openapi-spec-validator` plus JSON Schema 2020-12 checks for
-examples and local references. `oapi-codegen v2.8.0` produces types only, using
-`openapi/oapi-codegen.yaml`. Commit `internal/httpapi/openapi/types.gen.go` after
-regeneration. Ordinary builds and tests use the committed files and need no
-code-generation tools, Python or Node.
+Проверка использует `openapi-spec-validator` и проверки JSON Schema 2020-12 для
+примеров и локальных ссылок. `oapi-codegen v2.8.0` создаёт только типы по
+`openapi/oapi-codegen.yaml`. После генерации коммитьте `internal/httpapi/openapi/types.gen.go`.
+Обычные сборки и тесты используют уже закоммиченные файлы и не требуют инструментов
+генерации кода, Python или Node.
 
-### Tests and shared contracts
+### Тесты и общие контракты
 
 ```sh
 cd backend
@@ -145,95 +147,95 @@ go test ./...
 go vet ./...
 ```
 
-Database smoke tests run when `TEST_DATABASE_URL` points to a disposable local
-PostgreSQL database (for example the Compose database after migrations); without
-it they skip. See `backend/tests/integration` for the exact exercised boundaries.
-Room persistence integration tests use the same variable to exercise row locks,
-membership constraints, round-scoped persistence, immutable votes/matches and
-transaction rollback on real PostgreSQL. These are repository tests; room HTTP
-handlers and the two-client release gate belong to subsequent phases.
+Дымовые тесты базы запускаются, когда `TEST_DATABASE_URL` указывает на одноразовую
+локальную базу PostgreSQL (например, базу Compose после миграций); без неё тесты
+пропускаются. Точные проверяемые границы описаны в `backend/tests/integration`.
+Интеграционные тесты хранения комнат используют ту же переменную для проверки блокировок
+строк, ограничений членства, хранения в рамках раунда, неизменяемых голосов/совпадений
+и отката транзакций в настоящем PostgreSQL. Это тесты репозитория; HTTP-обработчики комнат
+и двухклиентская проверка выпуска относятся к последующим этапам.
 
-### Authentication
+### Аутентификация
 
-MAX signatures follow the [official validation algorithm](https://dev.max.ru/docs/webapps/validation):
-percent-decode values once, exclude `hash`, sort keys, join `key=value` with newlines,
-derive the HMAC-SHA256 key from `WebAppData` and the bot token, then verify the
-payload HMAC in constant time. Literal `+` remains a plus, following MAX's
-`decodeURIComponent` example. Duplicate parameters, malformed identity, future
-timestamps and init data older than `MAX_INIT_DATA_MAX_AGE` (default 1h) are rejected.
+Подписи MAX проверяются по [официальному алгоритму валидации](https://dev.max.ru/docs/webapps/validation):
+значения декодируются из percent-кодирования один раз, `hash` исключается, ключи
+сортируются, пары `key=value` объединяются переводами строк, ключ HMAC-SHA256
+выводится из `WebAppData` и токена бота, после чего HMAC полезной нагрузки проверяется
+за постоянное время. Литеральный `+` остаётся плюсом согласно примеру MAX с
+`decodeURIComponent`. Дублирующиеся параметры, некорректная идентификация, будущие
+временные метки и init data старше `MAX_INIT_DATA_MAX_AGE` (по умолчанию 1h) отклоняются.
 
-Bootstrap atomically upserts the user and inserts a 24h session. The response uses
-an opaque random 256-bit bearer token; PostgreSQL stores only its SHA-256 hash.
-Repeated login preserves the internal UUID and app-owned city/onboarding state.
-`preferences` and `invite_context` are currently `null`; their domain integration is deferred.
-A supplied non-null `start_param` hint must match the signed value or
-the request returns `400 VALIDATION_FAILED`. No invite lookup occurs at this stage.
+Bootstrap атомарно обновляет или создаёт пользователя и добавляет сессию на 24 часа.
+В ответе используется непрозрачный случайный bearer-токен длиной 256 бит; PostgreSQL
+хранит только его SHA-256 хеш. Повторный вход сохраняет внутренний UUID и состояние
+города/онбординга, принадлежащее приложению. `preferences` и `invite_context` сейчас
+равны `null`; их интеграция с доменной логикой отложена. Переданная ненулевая подсказка
+`start_param` должна совпадать с подписанным значением, иначе запрос возвращает
+`400 VALIDATION_FAILED`. На этом этапе поиск приглашений не выполняется.
 
-Protected room routes can reuse `authService.Middleware` and
-`contracts.PrincipalFromContext`; only the internal UUID crosses
-this boundary. Unknown/revoked tokens return `401 UNAUTHENTICATED`, expired tokens
-return `401 TOKEN_EXPIRED`, and database errors return a generic `500 INTERNAL`.
-The public bootstrap route limits requests to 20/minute/client IP per process
-and returns `429 RATE_LIMITED` with `Retry-After`. Forwarded IP headers are used
-only when the direct peer belongs to `TRUSTED_PROXY_CIDRS`; the default is empty,
-so local development keeps trusting the connection peer only. Production Nginx
-also applies an edge limit. No credentials or raw init data are logged or persisted.
+Защищённые маршруты комнат могут повторно использовать `authService.Middleware` и
+`contracts.PrincipalFromContext`; через эту границу передаётся только внутренний UUID.
+Неизвестные или отозванные токены возвращают `401 UNAUTHENTICATED`, просроченные —
+`401 TOKEN_EXPIRED`, а ошибки базы — общий `500 INTERNAL`. Публичный bootstrap-маршрут
+ограничивает запросы до 20 в минуту на IP клиента для каждого процесса и возвращает
+`429 RATE_LIMITED` с `Retry-After`. Пересланные IP-заголовки используются только когда
+прямой узел входит в `TRUSTED_PROXY_CIDRS`; по умолчанию список пуст, поэтому локальная
+разработка доверяет только IP узла соединения. Продакшен-Nginx также применяет лимит
+на границе. Учётные данные и необработанные init data не журналируются и не сохраняются.
 
-`cmd/server` requires `MAX_BOT_TOKEN`; `cmd/migrate` does not. Session TTL is fixed
-at 24h by the HTTP contract. Init-data freshness remains configurable for MAX
-resume-scenario testing. Integration tests use only synthetic bot credentials
-and the existing `TEST_DATABASE_URL` infrastructure.
+`cmd/server` требует `MAX_BOT_TOKEN`; `cmd/migrate` — нет. TTL сессии зафиксирован
+HTTP-контрактом на 24 часа. Свежесть init-data остаётся настраиваемой для тестирования
+сценария возобновления MAX. Интеграционные тесты используют только синтетические
+учётные данные бота и существующую инфраструктуру `TEST_DATABASE_URL`.
 
-`internal/contracts` defines the internal UUID principal, `PoolBuilder`,
-`EventAvailability` and `BehaviorRecorder`. The recommendation layer computes
-ordered candidates and safe snapshots; the rooms layer persists pools and owns
-room state transitions. When recording server behavior, room transactions pass
-their current `pgx.Tx` as `store.DBTX`, so both changes commit atomically. An MVP room candidate needs published status, available tickets and
-a ticket/reservation URL; a zero price alone does not establish eligibility.
+`internal/contracts` определяет principal с внутренним UUID, `PoolBuilder`,
+`EventAvailability` и `BehaviorRecorder`. Слой рекомендаций вычисляет упорядоченные
+кандидаты и безопасные снимки; слой rooms сохраняет пулы и управляет переходами состояний
+комнаты. При записи поведения сервера транзакции комнат передают текущий `pgx.Tx` как
+`store.DBTX`, поэтому оба изменения фиксируются атомарно. Кандидату комнаты MVP нужны
+опубликованный статус, доступные билеты и URL билета/бронирования; одна только нулевая
+цена не подтверждает допустимость.
 
-## Production deployment
+## Продакшен-деплой
 
-Production is served at `https://worknet.team`; the public API base URL is
-`https://worknet.team/api/v1`. Host Nginx terminates TLS and proxies only to the
-loopback bindings of the frontend (`127.0.0.1:8081`) and backend
-(`127.0.0.1:8080`). PostgreSQL has no host port.
+Продакшен работает на `https://worknet.team`; базовый URL публичного API —
+`https://worknet.team/api/v1`. Nginx на хосте завершает TLS и проксирует только
+на loopback-привязки frontend (`127.0.0.1:8081`) и backend (`127.0.0.1:8080`).
+У PostgreSQL нет порта на хосте.
 
-The deployed frontend is temporarily built with `VITE_API_MODE=mock`, so the
-complete demonstration flow uses the explicitly marked MSW demo dataset while
-the backend business endpoints are still being implemented. The public backend
-and readiness endpoint remain deployed at `/api/v1`. Switching production to the
-real API later requires changing the frontend image build argument to `http` and
-passing the full release gate against the implemented API.
+Развёрнутый frontend временно собирается с `VITE_API_MODE=mock`, поэтому полный
+демонстрационный сценарий использует явно помеченный демо-набор MSW, пока бизнес-методы
+backend ещё реализуются. Публичный backend и readiness остаются развёрнутыми на `/api/v1`.
+Для последующего переключения продакшена на настоящий API потребуется изменить аргумент
+сборки образа frontend на `http` и пройти полный набор проверок выпуска на реализованном API.
 
-The deployment assets are:
+Файлы деплоя:
 
-- `compose.production.yaml` for PostgreSQL, migrations, backend and frontend;
-- `deploy/nginx/` for the host Nginx configuration;
-- `deploy/bootstrap-vps.sh` for one-time Ubuntu package/firewall setup;
-- `deploy/enable-https.sh` for initial certificate issuance and final Nginx setup;
-- `deploy/deploy.sh <40-character-commit-sha>` for backup, migration, rollout,
-  public smoke checks and application-image rollback.
+- `compose.production.yaml` — PostgreSQL, миграции, backend и frontend;
+- `deploy/nginx/` — уже установленная конфигурация Nginx на хосте;
+- `deploy/deploy.sh <40-character-commit-sha>` — резервное копирование, миграции,
+  развёртывание, публичные smoke-проверки и откат образов приложения.
 
-Create `/opt/worknet/.env.production` directly on the server with mode `0600`.
-It must contain at least `POSTGRES_PASSWORD` and `MAX_BOT_TOKEN`; it may also set
-`POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`, `MAX_INIT_DATA_MAX_AGE` and
-`TRUSTED_PROXY_CIDRS`. Never commit this file. Authenticate Docker to GHCR with a
-token limited to `read:packages`.
+Создайте `/opt/worknet/.env.production` непосредственно на сервере с правами `0600`.
+Файл должен содержать как минимум `POSTGRES_PASSWORD` и `MAX_BOT_TOKEN`; также можно
+задать `POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`, `MAX_INIT_DATA_MAX_AGE` и
+`TRUSTED_PROXY_CIDRS`. Никогда не коммитьте этот файл. Авторизуйте Docker в GHCR
+токеном, ограниченным правом `read:packages`.
 
-After DNS resolves to the VPS, replace the temporary HTTP-only site with the
-certificate-backed production site and verify renewal with:
+GitHub Actions запускает проверки для запросов на слияние и отправок в `main` или `dev`.
+Только успешная отправка в `main` публикует образы с SHA коммита и вызывает скрипт
+деплоя на VPS. Обязательные секреты окружения GitHub: `DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_SSH_KEY` и зафиксированная строка known-hosts `DEPLOY_HOST_KEY`.
+Ручной процесс отката принимает полный SHA ранее опубликованного коммита.
 
-```sh
-sudo ./deploy/enable-https.sh
-```
+Сейчас работающий backend предоставляет проверку готовности и MAX bootstrap. Не представляйте остальные
+операции OpenAPI как развёрнутые проверки, пока их обработчики не реализованы;
+добавляйте хакатонный `DATA-API.yaml` только после реализации обязательного сценария
+и утверждения точной схемы конфигурации проверяющей системы.
 
-GitHub Actions runs checks for pull requests and pushes to `main` or `dev`.
-Only a successful push to `main` publishes commit-SHA images and calls the VPS
-deployment script. Required GitHub environment secrets are `DEPLOY_HOST`,
-`DEPLOY_USER`, `DEPLOY_SSH_KEY` and a pinned `DEPLOY_HOST_KEY` known-hosts line.
-The manual rollback workflow accepts a previously published full commit SHA.
+### Текущий статус деплоя
 
-The runtime currently exposes readiness and MAX bootstrap. Do not present the
-remaining OpenAPI operations as deployed checks until their handlers are
-implemented; add the hackathon `DATA-API.yaml` only after that mandatory scenario
-and the evaluator's exact configuration schema are fixed.
+VPS, DNS, Nginx/TLS на хосте, секреты сервера и доступ GitHub подготовлены.
+Первый продакшен-процесс (этап 9) ещё не запускался. Поэтому этот CI/CD-конвейер пока
+не развернул ни одного релиза приложения из GHCR. Следующее действие — успешный
+merge/push в `main`, после чего нужно проверить опубликованный SHA.
