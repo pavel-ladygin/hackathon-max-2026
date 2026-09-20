@@ -9,7 +9,37 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const getEventAvailability = `-- name: GetEventAvailability :one
+SELECT status, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+FROM events
+WHERE id = $1
+`
+
+type GetEventAvailabilityRow struct {
+	Status          string
+	PriceFromMinor  pgtype.Int4
+	PriceToMinor    pgtype.Int4
+	Currency        string
+	TicketAvailable bool
+	TicketUrl       pgtype.Text
+}
+
+func (q *Queries) GetEventAvailability(ctx context.Context, id uuid.UUID) (GetEventAvailabilityRow, error) {
+	row := q.db.QueryRow(ctx, getEventAvailability, id)
+	var i GetEventAvailabilityRow
+	err := row.Scan(
+		&i.Status,
+		&i.PriceFromMinor,
+		&i.PriceToMinor,
+		&i.Currency,
+		&i.TicketAvailable,
+		&i.TicketUrl,
+	)
+	return i, err
+}
 
 const getCatalogCity = `-- name: GetCatalogCity :one
 SELECT id, name, timezone, center_lat, center_lng

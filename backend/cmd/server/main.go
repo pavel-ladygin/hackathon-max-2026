@@ -16,6 +16,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
@@ -48,7 +49,6 @@ func run() error {
 		return fmt.Errorf("database unavailable")
 	}
 	defer db.Close()
-
 	handler, err := newHandler(cfg, db, logger)
 	if err != nil {
 		return err
@@ -92,16 +92,24 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	if err != nil {
 		return nil, err
 	}
+	preferencesService := preferences.NewService(db)
+	preferencesHandler := preferences.NewHandler(preferencesService)
 	roomService, err := rooms.NewCreateService(db, behavior.Recorder{}, invites)
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.NewRouter(readiness{db: db}, logger, authService.RegisterRoutes, func(r chi.Router) {
-		r.Group(func(protected chi.Router) {
-			protected.Use(authService.Middleware)
-			roomService.RegisterRoutes(protected)
-		})
-	}), nil
+	return httpapi.NewRouter(
+		readiness{db: db},
+		logger,
+		authService.RegisterRoutes,
+		func(r chi.Router) { preferencesHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) {
+			r.Group(func(protected chi.Router) {
+				protected.Use(authService.Middleware)
+				roomService.RegisterRoutes(protected)
+			})
+		},
+	), nil
 }
 
 type readiness struct{ db *store.Pool }
