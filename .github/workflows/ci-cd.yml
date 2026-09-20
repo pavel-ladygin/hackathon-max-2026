@@ -162,6 +162,7 @@ jobs:
       INVITE_ENCRYPTION_KEY_VERSION: "1"
       INVITE_URL_TEMPLATE: https://worknet.team/join/{token}
       MAX_DEEP_LINK_TEMPLATE: https://max.ru/t255_hakaton_max_bot?startapp={token}
+      TICKET_PROVIDER_ALLOWLIST: tickets.example.invalid
       POSTGRES_PASSWORD: ci-only-password
       BACKEND_IMAGE: ci-backend:local
       FRONTEND_IMAGE: ci-frontend:local
