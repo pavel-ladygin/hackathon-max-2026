@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/saved"
 )
 
@@ -57,7 +58,7 @@ VALUES ($1,'concerts',true)`, eventID); err != nil {
 		}
 	}
 
-	service, err := saved.NewService(db, []byte("saved-events-integration-cursor-key"))
+	service, err := saved.NewService(db, behavior.Recorder{}, []byte("saved-events-integration-cursor-key"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +87,13 @@ VALUES ($1,'concerts',true)`, eventID); err != nil {
 	}
 	if savedRows != 1 {
 		t.Fatalf("saved row count after concurrent saves = %d, want 1", savedRows)
+	}
+	var saveSignals int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='save' AND event_id=$2`, users[0], events[0]).Scan(&saveSignals); err != nil {
+		t.Fatal(err)
+	}
+	if saveSignals != 1 {
+		t.Fatalf("concurrent/repeated save behavior rows = %d, want 1", saveSignals)
 	}
 	if _, err := service.Set(ctx, users[0], events[1], true); err != nil {
 		t.Fatal(err)
@@ -145,6 +153,16 @@ VALUES ($1,'concerts',true)`, eventID); err != nil {
 	unsaved, err := service.Set(ctx, users[0], events[0], false)
 	if err != nil || unsaved.Saved || unsaved.SavedAt != nil {
 		t.Fatalf("unsave = %#v, err=%v; want saved=false and null saved_at", unsaved, err)
+	}
+	if _, err := service.Set(ctx, users[0], events[0], false); err != nil {
+		t.Fatal(err)
+	}
+	var unsaveSignals int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='unsave' AND event_id=$2`, users[0], events[0]).Scan(&unsaveSignals); err != nil {
+		t.Fatal(err)
+	}
+	if unsaveSignals != 1 {
+		t.Fatalf("repeated unsave behavior rows = %d, want 1", unsaveSignals)
 	}
 	page, err = service.List(ctx, users[0], saved.ListInput{Tab: saved.TabSaved, Limit: 20})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Event.ID != events[1] {

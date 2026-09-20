@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
@@ -80,19 +82,24 @@ type Page struct {
 }
 
 type Service struct {
-	db      *store.Pool
-	cursors *cursorCodec
+	db       *store.Pool
+	cursors  *cursorCodec
+	recorder contracts.BehaviorRecorder
+	now      func() time.Time
 }
 
-func NewService(db *store.Pool, key []byte) (*Service, error) {
+func NewService(db *store.Pool, recorder contracts.BehaviorRecorder, key []byte) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("saved service database is required")
+	}
+	if recorder == nil {
+		return nil, errors.New("saved service behavior recorder is required")
 	}
 	codec, err := newCursorCodec(key)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{db: db, cursors: codec}, nil
+	return &Service{db: db, cursors: codec, recorder: recorder, now: time.Now}, nil
 }
 
 func (s *Service) Set(ctx context.Context, userID, eventID uuid.UUID, saved bool) (State, error) {
@@ -111,10 +118,20 @@ func (s *Service) Set(ctx context.Context, userID, eventID uuid.UUID, saved bool
 		}
 		result = State{EventID: eventID, Saved: saved}
 		if !saved {
-			return q.DeleteSavedEvent(ctx, platform.DeleteSavedEventParams{UserID: userID, EventID: eventID})
+			rows, err := q.DeleteSavedEvent(ctx, platform.DeleteSavedEventParams{UserID: userID, EventID: eventID})
+			if err != nil || rows == 0 {
+				return err
+			}
+			return s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "unsave", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now()})
 		}
-		if _, err := q.InsertSavedEvent(ctx, platform.InsertSavedEventParams{UserID: userID, EventID: eventID}); err != nil {
+		rows, err := q.InsertSavedEvent(ctx, platform.InsertSavedEventParams{UserID: userID, EventID: eventID})
+		if err != nil {
 			return err
+		}
+		if rows > 0 {
+			if err := s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "save", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now()}); err != nil {
+				return err
+			}
 		}
 		// Keep the lookup as a separate statement. Under READ COMMITTED this gets
 		// a fresh snapshot after a concurrent ON CONFLICT winner commits.

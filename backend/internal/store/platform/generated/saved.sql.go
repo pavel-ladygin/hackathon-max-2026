@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteSavedEvent = `-- name: DeleteSavedEvent :exec
+const deleteSavedEvent = `-- name: DeleteSavedEvent :execrows
 DELETE FROM saved_events WHERE user_id = $1 AND event_id = $2
 `
 
@@ -21,9 +21,12 @@ type DeleteSavedEventParams struct {
 	EventID uuid.UUID
 }
 
-func (q *Queries) DeleteSavedEvent(ctx context.Context, arg DeleteSavedEventParams) error {
-	_, err := q.db.Exec(ctx, deleteSavedEvent, arg.UserID, arg.EventID)
-	return err
+func (q *Queries) DeleteSavedEvent(ctx context.Context, arg DeleteSavedEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSavedEvent, arg.UserID, arg.EventID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getSavedEventCreatedAt = `-- name: GetSavedEventCreatedAt :one

@@ -13,7 +13,7 @@ SELECT created_at
 FROM saved_events
 WHERE user_id = $1 AND event_id = $2;
 
--- name: DeleteSavedEvent :exec
+-- name: DeleteSavedEvent :execrows
 DELETE FROM saved_events WHERE user_id = $1 AND event_id = $2;
 
 -- name: ListSavedEventCards :many

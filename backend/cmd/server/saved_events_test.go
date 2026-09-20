@@ -24,6 +24,7 @@ func TestNewHandlerRegistersAuthenticatedSavedEventsRoutes(t *testing.T) {
 	}{
 		{name: "list", method: http.MethodGet, target: "/api/v1/me/saved-events"},
 		{name: "set", method: http.MethodPut, target: "/api/v1/me/saved-events/" + uuid.NewString()},
+		{name: "behavior batch", method: http.MethodPost, target: "/api/v1/behavior/events:batch"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
