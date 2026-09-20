@@ -210,6 +210,47 @@ func TestB9MatchRecorderFailureRollsBackTerminalTransition(t *testing.T) {
 	}
 }
 
+// TestB9IdempotentVoteDoesNotDuplicatePersistence verifies the service-level
+// retry contract: repeating the same vote succeeds without inserting another
+// vote row or recording another behavior event.
+func TestB9IdempotentVoteDoesNotDuplicatePersistence(t *testing.T) {
+	db := openTestDB(t)
+	f, pool, events := seedB8VotingPool(t, db, 1)
+	svc := newVoteService(t, db, behavior.Recorder{})
+	principal := contracts.Principal{UserID: f.creator}
+	request := api.VoteRequest{PoolVersion: int(pool.Version), Vote: api.Dislike}
+
+	first, err := svc.Vote(context.Background(), principal, f.room, events[0], request)
+	if err != nil {
+		t.Fatalf("first vote=%+v err=%v; want success", first, err)
+	}
+	if _, err := db.Exec(context.Background(), "UPDATE events SET ticket_available=false WHERE id=$1", events[0]); err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Vote(context.Background(), principal, f.room, events[0], request)
+	if err != nil {
+		t.Fatalf("idempotent retry after availability change=%+v err=%v; want success", second, err)
+	}
+
+	ctx := context.Background()
+	var votes, behaviors int
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM room_votes
+		WHERE room_id=$1 AND event_id=$2 AND user_id=$3`,
+		f.room, events[0], f.creator).Scan(&votes); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM behavior_events
+		WHERE room_id=$1 AND event_id=$2 AND user_id=$3 AND type='dislike'`,
+		f.room, events[0], f.creator).Scan(&behaviors); err != nil {
+		t.Fatal(err)
+	}
+	if votes != 1 || behaviors != 1 {
+		t.Fatalf("retry persistence votes=%d behavior_events=%d; want one row each", votes, behaviors)
+	}
+}
+
 func assertB9TerminalState(t *testing.T, db *store.Pool, roomID, eventID, creator, member uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()

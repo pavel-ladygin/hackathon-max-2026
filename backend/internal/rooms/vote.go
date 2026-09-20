@@ -86,17 +86,6 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if err != nil {
 			return err
 		}
-		availability, err := s.availability.CheckForRoomVote(ctx, eventID)
-		if err != nil {
-			return err
-		}
-		if !roomEventAvailable(availability, budget) {
-			if err := s.updatePoolFinished(ctx, repo, room, pool, principal.UserID, budget, &response); err != nil {
-				return err
-			}
-			committedError = ErrEventUnavailable
-			return nil
-		}
 		existing, err := repo.Queries.GetRoomVote(ctx, roomsql.GetRoomVoteParams{PoolID: pool.ID, EventID: eventID, UserID: principal.UserID})
 		if err == nil {
 			if existing.Vote != string(request.Vote) {
@@ -109,6 +98,17 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
+		}
+		availability, err := s.availability.CheckForRoomVote(ctx, eventID)
+		if err != nil {
+			return err
+		}
+		if !roomEventAvailable(availability, budget) {
+			if err := s.updatePoolFinished(ctx, repo, room, pool, principal.UserID, budget, &response); err != nil {
+				return err
+			}
+			committedError = ErrEventUnavailable
+			return nil
 		}
 		inserted, err := repo.Queries.InsertRoomVote(ctx, roomsql.InsertRoomVoteParams{PoolID: pool.ID, RoomID: room.ID, EventID: eventID, UserID: principal.UserID, Vote: string(request.Vote)})
 		if err != nil {
