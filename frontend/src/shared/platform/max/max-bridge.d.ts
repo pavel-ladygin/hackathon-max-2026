@@ -15,6 +15,7 @@ declare global {
     readonly version?: string;
     readonly viewportHeight?: number;
     readonly viewportStableHeight?: number;
+    ready?: () => void;
     getViewportSize?: () => Promise<{ height: string; width: string }>;
     shareContent?: (params: { text?: string; link?: string }) => void | Promise<void>;
     shareMaxContent?: (params: { text?: string; link?: string }) => void | Promise<void>;

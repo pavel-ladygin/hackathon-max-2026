@@ -70,6 +70,10 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
     };
   }
 
+  ready(): void {
+    getWebApp()?.ready?.();
+  }
+
   async shareInvite(payload: InviteSharePayload): Promise<boolean> {
     if (!safeUrl(payload.link)) return false;
     const params = { text: payload.text, link: payload.link };

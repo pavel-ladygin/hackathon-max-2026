@@ -35,6 +35,7 @@ export interface MaxPlatformAdapter {
   getPlatform(): MaxPlatformName | null;
   getVersion(): string | null;
   getViewport(): Promise<MaxViewport>;
+  ready(): void;
   shareInvite(payload: InviteSharePayload): Promise<boolean>;
   openMaxLink(url: string): Promise<boolean>;
   openExternalLink(url: string): Promise<boolean>;
