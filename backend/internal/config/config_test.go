@@ -21,6 +21,19 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("INVITE_ENCRYPTION_KEY_VERSION", "")
 	t.Setenv("INVITE_URL_TEMPLATE", "")
 	t.Setenv("MAX_DEEP_LINK_TEMPLATE", "")
+	t.Setenv("TICKET_PROVIDER_ALLOWLIST", "")
+}
+
+func TestLoadParsesTicketProviderAllowlist(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("TICKET_PROVIDER_ALLOWLIST", " tickets.example , *.partner.example ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(cfg.TicketProviderAllowlist, ","), "tickets.example,*.partner.example"; got != want {
+		t.Fatalf("ticket provider allowlist = %q, want %q", got, want)
+	}
 }
 
 func TestMAXConfig(t *testing.T) {
