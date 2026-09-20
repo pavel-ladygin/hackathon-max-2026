@@ -92,6 +92,19 @@ func (q *Queries) ExpireRoomForReplacement(ctx context.Context, arg ExpireRoomFo
 	return result.RowsAffected(), nil
 }
 
+const getCityTimezone = `-- name: GetCityTimezone :one
+SELECT timezone
+FROM cities
+WHERE id = $1
+`
+
+func (q *Queries) GetCityTimezone(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getCityTimezone, id)
+	var timezone string
+	err := row.Scan(&timezone)
+	return timezone, err
+}
+
 const getCreateIdempotency = `-- name: GetCreateIdempotency :one
 SELECT request_hash, response_status, response_body, expires_at
 FROM idempotency_records
@@ -247,6 +260,20 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const transitionCollectingRoomToRanking = `-- name: TransitionCollectingRoomToRanking :execrows
+UPDATE rooms
+SET state = 'ranking', version = version + 1
+WHERE id = $1 AND state = 'collecting_intents'
+`
+
+func (q *Queries) TransitionCollectingRoomToRanking(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, transitionCollectingRoomToRanking, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateRoomState = `-- name: UpdateRoomState :execrows
