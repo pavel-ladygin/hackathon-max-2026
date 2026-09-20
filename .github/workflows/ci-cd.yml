@@ -178,14 +178,14 @@ jobs:
           curl --fail --silent http://127.0.0.1:8081/ >/dev/null
           curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null
       - name: Scan application images
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 
         with:
           image-ref: ci-backend:local
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ci-frontend:local
           severity: CRITICAL,HIGH
