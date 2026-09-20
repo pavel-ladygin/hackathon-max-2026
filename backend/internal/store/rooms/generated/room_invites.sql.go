@@ -31,6 +31,30 @@ func (q *Queries) ExpireRoomInvites(ctx context.Context, arg ExpireRoomInvitesPa
 	return result.RowsAffected(), nil
 }
 
+const getRoomInviteByHash = `-- name: GetRoomInviteByHash :one
+SELECT id, room_id, token_hash, token_ciphertext, encryption_key_version, created_by, expires_at, consumed_by, consumed_at, created_at
+FROM room_invites
+WHERE token_hash = $1
+`
+
+func (q *Queries) GetRoomInviteByHash(ctx context.Context, tokenHash []byte) (RoomInvite, error) {
+	row := q.db.QueryRow(ctx, getRoomInviteByHash, tokenHash)
+	var i RoomInvite
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.TokenHash,
+		&i.TokenCiphertext,
+		&i.EncryptionKeyVersion,
+		&i.CreatedBy,
+		&i.ExpiresAt,
+		&i.ConsumedBy,
+		&i.ConsumedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertRoomInvite = `-- name: InsertRoomInvite :one
 INSERT INTO room_invites (
   id, room_id, token_hash, token_ciphertext, encryption_key_version, created_by, expires_at
@@ -73,4 +97,50 @@ func (q *Queries) InsertRoomInvite(ctx context.Context, arg InsertRoomInvitePara
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const lockRoomInviteByHash = `-- name: LockRoomInviteByHash :one
+SELECT id, room_id, token_hash, token_ciphertext, encryption_key_version, created_by, expires_at, consumed_by, consumed_at, created_at
+FROM room_invites
+WHERE token_hash = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockRoomInviteByHash(ctx context.Context, tokenHash []byte) (RoomInvite, error) {
+	row := q.db.QueryRow(ctx, lockRoomInviteByHash, tokenHash)
+	var i RoomInvite
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.TokenHash,
+		&i.TokenCiphertext,
+		&i.EncryptionKeyVersion,
+		&i.CreatedBy,
+		&i.ExpiresAt,
+		&i.ConsumedBy,
+		&i.ConsumedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const markRoomInviteConsumed = `-- name: MarkRoomInviteConsumed :execrows
+UPDATE room_invites
+SET consumed_by = COALESCE(consumed_by, $2),
+    consumed_at = COALESCE(consumed_at, $3)
+WHERE id = $1
+`
+
+type MarkRoomInviteConsumedParams struct {
+	ID         uuid.UUID
+	ConsumedBy pgtype.UUID
+	ConsumedAt pgtype.Timestamptz
+}
+
+func (q *Queries) MarkRoomInviteConsumed(ctx context.Context, arg MarkRoomInviteConsumedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoomInviteConsumed, arg.ID, arg.ConsumedBy, arg.ConsumedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
