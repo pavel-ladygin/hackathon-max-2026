@@ -9,25 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/matching"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
-	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
 )
-
-// This test implementation intentionally has no connection pool: a recorder
-// can only write through the executor provided by the room transaction.
-type transactionBehaviorRecorder struct{}
-
-var _ contracts.BehaviorRecorder = transactionBehaviorRecorder{}
-
-func (transactionBehaviorRecorder) Record(ctx context.Context, db store.DBTX, event contracts.ServerBehaviorEvent) error {
-	_, err := db.Exec(ctx, `INSERT INTO behavior_events
-		(id, user_id, origin, type, room_id, occurred_at)
-		VALUES ($1,$2,'server',$3,$4,$5)`, event.ID, event.UserID, event.Type, event.RoomID, event.OccurredAt)
-	return err
-}
 
 func TestRoomFoundationTransactionAndBehaviorAtomicity(t *testing.T) {
 	db := openTestDB(t)
@@ -57,7 +44,7 @@ func TestRoomFoundationTransactionAndBehaviorAtomicity(t *testing.T) {
 				if _, err := repo.Queries.InsertRoomMember(ctx, roomsql.InsertRoomMemberParams{RoomID: f.room, UserID: f.creator, Role: "creator"}); err != nil {
 					return err
 				}
-				if err := (transactionBehaviorRecorder{}).Record(ctx, repo.DBTX(), event); err != nil {
+				if err := (behavior.Recorder{}).Record(ctx, repo.DBTX(), event); err != nil {
 					return err
 				}
 				if !commit {

@@ -13,9 +13,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
 )
@@ -47,18 +49,11 @@ func run() error {
 		return fmt.Errorf("database unavailable")
 	}
 	defer db.Close()
-
-	preferencesService := preferences.NewService(db)
-	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
+	handler, err := newHandler(cfg, db, logger)
 	if err != nil {
 		return err
 	}
-	preferencesHandler := preferences.NewHandler(preferencesService)
-	server := httpapi.NewServer(cfg.HTTPAddr, httpapi.NewRouter(
-		readiness{db: db}, logger,
-		authService.RegisterRoutes,
-		func(r chi.Router) { preferencesHandler.RegisterRoutes(r, authService.Middleware) },
-	))
+	server := httpapi.NewServer(cfg.HTTPAddr, handler)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 	logger.Info("http server starting", "environment", cfg.AppEnv, "address", cfg.HTTPAddr)
@@ -80,6 +75,41 @@ func run() error {
 		return fmt.Errorf("graceful shutdown failed")
 	}
 	return nil
+}
+
+func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Handler, error) {
+	if len(cfg.InviteEncryptionKey) == 0 {
+		return nil, fmt.Errorf("INVITE_ENCRYPTION_KEY is required")
+	}
+	if cfg.InviteURLTemplate == "" || cfg.MAXDeepLinkTemplate == "" {
+		return nil, fmt.Errorf("INVITE_URL_TEMPLATE and MAX_DEEP_LINK_TEMPLATE are required")
+	}
+	invites, err := rooms.NewInviteCodec(cfg.InviteEncryptionKey, cfg.InviteEncryptionKeyVersion, cfg.InviteURLTemplate, cfg.MAXDeepLinkTemplate)
+	if err != nil {
+		return nil, err
+	}
+	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
+	if err != nil {
+		return nil, err
+	}
+	preferencesService := preferences.NewService(db)
+	preferencesHandler := preferences.NewHandler(preferencesService)
+	roomService, err := rooms.NewCreateService(db, behavior.Recorder{}, invites)
+	if err != nil {
+		return nil, err
+	}
+	return httpapi.NewRouter(
+		readiness{db: db},
+		logger,
+		authService.RegisterRoutes,
+		func(r chi.Router) { preferencesHandler.RegisterRoutes(r, authService.Middleware) },
+		func(r chi.Router) {
+			r.Group(func(protected chi.Router) {
+				protected.Use(authService.Middleware)
+				roomService.RegisterRoutes(protected)
+			})
+		},
+	), nil
 }
 
 type readiness struct{ db *store.Pool }

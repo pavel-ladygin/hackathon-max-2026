@@ -307,6 +307,8 @@ func newRoomFixture(t *testing.T, db *store.Pool) *roomFixture {
 		defer cancel()
 		for _, statement := range []string{
 			"DELETE FROM behavior_events WHERE room_id IN (SELECT id FROM rooms WHERE city_id=$1)",
+			"DELETE FROM idempotency_records WHERE user_id IN (SELECT id FROM users WHERE city_id=$1)",
+			"DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE city_id=$1)",
 			"DELETE FROM room_matches WHERE room_id IN (SELECT id FROM rooms WHERE city_id=$1)",
 			"DELETE FROM rooms WHERE city_id=$1",
 			"DELETE FROM events WHERE venue_id IN (SELECT id FROM venues WHERE city_id=$1)",
