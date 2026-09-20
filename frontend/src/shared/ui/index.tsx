@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ImgHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ImgHTMLAttributes, ReactNode } from "react";
 import styles from "./ui.module.css";
 
 type Tone = "primary" | "secondary" | "ghost";
@@ -51,6 +51,27 @@ export function Loading({ label = "Загружаем…" }: { label?: string })
 
 export function Empty({ title = "Здесь пока пусто", description, action }: { title?: string; description?: string; action?: ReactNode }) {
   return <div className={styles.status}><span className={styles.statusIcon} aria-hidden="true">✦</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
+}
+
+export function ErrorState({ title = "Что-то пошло не так", description, action }: { title?: string; description?: string; action?: ReactNode }) {
+  return <div className={styles.status} role="alert"><span className={styles.statusIcon} aria-hidden="true">!</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
+}
+
+export function InlineNotice({ tone = "neutral", children, className = "", ...props }: HTMLAttributes<HTMLDivElement> & { tone?: "neutral" | "danger" | "success" }) {
+  return <div className={`${styles.notice} ${styles[`notice_${tone}`]} ${className}`} role={tone === "danger" ? "alert" : "status"} {...props}>{children}</div>;
+}
+
+export function FieldError({ id, children }: { id: string; children?: ReactNode }) {
+  if (!children) return null;
+  return <span id={id} className={styles.fieldError} role="alert">{children}</span>;
+}
+
+export function DemoBadge() {
+  return <div className={styles.demoBadge} title="Данные создаются локальным OpenAPI-совместимым mock API"><span aria-hidden="true">●</span> Демо-режим</div>;
+}
+
+export function Skeleton({ className = "", label = "Загрузка" }: { className?: string; label?: string }) {
+  return <span className={`${styles.skeleton} ${className}`} role="status" aria-label={label} />;
 }
 
 export type NavItem = { id: string; label: string; icon: ReactNode };

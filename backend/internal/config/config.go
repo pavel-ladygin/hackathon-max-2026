@@ -22,6 +22,7 @@ type Config struct {
 	LogLevel                   slog.Level
 	MAXBotToken                string
 	MAXInitDataMaxAge          time.Duration
+  TrustedProxyCIDRs []net.IPNet
 	InviteEncryptionKey        []byte
 	InviteEncryptionKeyVersion int16
 	InviteURLTemplate          string
@@ -57,6 +58,11 @@ func Load() (Config, error) {
 		}
 		cfg.InviteEncryptionKeyVersion = int16(version)
 	}
+	trustedProxyCIDRs, err := parseCIDRs(os.Getenv("TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.TrustedProxyCIDRs = trustedProxyCIDRs
 	logLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
 	if value := strings.TrimSpace(os.Getenv("MAX_INIT_DATA_MAX_AGE")); value != "" {
 		age, err := time.ParseDuration(value)
@@ -92,4 +98,20 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("LOG_LEVEL is invalid")
 	}
 	return cfg, nil
+}
+
+func parseCIDRs(raw string) ([]net.IPNet, error) {
+	var result []net.IPNet
+	for _, value := range strings.Split(raw, ",") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS is invalid")
+		}
+		result = append(result, *network)
+	}
+	return result, nil
 }

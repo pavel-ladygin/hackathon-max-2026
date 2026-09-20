@@ -1,0 +1,45 @@
+name: Rollback production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Published commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Deploy published SHA
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Validate SHA
+        env:
+          IMAGE_SHA: ${{ inputs.image_sha }}
+        run: |
+          [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - name: Deploy selected SHA to VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          IMAGE_SHA: ${{ inputs.image_sha }}
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_HOST_KEY"
+          key_file="$RUNNER_TEMP/deploy_key"
+          known_hosts="$RUNNER_TEMP/deploy_known_hosts"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
+          printf '%s\n' "$DEPLOY_HOST_KEY" > "$known_hosts"
+          ssh -i "$key_file" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" "$DEPLOY_USER@$DEPLOY_HOST" "/opt/worknet/deploy.sh '$IMAGE_SHA'"

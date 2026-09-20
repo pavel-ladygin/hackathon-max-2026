@@ -18,6 +18,7 @@ const (
 	readTimeout       = 15 * time.Second
 	writeTimeout      = 15 * time.Second
 	idleTimeout       = 60 * time.Second
+	maxHeaderBytes    = 32 * 1024
 )
 
 // Readiness checks the dependencies required to accept traffic.
@@ -45,6 +46,7 @@ func NewServer(addr string, handler http.Handler) *http.Server {
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
 	}
 }
 

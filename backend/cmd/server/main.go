@@ -88,7 +88,7 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	if err != nil {
 		return nil, err
 	}
-	authService, err := auth.NewService(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge)
+	authService, err := auth.NewServiceWithTrustedProxyCIDRs(db, cfg.MAXBotToken, cfg.MAXInitDataMaxAge, cfg.TrustedProxyCIDRs)
 	if err != nil {
 		return nil, err
 	}

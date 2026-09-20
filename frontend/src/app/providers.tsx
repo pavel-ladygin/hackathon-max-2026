@@ -20,6 +20,8 @@ function MockSync() {
       void client.invalidateQueries({ queryKey: ['room'] })
       void client.invalidateQueries({ queryKey: ['bootstrap'] })
       void client.invalidateQueries({ queryKey: ['home-feed'] })
+      void client.invalidateQueries({ queryKey: ['events'] })
+      void client.invalidateQueries({ queryKey: ['saved-events'] })
     })
   }, [client])
   return null
