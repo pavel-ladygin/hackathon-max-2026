@@ -12,4 +12,8 @@ var (
 	ErrInviteExpired       = errors.New("invite expired")
 	ErrRoomFull            = errors.New("room full")
 	ErrRoomNotFound        = errors.New("room not found")
+	ErrIntentLocked        = errors.New("intent locked")
+	ErrAlreadyMatched      = errors.New("already matched")
+	ErrRoundLimitReached   = errors.New("round limit reached")
+	ErrPastIntentDate      = errors.New("intent date is in the past")
 )
