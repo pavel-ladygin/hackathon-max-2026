@@ -42,7 +42,11 @@ func NewRepository(db *store.Pool) *Repository {
 // CheckForRoomVote reads the event's current catalog facts directly from
 // PostgreSQL. A missing event is represented by Exists=false.
 func (r *Repository) CheckForRoomVote(ctx context.Context, eventID uuid.UUID) (contracts.Availability, error) {
-	event, err := platform.New(r.db).GetEventAvailability(ctx, eventID)
+	dbtx := store.DBTXFromContext(ctx)
+	if dbtx == nil {
+		dbtx = r.db
+	}
+	event, err := platform.New(dbtx).GetEventAvailability(ctx, eventID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contracts.Availability{}, nil
 	}

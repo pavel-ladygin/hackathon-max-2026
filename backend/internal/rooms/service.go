@@ -14,10 +14,23 @@ const roomBuildTxAttempts = 3
 
 // Service owns room transaction boundaries and the create-room operation.
 type Service struct {
-	pool     *store.Pool
-	recorder contracts.BehaviorRecorder
-	invites  *InviteCodec
-	builder  contracts.PoolBuilder
+	pool         *store.Pool
+	recorder     contracts.BehaviorRecorder
+	invites      *InviteCodec
+	builder      contracts.PoolBuilder
+	availability contracts.EventAvailability
+	eventsCursor *RoomEventsCursorCodec
+}
+
+// EnableRoomEvents installs the read-only B7 dependencies on a fully
+// constructed room service.
+func (s *Service) EnableRoomEvents(availability contracts.EventAvailability, codec *RoomEventsCursorCodec) error {
+	if availability == nil || codec == nil {
+		return errors.New("room events dependencies are required")
+	}
+	s.availability = availability
+	s.eventsCursor = codec
+	return nil
 }
 
 func NewService(pool *store.Pool, builders ...contracts.PoolBuilder) *Service {

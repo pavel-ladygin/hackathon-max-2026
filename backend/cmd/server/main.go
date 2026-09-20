@@ -117,6 +117,13 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	if err != nil {
 		return nil, err
 	}
+	roomEventsCursor, err := rooms.NewRoomEventsCursorCodec(cfg.InviteEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := roomService.EnableRoomEvents(catalog.NewRepository(db), roomEventsCursor); err != nil {
+		return nil, err
+	}
 	return httpapi.NewRouter(
 		readiness{db: db},
 		logger,

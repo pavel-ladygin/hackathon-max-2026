@@ -1,5 +1,5 @@
 -- name: GetUserPreferences :one
-SELECT c.id, p.budget_max_minor, p.usual_day_types, p.usual_time_slots,
+SELECT c.id AS city_id, p.budget_max_minor, p.usual_day_types, p.usual_time_slots,
        p.version, p.updated_at
 FROM users AS u
 JOIN user_preferences AS p ON p.user_id = u.id
@@ -17,7 +17,7 @@ SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1);
 
 -- name: CompleteUserOnboarding :one
 UPDATE users
-SET city_id = $2,
+SET city_id = sqlc.arg('city_id')::uuid,
     onboarding_state = 'complete',
     updated_at = now()
 WHERE id = $1

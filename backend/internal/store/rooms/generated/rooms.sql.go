@@ -12,20 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const bumpRoomVersion = `-- name: BumpRoomVersion :execrows
-UPDATE rooms
-SET version = version + 1
-WHERE id = $1
-`
-
-func (q *Queries) BumpRoomVersion(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, bumpRoomVersion, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const activateRoomPool = `-- name: ActivateRoomPool :execrows
 UPDATE rooms
 SET active_pool_version = $2, state = $3, version = version + 1
@@ -40,6 +26,20 @@ type ActivateRoomPoolParams struct {
 
 func (q *Queries) ActivateRoomPool(ctx context.Context, arg ActivateRoomPoolParams) (int64, error) {
 	result, err := q.db.Exec(ctx, activateRoomPool, arg.ID, arg.ActivePoolVersion, arg.State)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const bumpRoomVersion = `-- name: BumpRoomVersion :execrows
+UPDATE rooms
+SET version = version + 1
+WHERE id = $1
+`
+
+func (q *Queries) BumpRoomVersion(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, bumpRoomVersion, id)
 	if err != nil {
 		return 0, err
 	}

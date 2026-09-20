@@ -31,25 +31,6 @@ func (q *Queries) AreBothReady(ctx context.Context, arg AreBothReadyParams) (pgt
 	return column_1, err
 }
 
-const resetRoundPoolFinished = `-- name: ResetRoundPoolFinished :execrows
-UPDATE room_member_round_state
-SET pool_finished = false, finished_at = NULL
-WHERE room_id = $1 AND round_no = $2
-`
-
-type ResetRoundPoolFinishedParams struct {
-	RoomID  uuid.UUID
-	RoundNo int16
-}
-
-func (q *Queries) ResetRoundPoolFinished(ctx context.Context, arg ResetRoundPoolFinishedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, resetRoundPoolFinished, arg.RoomID, arg.RoundNo)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const clearRoomIntentCoordinates = `-- name: ClearRoomIntentCoordinates :execrows
 UPDATE room_intents
 SET location_lat = NULL, location_lng = NULL
@@ -166,6 +147,25 @@ func (q *Queries) InsertRoomRoundState(ctx context.Context, arg InsertRoomRoundS
 		&i.FinishedAt,
 	)
 	return i, err
+}
+
+const resetRoundPoolFinished = `-- name: ResetRoundPoolFinished :execrows
+UPDATE room_member_round_state
+SET pool_finished = false, finished_at = NULL
+WHERE room_id = $1 AND round_no = $2
+`
+
+type ResetRoundPoolFinishedParams struct {
+	RoomID  uuid.UUID
+	RoundNo int16
+}
+
+func (q *Queries) ResetRoundPoolFinished(ctx context.Context, arg ResetRoundPoolFinishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetRoundPoolFinished, arg.RoomID, arg.RoundNo)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setRoundReady = `-- name: SetRoundReady :one
