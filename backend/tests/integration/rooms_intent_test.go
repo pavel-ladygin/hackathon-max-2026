@@ -352,7 +352,7 @@ func TestReplaceIntentHTTPStrictDecodeAndTransitionResponse(t *testing.T) {
 	}
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/rooms/%s/intent/me", f.room), strings.NewReader(validJSON)))
-	if res.Code != http.StatusAccepted || res.Header().Get("Retry-After") != "1" || res.Header().Get("Cache-Control") != "no-store" {
+	if res.Code != http.StatusOK || res.Header().Get("Retry-After") != "" || res.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("transition response status=%d headers=%v body=%s", res.Code, res.Header(), res.Body.String())
 	}
 }

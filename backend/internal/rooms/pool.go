@@ -111,17 +111,27 @@ func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room room
 		if _, err := repo.Queries.ActivateRoomPool(ctx, roomsql.ActivateRoomPoolParams{ID: room.ID, ActivePoolVersion: input.PoolVersion, State: string(RoomStateExhausted)}); err != nil {
 			return err
 		}
+		// A zero-candidate pool exhausts both participants immediately.  Mark
+		// both round states in the caller's transaction so the snapshot exposed
+		// after this build is consistent for either participant.
+		for _, state := range activeStates {
+			if _, err := repo.Queries.MarkPoolFinished(ctx, roomsql.MarkPoolFinishedParams{
+				RoomID: room.ID, UserID: state.UserID, RoundNo: room.RoundNo,
+			}); err != nil {
+				return err
+			}
+		}
 		// A zero-candidate pool exhausts both participants immediately.  The
 		// final round has no restart path, so apply the same terminal cleanup as
 		// the voting exhaustion path.
 		if err := s.finalizeExhaustedRoom(ctx, repo, room); err != nil {
 			return err
 		}
+		// Do not reset round completion markers here: zero candidates means the
+		// pool is already exhausted for both members.
+		return nil
 	}
 	if _, err := repo.Queries.ResetRoundPoolFinished(ctx, roomsql.ResetRoundPoolFinishedParams{RoomID: room.ID, RoundNo: room.RoundNo}); err != nil {
-		return err
-	}
-	if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
 		return err
 	}
 	return nil

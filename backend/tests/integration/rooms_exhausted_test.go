@@ -74,6 +74,50 @@ func TestB10UnavailableEventsPersistPoolFinished(t *testing.T) {
 	}
 }
 
+func TestB10Round1ZeroCandidatePoolFinishesBothAndPreservesRestartData(t *testing.T) {
+	db := openTestDB(t)
+	f := newRoomFixture(t, db)
+	f.addTwoMembers(t)
+	ctx := context.Background()
+	for _, user := range []uuid.UUID{f.creator, f.member} {
+		if _, err := roomsql.New(db).InsertRoomRoundState(ctx, roomsql.InsertRoomRoundStateParams{RoomID: f.room, UserID: user, RoundNo: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	builder := &poolBuilderFake{result: contracts.BuildResult{
+		RankerVersion: "b10-round1-zero", InputFingerprint: "b10-round1-zero",
+		Diagnostics: contracts.ExhaustionDiagnostics{Reasons: []contracts.ExhaustionReason{{
+			Code: "catalog_shortage", Text: "Недостаточно подходящих событий в каталоге.",
+		}}},
+	}}
+	svc := poolService(t, db, builder)
+	snapshot, transitioned, err := submitBothIntentsSnapshots(t, svc, f)
+	if err != nil || !transitioned {
+		t.Fatalf("round1 zero-candidate build transitioned=%v err=%v", transitioned, err)
+	}
+	pool, err := snapshot.Pool.Get()
+	if err != nil || !pool.RoomExhausted || !pool.MyPoolFinished {
+		t.Fatalf("round1 zero-candidate snapshot pool=%+v err=%v; want exhausted and finished", pool, err)
+	}
+	var finished int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND round_no=1 AND pool_finished", f.room).Scan(&finished); err != nil {
+		t.Fatal(err)
+	}
+	if finished != 2 {
+		t.Fatalf("round1 finished states=%d; want 2", finished)
+	}
+	var active, coordinates int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1 AND is_active", f.room).Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_intents WHERE room_id=$1 AND (location_lat IS NOT NULL OR location_lng IS NOT NULL)", f.room).Scan(&coordinates); err != nil {
+		t.Fatal(err)
+	}
+	if active != 2 || coordinates != 2 {
+		t.Fatalf("round1 restart data active_members=%d coordinates=%d; want 2/2", active, coordinates)
+	}
+}
+
 func TestB10CursorAtEndDoesNotFinishPool(t *testing.T) {
 	db := openTestDB(t)
 	f, _, events := seedB8VotingPool(t, db, 2)
@@ -176,8 +220,20 @@ func TestB10Round3ZeroCandidatePoolTerminalCleanup(t *testing.T) {
 		}}},
 	}}
 	svc := poolService(t, db, builder)
-	if transitioned, err := submitBothIntents(t, svc, f); err != nil || !transitioned {
+	snapshot, transitioned, err := submitBothIntentsSnapshots(t, svc, f)
+	if err != nil || !transitioned {
 		t.Fatalf("round3 zero-candidate build transitioned=%v err=%v", transitioned, err)
+	}
+	poolSummary, err := snapshot.Pool.Get()
+	if err != nil || !poolSummary.RoomExhausted || !poolSummary.MyPoolFinished {
+		t.Fatalf("round3 zero-candidate snapshot pool=%+v err=%v; want exhausted and finished", poolSummary, err)
+	}
+	var finished int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND round_no=3 AND pool_finished", f.room).Scan(&finished); err != nil {
+		t.Fatal(err)
+	}
+	if finished != 2 {
+		t.Fatalf("round3 finished states=%d; want 2", finished)
 	}
 	var state string
 	if err := db.QueryRow(ctx, "SELECT state FROM rooms WHERE id=$1", f.room).Scan(&state); err != nil || state != "exhausted" {

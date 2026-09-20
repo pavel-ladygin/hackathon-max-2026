@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/oapi-codegen/nullable"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
@@ -308,6 +309,60 @@ func TestB6BuildInputPrivacyVersionRoundCityAndPreviousIDs(t *testing.T) {
 	for user, intent := range intentsByUser {
 		if intent.FreeText == nil || *intent.FreeText != "private preference" {
 			t.Fatalf("private intent for %s missing: %+v", user, intent)
+		}
+	}
+}
+
+func TestB6ReconnectAfterNormalPoolRestoresOwnIntentWithoutPeerPrivateFields(t *testing.T) {
+	db := openTestDB(t)
+	f := newRoomFixture(t, db)
+	f.addTwoMembers(t)
+	ctx := context.Background()
+	for _, user := range []uuid.UUID{f.creator, f.member} {
+		if _, err := db.Exec(ctx, "INSERT INTO room_member_round_state(room_id,user_id,round_no) VALUES($1,$2,1)", f.room, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	builder := &poolBuilderFake{result: contracts.BuildResult{
+		RankerVersion: "reconnect-test", InputFingerprint: "reconnect-test",
+		Candidates: []contracts.Candidate{{EventID: f.newEvent(t)}},
+	}}
+	svc := poolService(t, db, builder)
+	creatorIntent := validIntentRequest()
+	creatorIntent.FreeText = nullable.NewNullableWithValue("creator-private")
+	memberIntent := validIntentRequest()
+	memberIntent.Location = nullable.NewNullableWithValue(api.GeoPoint{Lat: 59.93, Lng: 30.31})
+	memberIntent.RadiusM = nullable.NewNullableWithValue(4200)
+	memberIntent.FreeText = nullable.NewNullableWithValue("peer-private")
+	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, creatorIntent); err != nil {
+		t.Fatal(err)
+	}
+	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.member}, f.room, memberIntent); err != nil || !transitioned {
+		t.Fatalf("second intent transitioned=%v err=%v", transitioned, err)
+	}
+	snapshot, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := snapshot.MyIntent.Get()
+	if err != nil {
+		t.Fatalf("own intent missing after reconnect: %v", err)
+	}
+	location, err := intent.Location.Get()
+	if err != nil || location.Lat != 55.75 || location.Lng != 37.62 {
+		t.Fatalf("own location after reconnect=%+v err=%v", location, err)
+	}
+	radius, err := intent.RadiusM.Get()
+	if err != nil || radius != 1500 {
+		t.Fatalf("own radius after reconnect=%d err=%v", radius, err)
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"peer-private", "4200", "59.93", "30.31"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Errorf("reconnected snapshot leaks peer private value %q: %s", forbidden, raw)
 		}
 	}
 }
