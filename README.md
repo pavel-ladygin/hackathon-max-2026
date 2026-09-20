@@ -218,10 +218,20 @@ backend ещё реализуются. Публичный backend и readiness �
   развёртывание, публичные smoke-проверки и откат образов приложения.
 
 Создайте `/opt/worknet/.env.production` непосредственно на сервере с правами `0600`.
-Файл должен содержать как минимум `POSTGRES_PASSWORD` и `MAX_BOT_TOKEN`; также можно
-задать `POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`, `MAX_INIT_DATA_MAX_AGE` и
-`TRUSTED_PROXY_CIDRS`. Никогда не коммитьте этот файл. Авторизуйте Docker в GHCR
-токеном, ограниченным правом `read:packages`.
+Файл должен содержать как минимум `POSTGRES_PASSWORD`, `MAX_BOT_TOKEN`,
+`INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` и `MAX_DEEP_LINK_TEMPLATE`.
+Сгенерируйте стабильный ключ приглашений один раз командой `openssl rand -base64 32`;
+оба URL-шаблона должны содержать `{token}` ровно один раз. Для текущего продакшена:
+
+```env
+INVITE_ENCRYPTION_KEY_VERSION=1
+INVITE_URL_TEMPLATE=https://worknet.team/join/{token}
+MAX_DEEP_LINK_TEMPLATE=https://max.ru/t255_hakaton_max_bot?startapp={token}
+```
+
+Также можно задать `POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`,
+`MAX_INIT_DATA_MAX_AGE` и `TRUSTED_PROXY_CIDRS`. Никогда не коммитьте этот файл.
+Авторизуйте Docker в GHCR токеном, ограниченным правом `read:packages`.
 
 GitHub Actions запускает проверки для запросов на слияние и отправок в `main` или `dev`.
 Только успешная отправка в `main` публикует образы с SHA коммита и вызывает скрипт

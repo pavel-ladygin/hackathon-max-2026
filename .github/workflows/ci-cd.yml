@@ -134,6 +134,7 @@ jobs:
 
   docker:
     name: Docker build and smoke test
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-24.04
     needs: [backend, contract, generated-contracts, frontend]
     permissions:
@@ -142,8 +143,8 @@ jobs:
       MAX_BOT_TOKEN: ci-dummy-token
       INVITE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       INVITE_ENCRYPTION_KEY_VERSION: "1"
-      INVITE_URL_TEMPLATE: https://worknet.team/invite?token=%s
-      MAX_DEEP_LINK_TEMPLATE: https://max.ru/?startapp=%s
+      INVITE_URL_TEMPLATE: https://worknet.team/join/{token}
+      MAX_DEEP_LINK_TEMPLATE: https://max.ru/t255_hakaton_max_bot?startapp={token}
       POSTGRES_PASSWORD: ci-only-password
       BACKEND_IMAGE: ci-backend:local
       FRONTEND_IMAGE: ci-frontend:local
@@ -214,7 +215,7 @@ jobs:
     name: Publish images and deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    needs: [backend, contract, generated-contracts, frontend, docker, secrets]
+    needs: [backend, contract, generated-contracts, frontend, secrets]
     permissions:
       contents: read
       packages: write
