@@ -43,6 +43,10 @@ services:
       <<: *backend-environment
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?MAX_BOT_TOKEN is required; set it in .env}
       MAX_INIT_DATA_MAX_AGE: ${MAX_INIT_DATA_MAX_AGE:-1h}
+      INVITE_ENCRYPTION_KEY: ${INVITE_ENCRYPTION_KEY:?INVITE_ENCRYPTION_KEY is required; set it in .env}
+      INVITE_ENCRYPTION_KEY_VERSION: ${INVITE_ENCRYPTION_KEY_VERSION:-1}
+      INVITE_URL_TEMPLATE: ${INVITE_URL_TEMPLATE:?INVITE_URL_TEMPLATE is required; set it in .env}
+      MAX_DEEP_LINK_TEMPLATE: ${MAX_DEEP_LINK_TEMPLATE:?MAX_DEEP_LINK_TEMPLATE is required; set it in .env}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
     depends_on:

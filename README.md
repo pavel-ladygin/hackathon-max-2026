@@ -51,6 +51,7 @@ export DATABASE_URL='postgres://max_together:local-dev-only@localhost:5432/max_t
 export LOG_LEVEL=info
 # Перед запуском сервера безопасно задайте MAX_BOT_TOKEN в этой оболочке.
 export MAX_INIT_DATA_MAX_AGE=1h
+export INVITE_ENCRYPTION_KEY_VERSION=1
 cd backend
 go run ./cmd/migrate
 go run ./cmd/server

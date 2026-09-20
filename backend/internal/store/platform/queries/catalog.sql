@@ -22,6 +22,11 @@ JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
 ORDER BY e.starts_at, e.id;
 
+-- name: GetEventAvailability :one
+SELECT status, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+FROM events
+WHERE id = $1;
+
 -- name: ListCatalogCategories :many
 SELECT ec.*
 FROM event_categories AS ec

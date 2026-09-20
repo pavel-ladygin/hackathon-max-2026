@@ -41,6 +41,19 @@ type RoomIntent struct {
 	SubmittedAt    pgtype.Timestamptz
 }
 
+type RoomInvite struct {
+	ID                   uuid.UUID
+	RoomID               uuid.UUID
+	TokenHash            []byte
+	TokenCiphertext      []byte
+	EncryptionKeyVersion int16
+	CreatedBy            uuid.UUID
+	ExpiresAt            pgtype.Timestamptz
+	ConsumedBy           pgtype.UUID
+	ConsumedAt           pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+}
+
 type RoomMatch struct {
 	ID        uuid.UUID
 	RoomID    uuid.UUID

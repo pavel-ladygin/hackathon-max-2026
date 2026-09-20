@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
@@ -20,8 +21,13 @@ import (
 const SessionTTL = 24 * time.Hour
 
 type repository interface {
-	bootstrap(context.Context, identity, []byte, time.Time) (platform.User, error)
+	bootstrap(context.Context, identity, []byte, time.Time) (bootstrapProfile, error)
 	session(context.Context, []byte) (platform.GetAuthSessionRow, error)
+}
+
+type bootstrapProfile struct {
+	user        platform.User
+	preferences *preferences.Value
 }
 
 // Service validates MAX credentials and resolves opaque sessions to internal principals.
@@ -48,8 +54,9 @@ func NewServiceWithTrustedProxyCIDRs(db *store.Pool, botToken string, maxAge tim
 }
 
 type bootstrapResult struct {
-	token string
-	user  platform.User
+	token       string
+	user        platform.User
+	preferences *preferences.Value
 }
 
 func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (bootstrapResult, error) {
@@ -66,11 +73,11 @@ func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (boot
 	}
 	token := base64.RawURLEncoding.EncodeToString(random[:])
 	hash := sha256.Sum256([]byte(token))
-	user, err := s.repo.bootstrap(ctx, claims, hash[:], s.now().Add(SessionTTL))
+	profile, err := s.repo.bootstrap(ctx, claims, hash[:], s.now().Add(SessionTTL))
 	if err != nil {
 		return bootstrapResult{}, err
 	}
-	return bootstrapResult{token: token, user: user}, nil
+	return bootstrapResult{token: token, user: profile.user, preferences: profile.preferences}, nil
 }
 
 // Authenticate accepts only application tokens and never returns MAX identity.
@@ -101,21 +108,35 @@ func (s *Service) Authenticate(ctx context.Context, token string) (contracts.Pri
 
 type postgresRepository struct{ db *store.Pool }
 
-func (r postgresRepository) bootstrap(ctx context.Context, claims identity, hash []byte, expires time.Time) (platform.User, error) {
-	var user platform.User
+func (r postgresRepository) bootstrap(ctx context.Context, claims identity, hash []byte, expires time.Time) (bootstrapProfile, error) {
+	var profile bootstrapProfile
 	err := r.db.InTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := platform.New(tx)
 		var err error
-		user, err = q.UpsertMAXUser(ctx, platform.UpsertMAXUserParams{
+		profile.user, err = q.UpsertMAXUser(ctx, platform.UpsertMAXUserParams{
 			ID: uuid.New(), MaxUserID: claims.maxUserID, DisplayName: claims.displayName,
 			AvatarUrl: pgtype.Text{String: claims.avatarURL, Valid: claims.avatarURL != ""}, Locale: claims.locale,
 		})
 		if err != nil {
 			return err
 		}
-		return q.CreateAuthSession(ctx, platform.CreateAuthSessionParams{ID: uuid.New(), UserID: user.ID, TokenHash: hash, ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true}})
+		preferenceRow, err := q.GetUserPreferences(ctx, profile.user.ID)
+		if err == nil {
+			categories, err := q.ListUserPreferenceCategories(ctx, profile.user.ID)
+			if err != nil {
+				return err
+			}
+			profile.preferences = &preferences.Value{
+				CityID: preferenceRow.CityID, InterestSlugs: categories, BudgetMaxMinor: int(preferenceRow.BudgetMaxMinor),
+				UsualDayTypes: preferenceRow.UsualDayTypes, UsualTimeSlots: preferenceRow.UsualTimeSlots,
+				Version: int(preferenceRow.Version), UpdatedAt: preferenceRow.UpdatedAt.Time,
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return q.CreateAuthSession(ctx, platform.CreateAuthSessionParams{ID: uuid.New(), UserID: profile.user.ID, TokenHash: hash, ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true}})
 	})
-	return user, err
+	return profile, err
 }
 
 func (r postgresRepository) session(ctx context.Context, hash []byte) (platform.GetAuthSessionRow, error) {

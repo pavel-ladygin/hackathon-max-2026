@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,23 +16,47 @@ import (
 
 // Config contains the configuration required to start a backend process.
 type Config struct {
-	AppEnv            string
-	HTTPAddr          string
-	DatabaseURL       string
-	LogLevel          slog.Level
-	MAXBotToken       string
-	MAXInitDataMaxAge time.Duration
-	TrustedProxyCIDRs []net.IPNet
+	AppEnv                     string
+	HTTPAddr                   string
+	DatabaseURL                string
+	LogLevel                   slog.Level
+	MAXBotToken                string
+	MAXInitDataMaxAge          time.Duration
+  TrustedProxyCIDRs []net.IPNet
+	InviteEncryptionKey        []byte
+	InviteEncryptionKeyVersion int16
+	InviteURLTemplate          string
+	MAXDeepLinkTemplate        string
 }
 
 // Load reads and validates all required environment variables.
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:            strings.TrimSpace(os.Getenv("APP_ENV")),
-		HTTPAddr:          strings.TrimSpace(os.Getenv("HTTP_ADDR")),
-		DatabaseURL:       strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		MAXBotToken:       strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
-		MAXInitDataMaxAge: time.Hour,
+		AppEnv:                     strings.TrimSpace(os.Getenv("APP_ENV")),
+		HTTPAddr:                   strings.TrimSpace(os.Getenv("HTTP_ADDR")),
+		DatabaseURL:                strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		MAXBotToken:                strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
+		MAXInitDataMaxAge:          time.Hour,
+		InviteEncryptionKeyVersion: 1,
+		InviteURLTemplate:          strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
+		MAXDeepLinkTemplate:        strings.TrimSpace(os.Getenv("MAX_DEEP_LINK_TEMPLATE")),
+	}
+	// Migration and seed commands do not need invite credentials. The server
+	// requires them when constructing its routes; malformed provided values
+	// always fail without including secret values in errors.
+	if encoded := strings.TrimSpace(os.Getenv("INVITE_ENCRYPTION_KEY")); encoded != "" {
+		key, err := base64.StdEncoding.Strict().DecodeString(encoded)
+		if err != nil || len(key) != 32 {
+			return Config{}, fmt.Errorf("INVITE_ENCRYPTION_KEY must be base64 encoding of 32 bytes")
+		}
+		cfg.InviteEncryptionKey = key
+	}
+	if value := strings.TrimSpace(os.Getenv("INVITE_ENCRYPTION_KEY_VERSION")); value != "" {
+		version, err := strconv.ParseInt(value, 10, 16)
+		if err != nil || version < 1 {
+			return Config{}, fmt.Errorf("INVITE_ENCRYPTION_KEY_VERSION is invalid")
+		}
+		cfg.InviteEncryptionKeyVersion = int16(version)
 	}
 	trustedProxyCIDRs, err := parseCIDRs(os.Getenv("TRUSTED_PROXY_CIDRS"))
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 )
 
 var errInvalidRequest = errors.New("invalid bootstrap request")
@@ -68,7 +69,29 @@ func (s *Service) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		Preferences:   nullable.NewNullNullable[api.PreferencesResponse](),
 		InviteContext: nullable.NewNullNullable[api.InviteContext](),
 	}
+	if result.preferences != nil {
+		response.Preferences = nullable.NewNullableWithValue(preferencesResponse(*result.preferences))
+	}
 	httpapi.WriteJSON(w, http.StatusOK, response)
+}
+
+func preferencesResponse(value preferences.Value) api.PreferencesResponse {
+	interestSlugs := make([]api.CategorySlug, len(value.InterestSlugs))
+	for i, slug := range value.InterestSlugs {
+		interestSlugs[i] = api.CategorySlug(slug)
+	}
+	dayTypes := make([]api.DayType, len(value.UsualDayTypes))
+	for i, dayType := range value.UsualDayTypes {
+		dayTypes[i] = api.DayType(dayType)
+	}
+	timeSlots := make([]api.TimeSlot, len(value.UsualTimeSlots))
+	for i, timeSlot := range value.UsualTimeSlots {
+		timeSlots[i] = api.TimeSlot(timeSlot)
+	}
+	return api.PreferencesResponse{
+		CityId: value.CityID, InterestSlugs: interestSlugs, BudgetMaxMinor: value.BudgetMaxMinor,
+		UsualDayTypes: dayTypes, UsualTimeSlots: timeSlots, Version: value.Version, UpdatedAt: value.UpdatedAt,
+	}
 }
 
 // Middleware protects feature routes using the foundation's single Principal/context contract.

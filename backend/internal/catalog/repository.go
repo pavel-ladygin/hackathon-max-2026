@@ -3,9 +3,11 @@ package catalog
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
@@ -30,9 +32,47 @@ type Repository struct {
 	db *store.Pool
 }
 
+var _ contracts.EventAvailability = (*Repository)(nil)
+
 // NewRepository creates a catalog repository backed by db.
 func NewRepository(db *store.Pool) *Repository {
 	return &Repository{db: db}
+}
+
+// CheckForRoomVote reads the event's current catalog facts directly from
+// PostgreSQL. A missing event is represented by Exists=false.
+func (r *Repository) CheckForRoomVote(ctx context.Context, eventID uuid.UUID) (contracts.Availability, error) {
+	event, err := platform.New(r.db).GetEventAvailability(ctx, eventID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contracts.Availability{}, nil
+	}
+	if err != nil {
+		return contracts.Availability{}, err
+	}
+
+	return availabilityFromRow(event), nil
+}
+
+func availabilityFromRow(event platform.GetEventAvailabilityRow) contracts.Availability {
+	availability := contracts.Availability{
+		Exists:          true,
+		Status:          event.Status,
+		Currency:        event.Currency,
+		TicketAvailable: event.TicketAvailable,
+	}
+	if event.PriceFromMinor.Valid {
+		price := event.PriceFromMinor.Int32
+		availability.PriceFromMinor = &price
+	}
+	if event.PriceToMinor.Valid {
+		price := event.PriceToMinor.Int32
+		availability.PriceToMinor = &price
+	}
+	if event.TicketUrl.Valid {
+		url := event.TicketUrl.String
+		availability.TicketURL = &url
+	}
+	return availability
 }
 
 // LoadCity reads a city catalog from one repeatable-read, read-only transaction.
