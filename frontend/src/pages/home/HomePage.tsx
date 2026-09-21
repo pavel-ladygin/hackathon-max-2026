@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useHomeFeed } from '../../features/discovery/queries'
 import type { EventCard as EventCardModel } from '../../shared/api/types'
+import { eventCategoryLabel, eventImage } from '../../shared/lib/events'
 import { BottomNav, Button, Empty, EventCard, Loading, PageContent, PageShell } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
@@ -21,22 +22,22 @@ export function HomePage() {
   const activeRoom = feed.data.activeRoom
 
   return (
-    <PageShell>
+    <PageShell withBottomNav>
       <PageContent>
         <header className={styles.heroHeader}>
           <div><span className={styles.eyebrow}>Ваш город</span><h3>Москва</h3></div>
           <button className={styles.profileButton} aria-label="Настройки предпочтений" onClick={() => navigate('/preferences')}>{bootstrap.data?.user.displayName.slice(0, 1) ?? 'И'}</button>
         </header>
-        {activeRoom ? <section className={styles.section}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>АКТИВНАЯ КОМНАТА</p><h2>{activeRoom.name}</h2></div><Button onClick={() => navigate(`/rooms/${activeRoom.id}/waiting`)}>Продолжить</Button></div><p className={styles.subtitle}>Вернитесь к совместному выбору, не теряя прогресс.</p></section> : <section className={styles.section}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ</p><h2>Выберите событие вдвоём</h2></div><Button onClick={() => navigate('/rooms/new')}>Создать комнату</Button></div></section>}
+        {activeRoom ? <section className={styles.section}><div className={`${styles.sectionHead} ${styles.homeAction}`}><div><p className={styles.eyebrow}>АКТИВНАЯ КОМНАТА</p><h2>{activeRoom.name}</h2></div><Button onClick={() => navigate(`/rooms/${activeRoom.id}/waiting`)}>Продолжить</Button></div><p className={styles.subtitle}>Вернитесь к совместному выбору, не теряя прогресс.</p></section> : <section className={styles.section}><div className={`${styles.sectionHead} ${styles.homeAction}`}><div><p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ</p><h2>Выберите событие вдвоём</h2></div><Button onClick={() => navigate('/rooms/new')}>Создать комнату</Button></div></section>}
         {hero ? (
           <button className={styles.hero} onClick={() => navigate(`/events/${hero.id}`)}>
-            <img className={styles.heroImage} src={hero.imageUrl ?? '/events/concert-singer.png'} alt="" />
+            <img className={styles.heroImage} src={eventImage(hero.imageUrl, hero.category_slug)} alt="" />
             <span className={styles.heroCopy}><span className={styles.eyebrow}>ПОПУЛЯРНОЕ СОБЫТИЕ</span><strong>{hero.title}</strong><span>{hero.date_label} · {hero.venue_name}</span><b>{hero.price_label}</b></span>
           </button>
         ) : null}
         <div className={styles.sectionHead}><h2>Для вас</h2><span className={styles.eyebrow}>{allEvents.length} событий</span></div>
         <div className={styles.eventGrid}>
-          {allEvents.slice(1).map((event) => <EventCard key={event.id} event={{ id: event.id, title: event.title, image: event.imageUrl ?? '/events/concert-singer.png', eyebrow: `${categoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} />)}
+          {allEvents.slice(1).map((event) => <EventCard key={event.id} event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} />)}
         </div>
         <BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: '⌂' }, { id: 'catalog', label: 'Афиша', icon: '⌕' }, { id: 'saved', label: 'Моё', icon: '♡' }]} onChange={(id) => id === 'catalog' ? navigate('/events') : id === 'saved' ? navigate('/saved') : navigate('/')} />
       </PageContent>
@@ -46,8 +47,4 @@ export function HomePage() {
 
 function uniqueEvents(events: EventCardModel[]) {
   return [...new Map(events.map((event) => [event.id, event])).values()]
-}
-
-function categoryLabel(category: string) {
-  return ({ concerts: 'Концерт', cinema: 'Кино', theatre: 'Театр', standup: 'Стендап', exhibitions: 'Выставка', food: 'Еда' } as Record<string, string>)[category] ?? 'Событие'
 }

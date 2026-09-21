@@ -29,8 +29,8 @@ export function EventCard({ event, compact = false, onClick, className = "" }: {
   return onClick ? <button type="button" className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`} onClick={onClick}>{content}</button> : <article className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`}>{content}</article>;
 }
 
-export function PageShell({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <main className={`${styles.pageShell} ${className}`}>{children}</main>;
+export function PageShell({ children, className = "", withBottomNav = false }: { children: ReactNode; className?: string; withBottomNav?: boolean }) {
+  return <main className={`${styles.pageShell} ${withBottomNav ? styles.pageShellWithNav : ""} ${className}`}>{children}</main>;
 }
 
 export function PageContent({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -45,16 +45,16 @@ export function PrivacyNote({ title = "Ваши ответы видны толь
   return <aside className={styles.privacy}><span aria-hidden="true">♢</span><div><strong>{title}</strong><div>{children}</div></div></aside>;
 }
 
-export function Loading({ label = "Загружаем…" }: { label?: string }) {
-  return <div className={styles.status} role="status" aria-live="polite"><span className={styles.spinner} aria-hidden="true" /><p>{label}</p></div>;
+export function Loading({ label = "Загружаем…", inline = false }: { label?: string; inline?: boolean }) {
+  return <div className={`${styles.status} ${inline ? styles.statusInline : ""}`} role="status" aria-live="polite"><span className={styles.spinner} aria-hidden="true" /><p>{label}</p></div>;
 }
 
-export function Empty({ title = "Здесь пока пусто", description, action }: { title?: string; description?: string; action?: ReactNode }) {
-  return <div className={styles.status}><span className={styles.statusIcon} aria-hidden="true">✦</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
+export function Empty({ title = "Здесь пока пусто", description, action, inline = false }: { title?: string; description?: string; action?: ReactNode; inline?: boolean }) {
+  return <div className={`${styles.status} ${inline ? styles.statusInline : ""}`}><span className={styles.statusIcon} aria-hidden="true">✦</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
 }
 
-export function ErrorState({ title = "Что-то пошло не так", description, action }: { title?: string; description?: string; action?: ReactNode }) {
-  return <div className={styles.status} role="alert"><span className={styles.statusIcon} aria-hidden="true">!</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
+export function ErrorState({ title = "Что-то пошло не так", description, action, inline = false }: { title?: string; description?: string; action?: ReactNode; inline?: boolean }) {
+  return <div className={`${styles.status} ${inline ? styles.statusInline : ""}`} role="alert"><span className={styles.statusIcon} aria-hidden="true">!</span><h3>{title}</h3>{description && <p>{description}</p>}{action}</div>;
 }
 
 export function InlineNotice({ tone = "neutral", children, className = "", ...props }: HTMLAttributes<HTMLDivElement> & { tone?: "neutral" | "danger" | "success" }) {

@@ -73,3 +73,37 @@ func TestFixturesHaveStableIDsAndDateDependentTimes(t *testing.T) {
 		}
 	}
 }
+
+func TestFixturesUseDeterministicLocalDemoImages(t *testing.T) {
+	moscow, err := time.LoadLocation(timezone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 9, 18, 0, 0, 0, 0, moscow)
+	first := fixtures(base)
+	second := fixtures(base)
+
+	allowed := map[string]bool{
+		"/events/concert-singer.png":       true,
+		"/events/jazz-comedy.png":          true,
+		"/events/contemporary-gallery.png": true,
+		"/events/rooftop-dinner.png":       true,
+	}
+	seen := map[string]bool{}
+	if len(first.images) != len(second.images) {
+		t.Fatalf("image count changed: %d vs %d", len(first.images), len(second.images))
+	}
+	for i := range first.images {
+		image := first.images[i]
+		if !allowed[image.Url] {
+			t.Fatalf("image %d uses unexpected URL %q", i, image.Url)
+		}
+		if image.Url != second.images[i].Url || image.ID != second.images[i].ID {
+			t.Fatalf("image %d is not deterministic: %#v vs %#v", i, first.images[i], second.images[i])
+		}
+		seen[image.Url] = true
+	}
+	if len(seen) != len(allowed) {
+		t.Fatalf("demo images use %d unique local assets, want %d", len(seen), len(allowed))
+	}
+}

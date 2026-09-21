@@ -4,20 +4,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPage } from './CatalogPage'
 
 const searchCalls: Array<Record<string, unknown>> = []
+const defaultResult = {
+  data: { pages: [{ items: [{ id: 'event-1', title: 'Jazz evening', imageUrl: null, category_slug: 'concerts' as const, date_label: 'Сегодня', venue_name: 'Club', price_label: 'Бесплатно', saved: false }], totalEstimate: 1 }] },
+  isPending: false,
+  isFetching: false,
+  isFetchingNextPage: false,
+  isError: false,
+  hasNextPage: false,
+  fetchNextPage: vi.fn(),
+  refetch: vi.fn(),
+}
+let resultState: Omit<typeof defaultResult, 'data'> & { data: typeof defaultResult.data | undefined } = defaultResult
 
 vi.mock('../../features/discovery/queries', () => ({
   useEventSearch: (params: Record<string, unknown>) => {
     searchCalls.push(params)
-    return {
-      data: { pages: [{ items: [{ id: 'event-1', title: 'Jazz evening', imageUrl: null, date_label: 'Сегодня', venue_name: 'Club', price_label: 'Бесплатно', saved: false }], totalEstimate: 1 }] },
-      isPending: false,
-      isFetching: false,
-      isFetchingNextPage: false,
-      isError: false,
-      hasNextPage: false,
-      fetchNextPage: vi.fn(),
-      refetch: vi.fn(),
-    }
+    return resultState
   },
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
@@ -30,6 +32,7 @@ describe('CatalogPage search', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     searchCalls.length = 0
+    resultState = defaultResult
   })
 
   afterEach(() => {
@@ -72,6 +75,7 @@ describe('CatalogPage search', () => {
 
   it('keeps active filters while changing the text query', () => {
     renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: /Фильтры/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Концерты' }))
     const input = screen.getByRole('searchbox')
     fireEvent.change(input, { target: { value: 'gallery' } })
@@ -79,5 +83,50 @@ describe('CatalogPage search', () => {
     act(() => { vi.advanceTimersByTime(300) })
 
     expect(searchCalls.at(-1)).toMatchObject({ q: 'gallery', category_slugs: ['concerts'] })
+  })
+
+  it('opens advanced filters and exposes the active filter count', () => {
+    renderCatalog()
+    const filters = screen.getByRole('button', { name: 'Фильтры' })
+    expect(filters).toHaveAttribute('aria-expanded', 'false')
+    expect(filters).toHaveAttribute('aria-controls', 'catalog-advanced-filters')
+    expect(screen.queryByRole('group', { name: 'Категории' })).not.toBeInTheDocument()
+
+    fireEvent.click(filters)
+    expect(filters).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Концерты' }))
+    expect(screen.getByRole('button', { name: 'Фильтры · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Очистить фильтры' })).toBeInTheDocument()
+  })
+
+  it('resets all filters while preserving the search query', () => {
+    renderCatalog()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'jazz' } })
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Концерты' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
+
+    expect(screen.getByRole('searchbox')).toHaveValue('jazz')
+    expect(screen.getByRole('button', { name: 'Фильтры' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Очистить фильтры' })).not.toBeInTheDocument()
+    expect(searchCalls.at(-1)).toMatchObject({ q: 'jazz', category_slugs: undefined, free_only: undefined, date_from: undefined, date_to: undefined, price_max_minor: undefined, distance_m: undefined })
+  })
+
+  it('renders event skeleton cards during the initial load', () => {
+    resultState = { ...defaultResult, data: undefined, isPending: true }
+    const { container } = renderCatalog()
+
+    expect(screen.getByLabelText('Загрузка событий')).toBeInTheDocument()
+    expect(container.querySelectorAll('[aria-label="Загрузка"]').length).toBe(3)
+    expect(screen.queryByText('Jazz evening')).not.toBeInTheDocument()
+  })
+
+  it('announces a subtle refresh while previous results remain visible', () => {
+    resultState = { ...defaultResult, isFetching: true }
+    renderCatalog()
+
+    expect(screen.getByText('Обновляем результаты…')).toBeInTheDocument()
+    expect(screen.getByText('Jazz evening')).toBeInTheDocument()
   })
 })
