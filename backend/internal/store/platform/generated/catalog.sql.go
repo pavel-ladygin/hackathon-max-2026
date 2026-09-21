@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getCatalogCity = `-- name: GetCatalogCity :one
+SELECT id, name, timezone, center_lat, center_lng
+FROM cities
+WHERE id = $1
+`
+
+func (q *Queries) GetCatalogCity(ctx context.Context, id uuid.UUID) (City, error) {
+	row := q.db.QueryRow(ctx, getCatalogCity, id)
+	var i City
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Timezone,
+		&i.CenterLat,
+		&i.CenterLng,
+	)
+	return i, err
+}
+
 const getEventAvailability = `-- name: GetEventAvailability :one
 SELECT status, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
 FROM events
@@ -37,25 +56,6 @@ func (q *Queries) GetEventAvailability(ctx context.Context, id uuid.UUID) (GetEv
 		&i.Currency,
 		&i.TicketAvailable,
 		&i.TicketUrl,
-	)
-	return i, err
-}
-
-const getCatalogCity = `-- name: GetCatalogCity :one
-SELECT id, name, timezone, center_lat, center_lng
-FROM cities
-WHERE id = $1
-`
-
-func (q *Queries) GetCatalogCity(ctx context.Context, id uuid.UUID) (City, error) {
-	row := q.db.QueryRow(ctx, getCatalogCity, id)
-	var i City
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Timezone,
-		&i.CenterLat,
-		&i.CenterLng,
 	)
 	return i, err
 }

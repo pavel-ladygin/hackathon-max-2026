@@ -12,6 +12,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteInviteSecretsExpiredBefore = `-- name: DeleteInviteSecretsExpiredBefore :execrows
+DELETE FROM room_invites
+WHERE expires_at <= $1
+`
+
+// DeleteInviteSecretsExpiredBefore removes expired invite rows, including the
+// token hash and encrypted token material retained by each row.
+func (q *Queries) DeleteInviteSecretsExpiredBefore(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteInviteSecretsExpiredBefore, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const expireRoomInvites = `-- name: ExpireRoomInvites :execrows
 UPDATE room_invites
 SET expires_at = LEAST(expires_at, $2)
@@ -29,6 +44,59 @@ func (q *Queries) ExpireRoomInvites(ctx context.Context, arg ExpireRoomInvitesPa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getInvitePreviewByHash = `-- name: GetInvitePreviewByHash :one
+SELECT i.token_hash, i.expires_at, r.id AS room_id, r.name AS room_name, r.state AS room_state, r.expires_at AS room_expires_at,
+       u.id AS inviter_id, u.display_name AS inviter_display_name, u.avatar_url AS inviter_avatar_url,
+       COALESCE((SELECT s.ready FROM room_member_round_state s
+                 WHERE s.room_id = r.id AND s.user_id = u.id AND s.round_no = r.round_no), false)::boolean AS inviter_intent_ready,
+       (SELECT count(*) FROM room_members m WHERE m.room_id = r.id) AS member_count,
+       EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = r.id AND m.user_id = $2 AND m.is_active = true) AS already_joined
+FROM room_invites i
+JOIN rooms r ON r.id = i.room_id
+JOIN users u ON u.id = i.created_by
+WHERE i.token_hash = $1
+`
+
+type GetInvitePreviewByHashParams struct {
+	TokenHash []byte
+	UserID    uuid.UUID
+}
+
+type GetInvitePreviewByHashRow struct {
+	TokenHash          []byte
+	ExpiresAt          pgtype.Timestamptz
+	RoomID             uuid.UUID
+	RoomName           string
+	RoomState          string
+	RoomExpiresAt      pgtype.Timestamptz
+	InviterID          uuid.UUID
+	InviterDisplayName string
+	InviterAvatarUrl   pgtype.Text
+	InviterIntentReady bool
+	MemberCount        int64
+	AlreadyJoined      bool
+}
+
+func (q *Queries) GetInvitePreviewByHash(ctx context.Context, arg GetInvitePreviewByHashParams) (GetInvitePreviewByHashRow, error) {
+	row := q.db.QueryRow(ctx, getInvitePreviewByHash, arg.TokenHash, arg.UserID)
+	var i GetInvitePreviewByHashRow
+	err := row.Scan(
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.RoomID,
+		&i.RoomName,
+		&i.RoomState,
+		&i.RoomExpiresAt,
+		&i.InviterID,
+		&i.InviterDisplayName,
+		&i.InviterAvatarUrl,
+		&i.InviterIntentReady,
+		&i.MemberCount,
+		&i.AlreadyJoined,
+	)
+	return i, err
 }
 
 const getRoomInviteByHash = `-- name: GetRoomInviteByHash :one

@@ -1,6 +1,7 @@
 name: max-together-foundation
 
 x-backend: &backend-image
+  image: ${BACKEND_IMAGE:-max-together-backend:local}
   build:
     context: .
     dockerfile: backend/Dockerfile

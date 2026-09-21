@@ -34,7 +34,7 @@ func (q *Queries) AreBothPoolFinished(ctx context.Context, arg AreBothPoolFinish
 const getActivePool = `-- name: GetActivePool :one
 SELECT p.id, p.room_id, p.version, p.round_no, p.ranker_version, p.input_fingerprint, p.state, p.candidate_count, p.is_small, p.diagnostics, p.created_at
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1
 `
 
@@ -83,6 +83,120 @@ func (q *Queries) GetOldRoomPoolEventIDs(ctx context.Context, roomID uuid.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const getRoomEventCards = `-- name: GetRoomEventCards :many
+SELECT pe.event_id, pe.position, pe.explanation, pe.feature_snapshot,
+       e.title, e.subtitle, e.starts_at, e.timezone, e.price_from_minor, e.currency,
+       v.name AS venue_name,
+       (SELECT ec.category_slug FROM event_categories ec
+        WHERE ec.event_id = e.id AND ec.is_primary
+        ORDER BY ec.category_slug LIMIT 1) AS category_slug,
+       coalesce(image.url, '') AS image_url,
+       EXISTS (SELECT 1 FROM saved_events se
+               WHERE se.user_id = $1 AND se.event_id = e.id) AS saved,
+       EXISTS (SELECT 1 FROM room_votes rv
+               WHERE rv.pool_id = pe.pool_id AND rv.event_id = pe.event_id
+                 AND rv.user_id = $1) AS voted
+FROM room_pool_events pe
+JOIN events e ON e.id = pe.event_id
+JOIN venues v ON v.id = e.venue_id
+LEFT JOIN LATERAL (
+    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END,
+             ei.position, ei.id LIMIT 1
+) image ON true
+WHERE pe.pool_id = $2
+  AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary)
+ORDER BY pe.position
+`
+
+type GetRoomEventCardsParams struct {
+	UserID uuid.UUID
+	PoolID uuid.UUID
+}
+
+type GetRoomEventCardsRow struct {
+	EventID         uuid.UUID
+	Position        int32
+	Explanation     []byte
+	FeatureSnapshot []byte
+	Title           string
+	Subtitle        pgtype.Text
+	StartsAt        pgtype.Timestamptz
+	Timezone        string
+	PriceFromMinor  pgtype.Int4
+	Currency        string
+	VenueName       string
+	CategorySlug    string
+	ImageUrl        string
+	Saved           bool
+	Voted           bool
+}
+
+func (q *Queries) GetRoomEventCards(ctx context.Context, arg GetRoomEventCardsParams) ([]GetRoomEventCardsRow, error) {
+	rows, err := q.db.Query(ctx, getRoomEventCards, arg.UserID, arg.PoolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRoomEventCardsRow{}
+	for rows.Next() {
+		var i GetRoomEventCardsRow
+		if err := rows.Scan(
+			&i.EventID,
+			&i.Position,
+			&i.Explanation,
+			&i.FeatureSnapshot,
+			&i.Title,
+			&i.Subtitle,
+			&i.StartsAt,
+			&i.Timezone,
+			&i.PriceFromMinor,
+			&i.Currency,
+			&i.VenueName,
+			&i.CategorySlug,
+			&i.ImageUrl,
+			&i.Saved,
+			&i.Voted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRoomPoolEvent = `-- name: GetRoomPoolEvent :one
+SELECT pool_id, event_id, position, group_score, participant_score_min, participant_score_mean, explanation, feature_snapshot
+FROM room_pool_events
+WHERE pool_id = $1 AND event_id = $2
+`
+
+type GetRoomPoolEventParams struct {
+	PoolID  uuid.UUID
+	EventID uuid.UUID
+}
+
+// The caller must lock the room and active pool before checking membership.
+// The composite primary key makes this a strict pool snapshot membership check.
+func (q *Queries) GetRoomPoolEvent(ctx context.Context, arg GetRoomPoolEventParams) (RoomPoolEvent, error) {
+	row := q.db.QueryRow(ctx, getRoomPoolEvent, arg.PoolID, arg.EventID)
+	var i RoomPoolEvent
+	err := row.Scan(
+		&i.PoolID,
+		&i.EventID,
+		&i.Position,
+		&i.GroupScore,
+		&i.ParticipantScoreMin,
+		&i.ParticipantScoreMean,
+		&i.Explanation,
+		&i.FeatureSnapshot,
+	)
+	return i, err
 }
 
 const getRoomPoolEvents = `-- name: GetRoomPoolEvents :many
@@ -187,7 +301,7 @@ type InsertRoomPoolEventsParams struct {
 const lockActivePool = `-- name: LockActivePool :one
 SELECT p.id, p.room_id, p.version, p.round_no, p.ranker_version, p.input_fingerprint, p.state, p.candidate_count, p.is_small, p.diagnostics, p.created_at
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1
 FOR UPDATE OF p
 `

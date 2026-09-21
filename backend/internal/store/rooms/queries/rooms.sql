@@ -20,6 +20,33 @@ UPDATE rooms
 SET state = $2, version = version + 1
 WHERE id = $1;
 
+-- name: MarkRoomMatched :execrows
+-- The caller must have locked the room and verified the active pool/mutual like.
+-- The state predicate keeps this transition terminal and idempotent under retries.
+UPDATE rooms
+SET state = 'matched', matched_event_id = sqlc.arg('event_id'), version = version + 1
+WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL;
+
+-- name: MarkRoomExhausted :one
+-- Exhaustion is only valid from voting; callers must verify both users finished.
+-- The active pool and room transition are one statement, so a committed
+-- exhausted room never points at a ready active pool.
+WITH exhausted_room AS (
+  UPDATE rooms
+  SET state = 'exhausted', version = version + 1
+  WHERE id = $1 AND state = 'voting'
+  RETURNING id, active_pool_version, round_no
+), exhausted_pool AS (
+  UPDATE room_pools AS p
+  SET state = 'exhausted'
+  FROM exhausted_room AS r
+  WHERE p.room_id = r.id
+    AND p.version = r.active_pool_version
+    AND p.round_no = r.round_no
+    AND p.state = 'ready'
+)
+SELECT count(*) FROM exhausted_room;
+
 -- name: CityExists :one
 SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1);
 
@@ -32,6 +59,20 @@ WHERE id = $1;
 UPDATE rooms
 SET state = 'ranking', version = version + 1
 WHERE id = $1 AND state = 'collecting_intents';
+
+-- name: ActivateRoomPool :execrows
+UPDATE rooms
+SET active_pool_version = $2, state = $3, version = version + 1
+WHERE id = $1;
+
+-- name: RestartExhaustedRoomRound :one
+-- The caller holds the room row lock.  Keep active_pool_version as history;
+-- all active-pool reads are scoped to the new round.
+UPDATE rooms
+SET state = 'collecting_intents', round_no = round_no + 1, version = version + 1
+WHERE id = $1 AND state = 'exhausted' AND round_no < 3
+RETURNING *;
+
 
 -- name: ClockNow :one
 SELECT clock_timestamp()::timestamptz;
@@ -60,3 +101,12 @@ WHERE id = $1;
 UPDATE rooms
 SET version = version + 1
 WHERE id = $1;
+
+-- name: LockExpiredRoomsForCleanup :many
+SELECT *
+FROM rooms
+WHERE expires_at <= $1
+  AND EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = rooms.id AND m.is_active = true)
+ORDER BY expires_at, id
+LIMIT $2
+FOR UPDATE SKIP LOCKED;

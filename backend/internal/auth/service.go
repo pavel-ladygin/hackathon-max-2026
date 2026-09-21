@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
@@ -36,6 +37,15 @@ type Service struct {
 	repo              repository
 	now               func() time.Time
 	trustedProxyCIDRs []net.IPNet
+	inviteResolver    InviteContextResolver
+}
+
+type InviteContextResolver interface {
+	ResolveInviteContext(context.Context, uuid.UUID, string) (*api.InviteContext, error)
+}
+
+func (s *Service) SetInviteContextResolver(resolver InviteContextResolver) {
+	s.inviteResolver = resolver
 }
 
 func NewService(db *store.Pool, botToken string, maxAge time.Duration) (*Service, error) {
@@ -57,6 +67,7 @@ type bootstrapResult struct {
 	token       string
 	user        platform.User
 	preferences *preferences.Value
+	invite      *api.InviteContext
 }
 
 func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (bootstrapResult, error) {
@@ -77,7 +88,14 @@ func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (boot
 	if err != nil {
 		return bootstrapResult{}, err
 	}
-	return bootstrapResult{token: token, user: profile.user, preferences: profile.preferences}, nil
+	result := bootstrapResult{token: token, user: profile.user, preferences: profile.preferences}
+	if claims.startParam != "" && s.inviteResolver != nil {
+		result.invite, err = s.inviteResolver.ResolveInviteContext(ctx, profile.user.ID, claims.startParam)
+		if err != nil {
+			return bootstrapResult{}, err
+		}
+	}
+	return result, nil
 }
 
 // Authenticate accepts only application tokens and never returns MAX identity.

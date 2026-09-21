@@ -40,7 +40,7 @@ func (q *Queries) CityExists(ctx context.Context, id uuid.UUID) (bool, error) {
 
 const completeUserOnboarding = `-- name: CompleteUserOnboarding :one
 UPDATE users
-SET city_id = $2,
+SET city_id = $2::uuid,
     onboarding_state = 'complete',
     updated_at = now()
 WHERE id = $1
@@ -70,7 +70,7 @@ func (q *Queries) DeleteUserPreferenceCategories(ctx context.Context, userID uui
 }
 
 const getUserPreferences = `-- name: GetUserPreferences :one
-SELECT c.id, p.budget_max_minor, p.usual_day_types, p.usual_time_slots,
+SELECT c.id AS city_id, p.budget_max_minor, p.usual_day_types, p.usual_time_slots,
        p.version, p.updated_at
 FROM users AS u
 JOIN user_preferences AS p ON p.user_id = u.id
@@ -87,10 +87,17 @@ type GetUserPreferencesRow struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-func (q *Queries) GetUserPreferences(ctx context.Context, userID uuid.UUID) (GetUserPreferencesRow, error) {
-	row := q.db.QueryRow(ctx, getUserPreferences, userID)
+func (q *Queries) GetUserPreferences(ctx context.Context, id uuid.UUID) (GetUserPreferencesRow, error) {
+	row := q.db.QueryRow(ctx, getUserPreferences, id)
 	var i GetUserPreferencesRow
-	err := row.Scan(&i.CityID, &i.BudgetMaxMinor, &i.UsualDayTypes, &i.UsualTimeSlots, &i.Version, &i.UpdatedAt)
+	err := row.Scan(
+		&i.CityID,
+		&i.BudgetMaxMinor,
+		&i.UsualDayTypes,
+		&i.UsualTimeSlots,
+		&i.Version,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
@@ -109,11 +116,11 @@ func (q *Queries) ListUserPreferenceCategories(ctx context.Context, userID uuid.
 	defer rows.Close()
 	items := []string{}
 	for rows.Next() {
-		var item string
-		if err := rows.Scan(&item); err != nil {
+		var category_slug string
+		if err := rows.Scan(&category_slug); err != nil {
 			return nil, err
 		}
-		items = append(items, item)
+		items = append(items, category_slug)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -146,7 +153,12 @@ type UpsertUserPreferencesRow struct {
 }
 
 func (q *Queries) UpsertUserPreferences(ctx context.Context, arg UpsertUserPreferencesParams) (UpsertUserPreferencesRow, error) {
-	row := q.db.QueryRow(ctx, upsertUserPreferences, arg.UserID, arg.BudgetMaxMinor, arg.UsualDayTypes, arg.UsualTimeSlots)
+	row := q.db.QueryRow(ctx, upsertUserPreferences,
+		arg.UserID,
+		arg.BudgetMaxMinor,
+		arg.UsualDayTypes,
+		arg.UsualTimeSlots,
+	)
 	var i UpsertUserPreferencesRow
 	err := row.Scan(&i.Version, &i.UpdatedAt)
 	return i, err

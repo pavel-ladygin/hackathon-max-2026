@@ -72,6 +72,9 @@ func (s *Service) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	if result.preferences != nil {
 		response.Preferences = nullable.NewNullableWithValue(preferencesResponse(*result.preferences))
 	}
+	if result.invite != nil {
+		response.InviteContext = nullable.NewNullableWithValue(*result.invite)
+	}
 	httpapi.WriteJSON(w, http.StatusOK, response)
 }
 

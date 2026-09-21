@@ -29,10 +29,11 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 	if err != nil {
 		return result, err
 	}
-	myPoolFinished := false
+	myPoolFinished, myIntentReady := false, false
 	for _, state := range states {
 		if state.UserID == userID {
 			myPoolFinished = state.PoolFinished
+			myIntentReady = state.Ready
 			break
 		}
 	}
@@ -46,7 +47,7 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 		if err != nil {
 			return result, err
 		}
-		result.Pool = nullable.NewNullableWithValue(api.PoolSummary{Version: int(pool.Version), RoundNo: int(pool.RoundNo), State: api.PoolSummaryState(pool.State), Total: int(pool.CandidateCount), IsSmall: pool.IsSmall, VotedByMe: int(voted), MyPoolFinished: myPoolFinished, RoomExhausted: room.State == string(api.RoomStateExhausted) || (bothFinished.Valid && bothFinished.Bool), RetryAfterSeconds: nullable.NewNullNullable[int]()})
+		result.Pool = nullable.NewNullableWithValue(poolSummary(pool, int(voted), myPoolFinished, room.State == string(api.RoomStateExhausted) || (bothFinished.Valid && bothFinished.Bool)))
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return result, err
 	}
@@ -70,6 +71,6 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 			return result, err
 		}
 	}
-	result.AllowedActions = roomActions(room, myPoolFinished, inviteAvailable)
+	result.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable)
 	return result, nil
 }

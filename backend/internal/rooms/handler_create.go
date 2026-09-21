@@ -23,6 +23,8 @@ func (s *Service) RegisterRoutes(r chi.Router) {
 	r.Post(createRoute, s.CreateRoom)
 	r.Post("/api/v1/room-invites/{token}/join", s.JoinRoomByInvite)
 	r.Get("/api/v1/rooms/{roomId}", s.GetRoom)
+	r.Get("/api/v1/rooms/{roomId}/events", s.GetRoomEvents)
+	r.Put("/api/v1/rooms/{roomId}/events/{eventId}/vote", s.VoteForRoomEvent)
 	r.Put("/api/v1/rooms/{roomId}/intent/me", s.ReplaceMyRoomIntent)
 }
 

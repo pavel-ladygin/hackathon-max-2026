@@ -1,6 +1,4 @@
-import { EVENTS, eventCards, now } from '../../mocks/fixtures'
 import { mapDetail, mapEvent } from './mapper'
-import { ApiError } from './errors'
 import type { EventDetailDto, EventSearchResponseDto, HomeFeedResponseDto, SavedEventsResponseDto, SavedStateResponseDto } from './types'
 
 type RequestFn = <T>(path: string, init?: RequestInit) => Promise<T>
@@ -61,64 +59,3 @@ export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {
     async recordTicketClick(eventId, input) { return request(`/events/${eventId}/ticket-click`, { method: 'POST', body: JSON.stringify(input) }) },
   }
 }
-
-const SAVED_KEY = 'max-together-discovery-saved-v1'
-const BEHAVIOR_KEY = 'max-together-discovery-behavior-v1'
-const readJson = <T>(key: string, fallback: T): T => {
-  try { return JSON.parse(globalThis.localStorage?.getItem(key) ?? '') as T } catch { return fallback }
-}
-const writeJson = (key: string, value: unknown) => { try { globalThis.localStorage?.setItem(key, JSON.stringify(value)) } catch { /* Storage is optional in restricted webviews. */ } }
-
-export function createMockDiscoveryApi(): DiscoveryApi {
-  const saved = () => readJson<Record<string, string>>(SAVED_KEY, {})
-  const cards = () => eventCards().map((event) => ({ ...event, saved: Boolean(saved()[event.id]) }))
-  return {
-    async getHomeFeed() {
-      const items = cards().map(mapEvent)
-      return { feed_id: 'feed-demo', generated_at: now(), sections: [{ type: 'hero', title: 'Для вас', items }, { type: 'popular', title: 'Популярное', items: [...items].reverse() }], activeRoom: null }
-    },
-    async searchEvents(params = {}) {
-      const query = params.q?.toLowerCase()
-      const categories = params.category_slugs
-      const price = params.price_max_minor
-      const distance = params.distance_m
-      const all = cards().filter((event) => (!query || `${event.title} ${event.venue_name} ${event.subtitle ?? ''}`.toLowerCase().includes(query)) && (!categories?.length || categories.includes(event.category_slug)) && (!params.free_only || event.price_from_minor === 0) && (price === undefined || event.price_from_minor === null || event.price_from_minor <= price) && (distance === undefined || event.distance_m === null || event.distance_m <= distance) && (!params.date_from || event.starts_at.slice(0, 10) >= params.date_from) && (!params.date_to || event.starts_at.slice(0, 10) <= params.date_to))
-      const limit = Math.min(50, Math.max(1, params.limit ?? 20))
-      const start = Math.max(0, Number(params.cursor ?? 0))
-      return { items: all.slice(start, start + limit).map(mapEvent), appliedFilters: Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)), totalEstimate: all.length, nextCursor: start + limit < all.length ? String(start + limit) : null }
-    },
-    async getEvent(eventId) {
-      const event = EVENTS.find((item) => item.id === eventId)
-      if (!event) throw new ApiError(404, { error: { code: 'NOT_FOUND', message: 'Событие не найдено', request_id: 'mock-discovery' } })
-      return mapDetail({ ...event, saved: Boolean(saved()[eventId]) })
-    },
-    async recordBehavior(events) {
-      const known = readJson<string[]>(BEHAVIOR_KEY, [])
-      const seen = new Set(known)
-      const fresh = events.filter((event) => { if (seen.has(event.client_event_id)) return false; seen.add(event.client_event_id); return true })
-      writeJson(BEHAVIOR_KEY, [...known, ...fresh.map((event) => event.client_event_id)])
-      return { accepted: fresh.length, duplicates: events.length - fresh.length, rejected: 0 }
-    },
-    async setSaved(eventId, isSaved) {
-      const state = saved()
-      if (isSaved) state[eventId] = now(); else delete state[eventId]
-      writeJson(SAVED_KEY, state)
-      return { event_id: eventId, saved: isSaved, saved_at: isSaved ? state[eventId] : null }
-    },
-    async getSaved(params = {}) {
-      if (params.tab === 'matches') return { items: [], nextCursor: null }
-      const state = saved()
-      const ids = Object.keys(state).sort((a, b) => state[b].localeCompare(state[a]))
-      const start = Math.max(0, Number(params.cursor ?? 0)); const limit = Math.min(50, Math.max(1, params.limit ?? 20))
-      const byId = new Map(cards().map((event) => [event.id, event]))
-      const items = ids.slice(start, start + limit).flatMap((id) => { const event = byId.get(id); return event ? [{ event: mapEvent(event), savedAt: state[id], match: null }] : [] })
-      return { items, nextCursor: start + limit < ids.length ? String(start + limit) : null }
-    },
-    async recordTicketClick(eventId) {
-      if (!EVENTS.some((event) => event.id === eventId)) throw new ApiError(404, { error: { code: 'NOT_FOUND', message: 'Событие не найдено', request_id: 'mock-discovery' } })
-      return { external_url: `https://tickets.example.invalid/events/${encodeURIComponent(eventId)}` }
-    },
-  }
-}
-
-export const discoverySource = (import.meta.env.VITE_DISCOVERY_SOURCE ?? 'mock') === 'http' ? 'http' : 'mock'

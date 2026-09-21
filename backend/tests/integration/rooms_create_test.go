@@ -372,7 +372,7 @@ func newCreateService(t *testing.T, db *store.Pool, recorder contracts.BehaviorR
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := rooms.NewCreateService(db, recorder, invites)
+	svc, err := rooms.NewCreateService(db, recorder, invites, &poolBuilderFake{})
 	if err != nil {
 		t.Fatal(err)
 	}

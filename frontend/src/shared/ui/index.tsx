@@ -66,10 +66,6 @@ export function FieldError({ id, children }: { id: string; children?: ReactNode 
   return <span id={id} className={styles.fieldError} role="alert">{children}</span>;
 }
 
-export function DemoBadge() {
-  return <div className={styles.demoBadge} title="Данные создаются локальным OpenAPI-совместимым mock API"><span aria-hidden="true">●</span> Демо-режим</div>;
-}
-
 export function Skeleton({ className = "", label = "Загрузка" }: { className?: string; label?: string }) {
   return <span className={`${styles.skeleton} ${className}`} role="status" aria-label={label} />;
 }
