@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
+import { eventCategoryLabel, eventImage } from '../../shared/lib/events'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Empty, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
@@ -29,19 +30,23 @@ export function EventPage() {
   const item = event.data
   return (
     <PageShell>
-      <TopBar title="Событие" onBack={() => navigate(-1)} right={event.data ? <button type="button" className={styles.saveButton} aria-label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} aria-pressed={event.data.saved} disabled={save.isPending} onClick={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })}>{event.data.saved ? '♥' : '♡'}</button> : null} />
-      <img className={styles.detailHero} src={item.imageUrl ?? '/events/concert-singer.png'} alt={item.title} />
+      <TopBar title="Событие" onBack={() => navigate(-1)} right={event.data ? <button type="button" className={styles.detailSaveButton} aria-label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} aria-pressed={event.data.saved} disabled={save.isPending} onClick={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })}>{event.data.saved ? '♥' : '♡'}</button> : null} />
+      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} />
       <PageContent className={styles.narrow}>
-        <p className={styles.eyebrow}>{item.category_slug}</p>
+        <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
         <h1 className={styles.title}>{item.title}</h1>
         <p className={styles.subtitle}>{item.subtitle}</p>
-        {item.dataProvenance.is_demo ? <InlineNotice>Демонстрационные данные: расписание и билетная ссылка используются только для проверки сценария.</InlineNotice> : null}
+        <dl className={styles.detailMeta} aria-label="Основная информация о событии">
+          <div><dt>Когда</dt><dd>{item.date_label}</dd></div>
+          <div><dt>Где</dt><dd>{item.venue_name}<small>{item.venue.address}</small></dd></div>
+          <div><dt>Цена</dt><dd>{item.price_label}</dd></div>
+        </dl>
         {item.status !== 'published' ? <InlineNotice tone="danger">{item.status === 'sold_out' ? 'Билеты на это событие закончились.' : 'Событие отменено организатором.'}</InlineNotice> : null}
-        <div className={styles.detailMeta}><span>◷ {item.date_label}</span><span>⌖ {item.venue_name}<small> · {item.venue.address}</small></span><span>₽ {item.price_label}</span></div>
+        {item.dataProvenance.is_demo ? <InlineNotice>Демонстрационные данные: расписание и билетная ссылка используются только для проверки сценария.</InlineNotice> : null}
         <section className={styles.section}><h2 className={styles.sectionTitle}>О событии</h2><p className={styles.bodyCopy}>{item.description}</p></section>
         <div className={styles.explain}><strong>Почему вам подходит</strong>{item.reasons.map((reason) => <span key={reason.code}>✓ {reason.text}</span>)}</div>
         {ticket.isError ? <InlineNotice tone="danger">Не удалось открыть билетный сервис. Можно повторить попытку.</InlineNotice> : null}
-        <div className={styles.footer}><Button disabled={!item.ticketAvailable || item.status !== 'published' || ticket.isPending} onClick={() => ticket.mutate()}>{ticket.isPending ? 'Открываем…' : item.ticketAvailable && item.status === 'published' ? 'К билетам' : 'Билеты недоступны'}</Button></div>
+        <div className={styles.footer}><p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" disabled={!item.ticketAvailable || item.status !== 'published' || ticket.isPending} onClick={() => ticket.mutate()}>{ticket.isPending ? 'Открываем…' : item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button></div>
       </PageContent>
     </PageShell>
   )

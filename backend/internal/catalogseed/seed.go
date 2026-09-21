@@ -115,6 +115,31 @@ func integer(value int32) pgtype.Int4 { return pgtype.Int4{Int32: value, Valid: 
 
 var categorySlugs = [...]string{"concerts", "cinema", "theatre", "standup", "exhibitions", "sports", "food", "parties", "festivals", "walks", "other"}
 
+// Demo images are served by the frontend itself, so the seeded catalog stays
+// usable without a network connection and presents a little visual variety.
+// Keep this mapping stable: the same category must produce the same image on
+// every seed run.
+var demoImageByCategory = map[string]string{
+	"concerts":    "/events/concert-singer.png",
+	"cinema":      "/events/contemporary-gallery.png",
+	"theatre":     "/events/contemporary-gallery.png",
+	"standup":     "/events/jazz-comedy.png",
+	"exhibitions": "/events/contemporary-gallery.png",
+	"sports":      "/events/concert-singer.png",
+	"food":        "/events/rooftop-dinner.png",
+	"parties":     "/events/jazz-comedy.png",
+	"festivals":   "/events/concert-singer.png",
+	"walks":       "/events/rooftop-dinner.png",
+	"other":       "/events/contemporary-gallery.png",
+}
+
+func demoImageURL(category string) string {
+	if image, ok := demoImageByCategory[category]; ok {
+		return image
+	}
+	return "/events/concert-singer.png"
+}
+
 type dataset struct {
 	city       platform.SeedCityParams
 	metro      []platform.SeedMetroStationParams
@@ -214,8 +239,9 @@ func fixtures(base time.Time) dataset {
 			if variant == 2 {
 				d.categories = append(d.categories, platform.SeedCategoryParams{EventID: id, CategorySlug: categorySlugs[(category+1)%len(categorySlugs)], Weight: 0.5, IsPrimary: false})
 			}
-			// A fixed asset avoids randomly changing images on identical seed runs.
-			d.images = append(d.images, platform.SeedImageParams{ID: stableID("image", key+"/card"), EventID: id, Url: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&h=800&q=80", Width: integer(1200), Height: integer(800), Role: "card", Position: 0})
+			// A fixed local asset avoids network dependencies and randomly changing
+			// images on identical seed runs.
+			d.images = append(d.images, platform.SeedImageParams{ID: stableID("image", key+"/card"), EventID: id, Url: demoImageURL(slug), Width: integer(1122), Height: integer(1402), Role: "card", Position: 0})
 		}
 	}
 	return d
