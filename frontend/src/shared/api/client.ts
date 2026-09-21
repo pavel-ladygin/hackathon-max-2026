@@ -1,13 +1,13 @@
 import { mapPreferences, mapRoom, mapUser } from './mapper'
 import type { BootstrapRequestDto, InviteContextDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
 import { ApiError, normalizeApiError } from './errors'
-import { createHttpDiscoveryApi, createMockDiscoveryApi, discoverySource } from './discovery'
+import { createHttpDiscoveryApi } from './discovery'
 
 export interface ApiClientOptions { baseUrl?: string; fetchImpl?: typeof fetch; getToken?: () => string | null }
 let inMemoryAccessToken: string | null = null
 export class ApiClient {
   private readonly baseUrl: string; private readonly fetchImpl: typeof fetch; private readonly getToken: () => string | null; private readonly discovery: ReturnType<typeof createHttpDiscoveryApi>
-  constructor(options: ApiClientOptions = {}) { this.baseUrl = options.baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '/api/v1'; this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis); this.getToken = options.getToken ?? (() => inMemoryAccessToken); this.discovery = discoverySource === 'http' ? createHttpDiscoveryApi(this.request.bind(this)) : createMockDiscoveryApi() }
+  constructor(options: ApiClientOptions = {}) { this.baseUrl = options.baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? '/api/v1'; this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis); this.getToken = options.getToken ?? (() => inMemoryAccessToken); this.discovery = createHttpDiscoveryApi(this.request.bind(this)) }
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers); headers.set('Accept', 'application/json'); if (init.body) headers.set('Content-Type', 'application/json')
     const token = this.getToken(); if (token) headers.set('Authorization', `Bearer ${token}`)

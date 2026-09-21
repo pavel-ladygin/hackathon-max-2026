@@ -58,7 +58,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 			return err
 		}
 
-		var myPoolFinished bool
+		var myPoolFinished, myIntentReady bool
 		states, err := repo.Queries.GetRoomRoundStates(ctx, roomsql.GetRoomRoundStatesParams{RoomID: room.ID, RoundNo: room.RoundNo})
 		if err != nil {
 			return err
@@ -66,6 +66,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 		for _, state := range states {
 			if state.UserID == principal.UserID {
 				myPoolFinished = state.PoolFinished
+				myIntentReady = state.Ready
 				break
 			}
 		}
@@ -109,7 +110,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 				return err
 			}
 		}
-		snapshot.AllowedActions = roomActions(room, myPoolFinished, inviteAvailable)
+		snapshot.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable)
 		return nil
 	})
 	return snapshot, err
@@ -161,11 +162,15 @@ func apiIntent(intent roomsql.RoomIntent) api.MyIntent {
 	return result
 }
 
-func roomActions(room roomsql.Room, myPoolFinished, inviteAvailable bool) []api.RoomSnapshotAllowedActions {
+func roomActions(room roomsql.Room, myPoolFinished, myIntentReady, inviteAvailable bool) []api.RoomSnapshotAllowedActions {
 	actions := make([]api.RoomSnapshotAllowedActions, 0, 3)
 	switch api.RoomState(room.State) {
 	case api.RoomStateCollectingIntents:
-		actions = append(actions, api.EditIntent)
+		if !myIntentReady {
+			actions = append(actions, api.EditIntent)
+		} else {
+			actions = append(actions, api.Wait)
+		}
 		if inviteAvailable {
 			actions = append(actions, api.Invite)
 		}

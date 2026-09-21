@@ -28,7 +28,7 @@ export function NewRoomPage() {
   const form = useForm<RoomForm>({ resolver: zodResolver(roomSchema), defaultValues: { name: 'Куда идём в субботу?' } })
   const create = useMutation({
     mutationFn: (values: RoomForm) => apiClient.createRoom({ name: values.name.trim(), city_id: bootstrap.data?.preferences?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID }),
-    onSuccess: ({ room }) => navigate(mockRoute(`/rooms/${room.id}/invite`)),
+    onSuccess: ({ room }) => navigate(`/rooms/${room.id}/invite`),
     onError: (error) => { if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true }) },
   })
   return (
@@ -54,19 +54,19 @@ export function InvitePage() {
   if (room.isPending) return <Loading label="Готовим приглашение…" />
   if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
   const rawUrl = room.data.invite?.url ?? ''
-  const demoUrl = mockInviteUrl(rawUrl)
+  const maxLink = room.data.invite?.max_deep_link ?? rawUrl
   const share = async () => {
-    const ok = await maxPlatform.shareInvite({ text: `Присоединяйся к комнате «${room.data.name}»`, link: demoUrl })
+    const ok = await maxPlatform.shareInvite({ text: `Присоединяйся к комнате «${room.data.name}»`, link: maxLink })
     setShared(ok)
   }
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>И</span><span className={styles.avatar}>{room.data.participants.length > 1 ? 'А' : '+'}</span></div>
       <h1 className={styles.title}>Пригласите друга</h1><p className={styles.subtitle}>Отправьте приглашение в MAX. После подключения каждый отдельно заполнит пожелания.</p>
-      <div className={styles.inviteLink} data-testid="invite-url">{demoUrl || 'Ссылка появится после создания комнаты'}</div>
+      <div className={styles.inviteLink} data-testid="invite-url">{rawUrl || 'Ссылка появится после создания комнаты'}</div>
       <PrivacyNote>Предпочтения и оценки останутся скрытыми до взаимного лайка.</PrivacyNote>
       <div aria-live="polite">{shared ? <p>✓ Приглашение отправлено</p> : copied ? <p>✓ Ссылка скопирована</p> : null}</div>
-      <div className={styles.footer}><Button onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" onClick={async () => setCopied(await maxPlatform.copyText(demoUrl))}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(mockRoute(`/rooms/${roomId}/intent`))}>Перейти к моим пожеланиям</Button></div>
+      <div className={styles.footer}><Button onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" onClick={async () => setCopied(await maxPlatform.copyText(rawUrl))}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(`/rooms/${roomId}/intent`)}>Перейти к моим пожеланиям</Button></div>
     </PageContent></PageShell>
   )
 }
@@ -80,14 +80,14 @@ export function JoinPage() {
   const join = useMutation({ mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
     return apiClient.joinRoom(inviteToken)
-  }, onSuccess: (room) => navigate(mockRoute(`/rooms/${room.id}/intent`), { replace: true }) })
+  }, onSuccess: (room) => navigate(`/rooms/${room.id}/intent`, { replace: true }) })
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
       <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
       <PrivacyNote />{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} onClick={() => join.mutate()}>{join.isPending ? 'Подключаем…' : context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button></div>
+      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} onClick={() => join.mutate()}>{join.isPending ? 'Подключаем…' : context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
     </PageContent></PageShell>
   )
 }
@@ -98,7 +98,7 @@ export function RoomFlowPage() {
   if (room.isPending) return <Loading label="Восстанавливаем комнату…" />
   if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
-  if (roomScreen !== expected) return <Navigate to={mockRoute(`/rooms/${roomId}/${expected}`)} replace />
+  if (roomScreen !== expected) return <Navigate to={`/rooms/${roomId}/${expected}`} replace />
   if (expected === 'intent') return <IntentScreen room={room.data} />
   if (expected === 'waiting') return <WaitingScreen room={room.data} />
   if (expected === 'vote') return <VoteScreen room={room.data} />
@@ -121,7 +121,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const dateChoices = upcomingDates(7)
-  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema), defaultValues: { dates: [dateChoices[0][0]], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' } })
+  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema), defaultValues: intentDefaults(room, dateChoices[0][0]) })
   const dates = useWatch({ control: form.control, name: 'dates' })
   const dayTypes = useWatch({ control: form.control, name: 'day_types' })
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
@@ -130,7 +130,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const radius = useWatch({ control: form.control, name: 'radius' })
   const save = useMutation({
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(mockRoute(`/rooms/${room.id}/waiting`), { replace: true }) },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: (error) => {
       if (!(error instanceof ApiError)) return
       const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', radius_m: 'radius', free_text: 'free_text' }
@@ -209,6 +209,7 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <Suspense fallback={<Loading label="Готовим сюрприз…" />}><MatchCelebration event={event.data} /></Suspense>
       <div className={styles.footer}><Button onClick={() => navigate(`/events/${event.data.id}`)}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} onClick={() => ticket.mutate()}>К билетам</Button></div>
+      {ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>
   )
 }
@@ -217,7 +218,7 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState('budget')
-  const restart = useMutation({ mutationFn: () => apiClient.replaceMyIntent(room.id, relaxedIntent(room.myIntent, selected)), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(mockRoute(`/rooms/${room.id}/waiting`), { replace: true }) } })
+  const restart = useMutation({ mutationFn: () => apiClient.replaceMyIntent(room.id, relaxedIntent(room.myIntent, selected)), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
   const suggestions = [{ id: 'budget', title: 'Увеличить бюджет до 3 500 ₽', meta: '+8 подходящих событий' }, { id: 'date', title: 'Добавить пятницу вечером', meta: '+5 событий' }, { id: 'radius', title: 'Увеличить радиус до 10 км', meta: '+7 событий' }, { id: 'category', title: 'Добавить выставки', meta: '+4 события' }]
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
@@ -240,7 +241,7 @@ function expectedScreen(room: RoomSnapshot) {
   if (room.state === 'exhausted') return 'recovery'
   if (room.state === 'voting') return 'vote'
   if (room.state === 'ranking') return 'waiting'
-  return room.myIntent ? 'waiting' : 'intent'
+  return room.allowed_actions.includes('edit_intent') ? 'intent' : 'waiting'
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
@@ -262,10 +263,20 @@ function addDays(date: Date, amount: number) { const next = new Date(date); next
 function localDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function upcomingDates(count: number): Array<[string, string]> { return Array.from({ length: count }, (_, index) => { const date = addDays(new Date(), index); return [localDate(date), new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(date)] }) }
 
-function mockInviteUrl(raw: string) {
-  return raw
+function intentDefaults(room: RoomSnapshot, fallbackDate: string): IntentForm {
+  const intent = room.myIntent
+  return intent ? {
+    dates: intent.dates,
+    day_types: intent.day_types,
+    time_slots: intent.time_slots,
+    category_slugs: intent.category_slugs,
+    budget: Math.round(intent.budget_max_minor / 100),
+    radius: intent.radius_m ?? 5_000,
+    free_text: intent.free_text ?? '',
+  } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' }
 }
 
-function mockRoute(path: string) {
-  return path
+function maxAppUrl(token: string) {
+  const base = import.meta.env.VITE_MAX_APP_URL ?? 'https://max.ru'
+  return `${base}${base.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(token)}`
 }

@@ -9,7 +9,10 @@ export function useRoom(roomId: string | undefined) {
     enabled: Boolean(roomId),
     refetchInterval: (query) => {
       const state = query.state.data?.state
-      return state && ['collecting_intents', 'ranking', 'voting'].includes(state) ? 1_000 : false
+      if (state === 'collecting_intents') return jitter(3_000)
+      if (state === 'ranking') return jitter(1_000)
+      if (state === 'voting') return jitter(2_000)
+      return false
     },
     refetchIntervalInBackground: false,
   })
@@ -23,5 +26,11 @@ export function useRoomEvents(roomId: string | undefined, enabled: boolean) {
       return { ...response, items: response.items.map((item) => ({ ...item, event: mapEvent(item.event) })) }
     },
     enabled: Boolean(roomId) && enabled,
+    refetchInterval: enabled ? jitter(2_000) : false,
+    refetchIntervalInBackground: false,
   })
+}
+
+function jitter(base: number) {
+  return Math.round(base * (0.8 + Math.random() * 0.4))
 }

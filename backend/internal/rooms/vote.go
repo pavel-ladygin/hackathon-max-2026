@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/oapi-codegen/nullable"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
@@ -134,7 +135,7 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 				if inserted != 1 {
 					return ErrAlreadyMatched
 				}
-				if n, err := repo.Queries.MarkRoomMatched(ctx, roomsql.MarkRoomMatchedParams{ID: room.ID, EventID: eventID}); err != nil || n != 1 {
+				if n, err := repo.Queries.MarkRoomMatched(ctx, roomsql.MarkRoomMatchedParams{ID: room.ID, EventID: pgtype.UUID{Bytes: eventID, Valid: true}}); err != nil || n != 1 {
 					if err != nil {
 						return err
 					}

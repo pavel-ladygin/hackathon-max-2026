@@ -34,7 +34,7 @@ func (q *Queries) AreBothPoolFinished(ctx context.Context, arg AreBothPoolFinish
 const getActivePool = `-- name: GetActivePool :one
 SELECT p.id, p.room_id, p.version, p.round_no, p.ranker_version, p.input_fingerprint, p.state, p.candidate_count, p.is_small, p.diagnostics, p.created_at
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1
 `
 
@@ -170,6 +170,35 @@ func (q *Queries) GetRoomEventCards(ctx context.Context, arg GetRoomEventCardsPa
 	return items, nil
 }
 
+const getRoomPoolEvent = `-- name: GetRoomPoolEvent :one
+SELECT pool_id, event_id, position, group_score, participant_score_min, participant_score_mean, explanation, feature_snapshot
+FROM room_pool_events
+WHERE pool_id = $1 AND event_id = $2
+`
+
+type GetRoomPoolEventParams struct {
+	PoolID  uuid.UUID
+	EventID uuid.UUID
+}
+
+// The caller must lock the room and active pool before checking membership.
+// The composite primary key makes this a strict pool snapshot membership check.
+func (q *Queries) GetRoomPoolEvent(ctx context.Context, arg GetRoomPoolEventParams) (RoomPoolEvent, error) {
+	row := q.db.QueryRow(ctx, getRoomPoolEvent, arg.PoolID, arg.EventID)
+	var i RoomPoolEvent
+	err := row.Scan(
+		&i.PoolID,
+		&i.EventID,
+		&i.Position,
+		&i.GroupScore,
+		&i.ParticipantScoreMin,
+		&i.ParticipantScoreMean,
+		&i.Explanation,
+		&i.FeatureSnapshot,
+	)
+	return i, err
+}
+
 const getRoomPoolEvents = `-- name: GetRoomPoolEvents :many
 SELECT pool_id, event_id, position, group_score, participant_score_min, participant_score_mean, explanation, feature_snapshot
 FROM room_pool_events
@@ -204,33 +233,6 @@ func (q *Queries) GetRoomPoolEvents(ctx context.Context, poolID uuid.UUID) ([]Ro
 		return nil, err
 	}
 	return items, nil
-}
-
-const getRoomPoolEvent = `-- name: GetRoomPoolEvent :one
-SELECT pool_id, event_id, position, group_score, participant_score_min, participant_score_mean, explanation, feature_snapshot
-FROM room_pool_events
-WHERE pool_id = $1 AND event_id = $2
-`
-
-type GetRoomPoolEventParams struct {
-	PoolID  uuid.UUID
-	EventID uuid.UUID
-}
-
-func (q *Queries) GetRoomPoolEvent(ctx context.Context, arg GetRoomPoolEventParams) (RoomPoolEvent, error) {
-	row := q.db.QueryRow(ctx, getRoomPoolEvent, arg.PoolID, arg.EventID)
-	var i RoomPoolEvent
-	err := row.Scan(
-		&i.PoolID,
-		&i.EventID,
-		&i.Position,
-		&i.GroupScore,
-		&i.ParticipantScoreMin,
-		&i.ParticipantScoreMean,
-		&i.Explanation,
-		&i.FeatureSnapshot,
-	)
-	return i, err
 }
 
 const insertRoomPool = `-- name: InsertRoomPool :one
@@ -299,7 +301,7 @@ type InsertRoomPoolEventsParams struct {
 const lockActivePool = `-- name: LockActivePool :one
 SELECT p.id, p.room_id, p.version, p.round_no, p.ranker_version, p.input_fingerprint, p.state, p.candidate_count, p.is_small, p.diagnostics, p.created_at
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1
 FOR UPDATE OF p
 `

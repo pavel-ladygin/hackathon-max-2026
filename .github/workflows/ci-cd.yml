@@ -188,7 +188,7 @@ jobs:
           TICKET_PROVIDER_ALLOWLIST: tickets.example.invalid
         run: |
           docker compose up --detach postgres migrate backend
-          docker run --detach --name ci-frontend --publish 127.0.0.1:8081:80 ci-frontend:local
+          docker run --detach --name ci-frontend --network max-together-foundation_default --publish 127.0.0.1:8081:80 ci-frontend:local
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null \
               && curl --fail --silent http://127.0.0.1:8081/health >/dev/null; then
@@ -203,6 +203,7 @@ jobs:
       - name: Smoke test frontend and API
         run: |
           curl --fail --silent http://127.0.0.1:8081/ >/dev/null
+          curl --fail --silent http://127.0.0.1:8081/api/v1/health/ready >/dev/null
           curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null
       - name: Scan application images
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 
@@ -284,8 +285,8 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            VITE_DISCOVERY_SOURCE=mock
             VITE_API_BASE_URL=/api/v1
+            VITE_MAX_APP_URL=https://max.ru/t255_hakaton_max_bot
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:${{ env.RELEASE_SHA }}
             ${{ env.IMAGE_PREFIX }}/frontend:${{ env.CHANNEL_TAG }}

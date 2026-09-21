@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ApiClient } from './client'
 
-describe('hybrid API client', () => {
-  it('keeps auth and preferences on HTTP while discovery stays local', async () => {
+describe('API client', () => {
+  it('uses the authenticated HTTP API for discovery', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
       if ('init_data' in body) {
@@ -14,6 +14,7 @@ describe('hybrid API client', () => {
           invite_context: null,
         })
       }
+      if (String(_input).includes('/feed/home')) return Response.json({ feed_id: 'feed-real', generated_at: '', sections: [], active_room: null })
       return Response.json({
         ...body,
         version: 1,
@@ -32,10 +33,11 @@ describe('hybrid API client', () => {
     })
     const feed = await client.getHomeFeed()
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
     expect(String(fetchImpl.mock.calls[0][0])).toBe('/api/v1/auth/max/bootstrap')
     expect(String(fetchImpl.mock.calls[1][0])).toBe('/api/v1/me/preferences')
     expect(new Headers(fetchImpl.mock.calls[1][1]?.headers).get('Authorization')).toBe('Bearer real-access-token')
-    expect(feed.feed_id).toBe('feed-demo')
+    expect(String(fetchImpl.mock.calls[2][0])).toBe('/api/v1/feed/home')
+    expect(feed.feed_id).toBe('feed-real')
   })
 })
