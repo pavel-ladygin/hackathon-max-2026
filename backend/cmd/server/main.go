@@ -55,7 +55,7 @@ func run() error {
 		return fmt.Errorf("database unavailable")
 	}
 	defer db.Close()
-	handler, err := newHandler(cfg, db, logger)
+	handler, err := newHandler(ctx, cfg, db, logger)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func run() error {
 	return nil
 }
 
-func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Handler, error) {
+func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Handler, error) {
 	if len(cfg.InviteEncryptionKey) == 0 {
 		return nil, fmt.Errorf("INVITE_ENCRYPTION_KEY is required")
 	}
@@ -112,9 +112,9 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
 	poolKey := sha256.Sum256(poolKeyInput)
 	poolBuilder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), poolKey[:])
-  if err != nil {
-	return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 	behaviorRecorder := behavior.Recorder{}
 	behaviorService, err := behavior.NewService(db)
 	if err != nil {
@@ -132,8 +132,8 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	}
 	ticketHandler := tickets.NewHandler(ticketService)
 
-  roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)	
-  if err != nil {
+	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)
+	if err != nil {
 		return nil, err
 	}
 	roomEventsCursor, err := rooms.NewRoomEventsCursorCodec(cfg.InviteEncryptionKey)
@@ -143,6 +143,10 @@ func newHandler(cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Ha
 	if err := roomService.EnableRoomEvents(catalog.NewRepository(db), roomEventsCursor); err != nil {
 		return nil, err
 	}
+	authService.SetInviteContextResolver(roomService)
+	go roomService.RunExpiryCleanup(ctx, time.Minute, func(err error) {
+		logger.Error("room expiry cleanup failed", "error", err)
+	})
 	return httpapi.NewRouter(
 		readiness{db: db},
 		logger,

@@ -45,6 +45,33 @@ func (q *Queries) ClearRoomIntentCoordinates(ctx context.Context, roomID uuid.UU
 	return result.RowsAffected(), nil
 }
 
+const copyRoomIntentsToNextRound = `-- name: CopyRoomIntentsToNextRound :exec
+INSERT INTO room_intents (
+  room_id, user_id, round_no, date_options, day_types, time_slots,
+  category_slugs, budget_max_minor, location_lat, location_lng, radius_m,
+  exclusion_slugs, free_text
+)
+SELECT i.room_id, i.user_id, $3, i.date_options, i.day_types, i.time_slots,
+       i.category_slugs, i.budget_max_minor, i.location_lat, i.location_lng, i.radius_m,
+       i.exclusion_slugs, i.free_text
+FROM room_intents i
+JOIN room_members m ON m.room_id = i.room_id AND m.user_id = i.user_id AND m.is_active = true
+WHERE i.room_id = $1 AND i.round_no = $2
+`
+
+type CopyRoomIntentsToNextRoundParams struct {
+	RoomID    uuid.UUID
+	RoundNo   int16
+	RoundNo_2 int16
+}
+
+// Intents are copied as editable drafts. Readiness is intentionally stored
+// separately and starts false for both members.
+func (q *Queries) CopyRoomIntentsToNextRound(ctx context.Context, arg CopyRoomIntentsToNextRoundParams) error {
+	_, err := q.db.Exec(ctx, copyRoomIntentsToNextRound, arg.RoomID, arg.RoundNo, arg.RoundNo_2)
+	return err
+}
+
 const getRoomIntent = `-- name: GetRoomIntent :one
 SELECT room_id, user_id, round_no, date_options, day_types, time_slots, category_slugs, budget_max_minor, location_lat, location_lng, radius_m, exclusion_slugs, free_text, version, submitted_at
 FROM room_intents
@@ -119,6 +146,23 @@ func (q *Queries) GetRoomRoundStates(ctx context.Context, arg GetRoomRoundStates
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertNextRoundStates = `-- name: InsertNextRoundStates :exec
+INSERT INTO room_member_round_state (room_id, user_id, round_no)
+SELECT m.room_id, m.user_id, $2
+FROM room_members AS m
+WHERE m.room_id = $1 AND m.is_active = true
+`
+
+type InsertNextRoundStatesParams struct {
+	RoomID  uuid.UUID
+	RoundNo int16
+}
+
+func (q *Queries) InsertNextRoundStates(ctx context.Context, arg InsertNextRoundStatesParams) error {
+	_, err := q.db.Exec(ctx, insertNextRoundStates, arg.RoomID, arg.RoundNo)
+	return err
 }
 
 const insertRoomRoundState = `-- name: InsertRoomRoundState :one

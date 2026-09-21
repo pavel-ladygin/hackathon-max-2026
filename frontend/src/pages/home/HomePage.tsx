@@ -18,6 +18,7 @@ export function HomePage() {
   const sections = feed.data.sections as FeedSection[]
   const allEvents = uniqueEvents(sections.flatMap((section) => section.items))
   const hero = allEvents[0]
+  const activeRoom = feed.data.activeRoom
 
   return (
     <PageShell>
@@ -26,6 +27,7 @@ export function HomePage() {
           <div><span className={styles.eyebrow}>Ваш город</span><h3>Москва</h3></div>
           <button className={styles.profileButton} aria-label="Настройки предпочтений" onClick={() => navigate('/preferences')}>{bootstrap.data?.user.displayName.slice(0, 1) ?? 'И'}</button>
         </header>
+        {activeRoom ? <section className={styles.section}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>АКТИВНАЯ КОМНАТА</p><h2>{activeRoom.name}</h2></div><Button onClick={() => navigate(`/rooms/${activeRoom.id}/waiting`)}>Продолжить</Button></div><p className={styles.subtitle}>Вернитесь к совместному выбору, не теряя прогресс.</p></section> : <section className={styles.section}><div className={styles.sectionHead}><div><p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ</p><h2>Выберите событие вдвоём</h2></div><Button onClick={() => navigate('/rooms/new')}>Создать комнату</Button></div></section>}
         {hero ? (
           <button className={styles.hero} onClick={() => navigate(`/events/${hero.id}`)}>
             <img className={styles.heroImage} src={hero.imageUrl ?? '/events/concert-singer.png'} alt="" />

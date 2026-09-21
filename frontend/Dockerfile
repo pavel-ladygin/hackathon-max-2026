@@ -5,10 +5,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . ./
 
-ARG VITE_DISCOVERY_SOURCE=mock
 ARG VITE_API_BASE_URL=/api/v1
-ARG VITE_MAX_APP_URL=https://max.ru
-ENV VITE_DISCOVERY_SOURCE=${VITE_DISCOVERY_SOURCE}
+ARG VITE_MAX_APP_URL=https://max.ru/t255_hakaton_max_bot
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_MAX_APP_URL=${VITE_MAX_APP_URL}
 RUN npm run build

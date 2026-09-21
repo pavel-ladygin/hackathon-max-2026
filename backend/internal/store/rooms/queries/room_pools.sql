@@ -16,13 +16,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 -- name: GetActivePool :one
 SELECT p.*
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1;
 
 -- name: LockActivePool :one
 SELECT p.*
 FROM room_pools AS p
-JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version
+JOIN rooms AS r ON r.id = p.room_id AND r.active_pool_version = p.version AND p.round_no = r.round_no
 WHERE p.room_id = $1
 FOR UPDATE OF p;
 

@@ -59,3 +59,24 @@ WHERE room_id = $1 AND round_no = $2;
 UPDATE room_intents
 SET location_lat = NULL, location_lng = NULL
 WHERE room_id = $1 AND location_lat IS NOT NULL;
+
+-- name: CopyRoomIntentsToNextRound :exec
+-- Intents are copied as editable drafts. Readiness is intentionally stored
+-- separately and starts false for both members.
+INSERT INTO room_intents (
+  room_id, user_id, round_no, date_options, day_types, time_slots,
+  category_slugs, budget_max_minor, location_lat, location_lng, radius_m,
+  exclusion_slugs, free_text
+)
+SELECT i.room_id, i.user_id, $3, i.date_options, i.day_types, i.time_slots,
+       i.category_slugs, i.budget_max_minor, i.location_lat, i.location_lng, i.radius_m,
+       i.exclusion_slugs, i.free_text
+FROM room_intents i
+JOIN room_members m ON m.room_id = i.room_id AND m.user_id = i.user_id AND m.is_active = true
+WHERE i.room_id = $1 AND i.round_no = $2;
+
+-- name: InsertNextRoundStates :exec
+INSERT INTO room_member_round_state (room_id, user_id, round_no)
+SELECT m.room_id, m.user_id, $2
+FROM room_members AS m
+WHERE m.room_id = $1 AND m.is_active = true;

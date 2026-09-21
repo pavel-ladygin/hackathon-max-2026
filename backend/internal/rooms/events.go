@@ -58,15 +58,21 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 		if err != nil {
 			return err
 		}
-		if !room.ExpiresAt.Time.After(now.Time) {
-			return ErrRoomNotFound
-		}
 		membership, err := repo.Queries.GetRoomMembership(ctx, roomsql.GetRoomMembershipParams{RoomID: roomID, UserID: principal.UserID})
-		if errors.Is(err, pgx.ErrNoRows) || err == nil && !membership.IsActive {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRoomNotFound
 		}
 		if err != nil {
 			return err
+		}
+		// Final-round cleanup retires memberships. Historical members may retry
+		// their accepted events request and receive the terminal result, while a
+		// user who never belonged to the room remains a 404 above.
+		if room.State == string(RoomStateExhausted) {
+			return poolExhaustedState{MyPoolFinished: true, RoomExhausted: true}
+		}
+		if !membership.IsActive || !room.ExpiresAt.Time.After(now.Time) {
+			return ErrRoomNotFound
 		}
 
 		states, err := repo.Queries.GetRoomRoundStates(ctx, roomsql.GetRoomRoundStatesParams{RoomID: room.ID, RoundNo: room.RoundNo})

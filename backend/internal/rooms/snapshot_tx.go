@@ -29,10 +29,11 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 	if err != nil {
 		return result, err
 	}
-	myPoolFinished := false
+	myPoolFinished, myIntentReady := false, false
 	for _, state := range states {
 		if state.UserID == userID {
 			myPoolFinished = state.PoolFinished
+			myIntentReady = state.Ready
 			break
 		}
 	}
@@ -70,6 +71,6 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 			return result, err
 		}
 	}
-	result.AllowedActions = roomActions(room, myPoolFinished, inviteAvailable)
+	result.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable)
 	return result, nil
 }

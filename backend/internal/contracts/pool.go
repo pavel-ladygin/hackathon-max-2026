@@ -2,14 +2,16 @@ package contracts
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
 
-// PoolBuilder reads catalog/profile data and returns a deterministic snapshot.
-// It never reads or writes room state. Backend B supplies inputs and persists
-// the result, changes room state and owns the surrounding transaction.
+// PoolBuilder is a pure, deterministic at-least-once operation: Backend B may
+// invoke it again with identical input after its surrounding transaction rolls
+// back or retries. It reads catalog/profile data and returns a snapshot, but
+// never reads or writes room state or performs any other side effect. Backend B
+// supplies inputs, persists the result, changes room state and owns the
+// surrounding transaction.
 // A may load optional preferences from its own profile store using the supplied
 // internal user IDs; B does not read or transfer A's private persistence models.
 type PoolBuilder interface {
@@ -40,7 +42,6 @@ type ParticipantIntent struct {
 	Location       *GeoPoint
 	ExclusionSlugs []string
 	FreeText       *string
-	SubmittedAt    time.Time
 }
 
 type GeoPoint struct {

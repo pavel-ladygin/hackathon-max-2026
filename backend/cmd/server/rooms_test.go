@@ -30,7 +30,7 @@ func TestNewHandlerCreateRoomUsesProductionRecorderAndAuth(t *testing.T) {
 	city, user, token := newServerRoomFixture(t, ctx, db)
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	h, err := newHandler(serverTestConfig(), db, logger)
+	h, err := newHandler(context.Background(), serverTestConfig(), db, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestNewHandlerFailsClosedForInviteStartupConfiguration(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cfg := serverTestConfig()
 			mutate(&cfg)
-			if h, err := newHandler(cfg, nil, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))); err == nil || h != nil {
+			if h, err := newHandler(context.Background(), cfg, nil, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))); err == nil || h != nil {
 				t.Fatalf("newHandler() = %v, %v; want nil handler and startup error", h, err)
 			}
 		})

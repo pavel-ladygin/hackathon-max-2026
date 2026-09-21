@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EVENTS } from '../../mocks/fixtures'
+import { EVENTS } from '../../test/fixtures'
 import { mapDetail, mapEvent, mapUser } from './mapper'
-import { IVAN } from '../../mocks/fixtures'
+import { IVAN } from '../../test/fixtures'
 
 describe('API boundary mappers', () => {
   it('keeps snake_case DTO fields at the boundary and exposes UI-friendly aliases', () => {

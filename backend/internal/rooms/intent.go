@@ -62,20 +62,33 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 		if !room.ExpiresAt.Time.After(now) {
 			return ErrRoomNotFound
 		}
-		switch RoomState(room.State) {
-		case RoomStateMatched:
+		if RoomState(room.State) == RoomStateMatched {
 			return ErrAlreadyMatched
+		}
+		if !membership.IsActive {
+			return ErrRoomNotFound
+		}
+		switch RoomState(room.State) {
 		case RoomStateExhausted:
 			if room.RoundNo >= 3 {
 				return ErrRoundLimitReached
 			}
-			return ErrIntentLocked
+			previousRound := room.RoundNo
+			room, err = repo.Queries.RestartExhaustedRoomRound(ctx, room.ID)
+			if err != nil {
+				return err
+			}
+			if err := repo.Queries.CopyRoomIntentsToNextRound(ctx, roomsql.CopyRoomIntentsToNextRoundParams{
+				RoomID: room.ID, RoundNo: previousRound, RoundNo_2: room.RoundNo,
+			}); err != nil {
+				return err
+			}
+			if err := repo.Queries.InsertNextRoundStates(ctx, roomsql.InsertNextRoundStatesParams{RoomID: room.ID, RoundNo: room.RoundNo}); err != nil {
+				return err
+			}
 		case RoomStateRanking, RoomStateVoting:
 			return ErrIntentLocked
 		case RoomStateCollectingIntents:
-			if !membership.IsActive {
-				return ErrRoomNotFound
-			}
 		default:
 			return ErrRoomNotFound
 		}

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useBootstrap } from '../features/auth/useBootstrap'
 import { OpenInMaxPage } from '../pages/system/OpenInMaxPage'
-import { Button, DemoBadge, ErrorState, Loading } from '../shared/ui/index'
+import { Button, ErrorState, Loading } from '../shared/ui/index'
 import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
 
@@ -13,6 +13,10 @@ const CatalogPage = lazy(() => import('../pages/catalog/CatalogPage').then((m) =
 const SavedPage = lazy(() => import('../pages/saved/SavedPage').then((m) => ({ default: m.SavedPage })))
 const PreferencesPage = lazy(() => import('../pages/preferences/PreferencesPage').then((m) => ({ default: m.PreferencesPage })))
 const RoomUnavailablePage = lazy(() => import('../pages/rooms/RoomUnavailablePage').then((m) => ({ default: m.RoomUnavailablePage })))
+const NewRoomPage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.NewRoomPage })))
+const InvitePage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.InvitePage })))
+const JoinPage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.JoinPage })))
+const RoomFlowPage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.RoomFlowPage })))
 
 function MaxBridgeReady() {
   const called = useRef(false)
@@ -27,9 +31,9 @@ function MaxBridgeReady() {
 function AppRoutes() {
   const location = useLocation()
   const bootstrap = useBootstrap()
-  const discoverySource = import.meta.env.VITE_DISCOVERY_SOURCE ?? 'mock'
-
-  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage />
+  const inviteContext = bootstrap.data?.inviteContext
+  const inviteToken = location.pathname.match(/^\/join\/([^/]+)$/)?.[1]
+  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={inviteToken ? decodeInviteToken(inviteToken) : null} />
   if (bootstrap.isPending) return <Loading label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
 
@@ -40,10 +44,12 @@ function AppRoutes() {
   if (bootstrap.data.onboardingState === 'complete' && isOnboarding) {
     return <Navigate to="/" replace />
   }
+  if (location.pathname === '/' && inviteContext?.token && !inviteContext.already_joined) {
+    return <Navigate to={`/join/${encodeURIComponent(inviteContext.token)}`} replace />
+  }
 
   return (
     <Suspense fallback={<Loading label="Открываем экран…" />}>
-    {discoverySource === 'mock' && isDiscoveryPath(location.pathname) ? <DemoBadge /> : null}
     <Routes>
       <Route path="/open-in-max" element={<OpenInMaxPage />} />
       <Route path="/onboarding/:step" element={<OnboardingPage />} />
@@ -53,6 +59,10 @@ function AppRoutes() {
       <Route path="/events/:eventId" element={<EventPage />} />
       <Route path="/saved" element={<SavedPage />} />
       <Route path="/preferences" element={<PreferencesPage />} />
+      <Route path="/rooms/new" element={<NewRoomPage />} />
+      <Route path="/rooms/:roomId/invite" element={<InvitePage />} />
+      <Route path="/rooms/:roomId/:roomScreen" element={<RoomFlowPage />} />
+      <Route path="/join/:inviteToken" element={<JoinPage />} />
       <Route path="/rooms/*" element={<RoomUnavailablePage />} />
       <Route path="/join/*" element={<RoomUnavailablePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -61,10 +71,10 @@ function AppRoutes() {
   )
 }
 
-export function App() {
-  return <AppProviders><MaxBridgeReady /><AppRoutes /></AppProviders>
+function decodeInviteToken(token: string) {
+  try { return decodeURIComponent(token) } catch { return token }
 }
 
-function isDiscoveryPath(pathname: string) {
-  return pathname === '/' || pathname === '/saved' || pathname === '/events' || pathname.startsWith('/events/')
+export function App() {
+  return <AppProviders><MaxBridgeReady /><AppRoutes /></AppProviders>
 }

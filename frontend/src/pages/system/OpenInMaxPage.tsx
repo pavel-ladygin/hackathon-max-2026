@@ -2,8 +2,9 @@ import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, PageContent, PageShell } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
-export function OpenInMaxPage({ error }: { error?: string }) {
-  const appUrl = import.meta.env.VITE_MAX_APP_URL ?? 'https://max.ru'
+export function OpenInMaxPage({ error, startParam }: { error?: string; startParam?: string | null }) {
+  const configuredUrl = import.meta.env.VITE_MAX_APP_URL ?? 'https://max.ru'
+  const appUrl = startParam ? `${configuredUrl}${configuredUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(startParam)}` : configuredUrl
   return (
     <PageShell>
       <PageContent className={`${styles.narrow} ${styles.center}`}>

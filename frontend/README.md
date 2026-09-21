@@ -23,19 +23,16 @@ cp .env.example .env.local
 npm run dev
 ```
 
-По умолчанию используется реальная авторизация и mock discovery. Приложение доступно на адресе, который напечатает Vite; вне MAX реальный bootstrap ожидаемо отклонит пустой `initData`, поэтому полноценную ручную проверку выполняйте из клиента MAX.
+Приложение использует реальную авторизацию и discovery API. Вне MAX реальный bootstrap ожидаемо отклонит пустой `initData`, поэтому полноценную ручную проверку выполняйте из клиента MAX.
 
-Онбординг сохраняет предпочтения через реальный `PUT /api/v1/me/preferences`. Афиша, поиск, карточки событий, избранное, behavior и переход к билету используют локальный discovery-адаптер и не требуют Service Worker. Комнаты не мокируются и не вызывают room endpoints; их сценарий будет подключён после готовности backend.
+Онбординг, афиша, поиск, карточки событий, избранное, behavior, билеты и комнаты используют backend через `VITE_API_BASE_URL`.
 
 ## Режимы API
 
 ```dotenv
-VITE_DISCOVERY_SOURCE=mock
 VITE_API_BASE_URL=/api/v1
 ```
 
-- `VITE_DISCOVERY_SOURCE=mock` использует локальную демо-афишу.
-- `VITE_DISCOVERY_SOURCE=http` отправляет только discovery-запросы в `VITE_API_BASE_URL`.
 - Авторизация, bootstrap, preferences и health всегда отправляются в `VITE_API_BASE_URL`.
 
 Между источниками нет скрытого fallback: ошибка реального backend не подменяется мок-ответом. Локальный discovery mock хранит избранное и дедупликацию behavior в `localStorage`.
@@ -96,5 +93,5 @@ npm run test:e2e
 
 1. Реализовать discovery endpoints, описанные в `shared/api/client.ts`.
 2. Согласовать DTO из `shared/api/types.ts` с итоговой OpenAPI-схемой.
-3. Задать `VITE_DISCOVERY_SOURCE=http` и URL gateway.
+3. Задать URL gateway через `VITE_API_BASE_URL` (по умолчанию `/api/v1`).
 4. После реализации join, snapshot, intent, events и vote вернуть room-навигацию отдельным этапом.

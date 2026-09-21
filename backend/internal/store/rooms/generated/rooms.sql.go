@@ -256,6 +256,53 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 	return i, err
 }
 
+const lockExpiredRoomsForCleanup = `-- name: LockExpiredRoomsForCleanup :many
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+FROM rooms
+WHERE expires_at <= $1
+  AND EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = rooms.id AND m.is_active = true)
+ORDER BY expires_at, id
+LIMIT $2
+FOR UPDATE SKIP LOCKED
+`
+
+type LockExpiredRoomsForCleanupParams struct {
+	ExpiresAt pgtype.Timestamptz
+	Limit     int32
+}
+
+func (q *Queries) LockExpiredRoomsForCleanup(ctx context.Context, arg LockExpiredRoomsForCleanupParams) ([]Room, error) {
+	rows, err := q.db.Query(ctx, lockExpiredRoomsForCleanup, arg.ExpiresAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Room{}
+	for rows.Next() {
+		var i Room
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatorUserID,
+			&i.CityID,
+			&i.Name,
+			&i.State,
+			&i.RoundNo,
+			&i.ActivePoolVersion,
+			&i.MatchedEventID,
+			&i.Version,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockRoom = `-- name: LockRoom :one
 SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
 FROM rooms
@@ -282,18 +329,30 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 	return i, err
 }
 
-const markRoomExhausted = `-- name: MarkRoomExhausted :execrows
-UPDATE rooms
-SET state = 'exhausted', version = version + 1
-WHERE id = $1 AND state = 'voting'
+const markRoomExhausted = `-- name: MarkRoomExhausted :one
+WITH exhausted_room AS (
+  UPDATE rooms
+  SET state = 'exhausted', version = version + 1
+  WHERE id = $1 AND state = 'voting'
+  RETURNING id, active_pool_version, round_no
+), exhausted_pool AS (
+  UPDATE room_pools AS p
+  SET state = 'exhausted'
+  FROM exhausted_room AS r
+  WHERE p.room_id = r.id
+    AND p.version = r.active_pool_version
+    AND p.round_no = r.round_no
+    AND p.state = 'ready'
+)
+SELECT count(*) FROM exhausted_room
 `
 
+// Exhaustion is only valid from voting; callers must verify both users finished.
 func (q *Queries) MarkRoomExhausted(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, markRoomExhausted, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, markRoomExhausted, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const markRoomMatched = `-- name: MarkRoomMatched :execrows
@@ -304,15 +363,45 @@ WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL
 
 type MarkRoomMatchedParams struct {
 	ID      uuid.UUID
-	EventID uuid.UUID
+	EventID pgtype.UUID
 }
 
+// The caller must have locked the room and verified the active pool/mutual like.
+// The state predicate keeps this transition terminal and idempotent under retries.
 func (q *Queries) MarkRoomMatched(ctx context.Context, arg MarkRoomMatchedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markRoomMatched, arg.ID, arg.EventID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const restartExhaustedRoomRound = `-- name: RestartExhaustedRoomRound :one
+UPDATE rooms
+SET state = 'collecting_intents', round_no = round_no + 1, version = version + 1
+WHERE id = $1 AND state = 'exhausted' AND round_no < 3
+RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+`
+
+// The caller holds the room row lock.  Keep active_pool_version as history;
+// all active-pool reads are scoped to the new round.
+func (q *Queries) RestartExhaustedRoomRound(ctx context.Context, id uuid.UUID) (Room, error) {
+	row := q.db.QueryRow(ctx, restartExhaustedRoomRound, id)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.CreatorUserID,
+		&i.CityID,
+		&i.Name,
+		&i.State,
+		&i.RoundNo,
+		&i.ActivePoolVersion,
+		&i.MatchedEventID,
+		&i.Version,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const transitionCollectingRoomToRanking = `-- name: TransitionCollectingRoomToRanking :execrows

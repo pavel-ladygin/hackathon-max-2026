@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,7 @@ import (
 
 func TestNewHandlerRegistersAuthenticatedSavedEventsRoutes(t *testing.T) {
 	db := openServerTestDB(t)
-	h, err := newHandler(serverTestConfig(), db, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	h, err := newHandler(context.Background(), serverTestConfig(), db, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

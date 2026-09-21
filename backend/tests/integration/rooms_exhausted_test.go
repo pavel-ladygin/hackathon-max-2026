@@ -197,6 +197,22 @@ func TestB10Round3VotingExhaustionRetiresMembersAndCoordinates(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertB10TerminalCleanup(t, f)
+	var poolState string
+	if err := db.QueryRow(ctx, "SELECT state FROM room_pools WHERE id=$1", pool.ID).Scan(&poolState); err != nil || poolState != "exhausted" {
+		t.Fatalf("active pool state=%q err=%v; want exhausted with terminal room", poolState, err)
+	}
+	// Terminal cleanup retires memberships, but historical participants may
+	// retry the terminal request; users who never joined cannot discover it.
+	retried, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], req)
+	if err != nil || !retried.MyPoolFinished || !retried.RoomExhausted || retried.AcceptedVote != req.Vote {
+		t.Fatalf("historical vote retry response=%+v error=%v; want accepted terminal result", retried, err)
+	}
+	if _, err := svc.GetEvents(ctx, contracts.Principal{UserID: f.creator}, f.room, rooms.RoomEventsInput{}); !errors.Is(err, rooms.ErrPoolExhausted) {
+		t.Fatalf("historical events retry error=%v; want pool exhausted", err)
+	}
+	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.third}, f.room, events[0], req); !errors.Is(err, rooms.ErrRoomNotFound) {
+		t.Fatalf("stranger terminal retry error=%v; want room not found", err)
+	}
 }
 
 func TestB10Round3ZeroCandidatePoolTerminalCleanup(t *testing.T) {
@@ -257,8 +273,12 @@ func TestB10ExhaustionRetryIsIdempotent(t *testing.T) {
 	if _, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], req); !errors.Is(err, rooms.ErrPoolExhausted) {
-		t.Fatalf("repeat vote error=%v; want pool exhausted", err)
+	repeated, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], req)
+	if err != nil {
+		t.Fatalf("repeat accepted vote: %v", err)
+	}
+	if repeated.AcceptedVote != api.Dislike || repeated.PoolVersion != int(pool.Version) || !repeated.MyPoolFinished || !repeated.RoomExhausted {
+		t.Fatalf("repeat accepted vote response=%+v; want stable terminal result", repeated)
 	}
 	var finished, terminal int
 	if err := db.QueryRow(ctx, "SELECT count(*) FILTER (WHERE pool_finished), count(*) FROM room_member_round_state s JOIN rooms r ON r.id=s.room_id WHERE s.room_id=$1 AND s.round_no=1", f.room).Scan(&finished, &terminal); err != nil {
