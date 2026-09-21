@@ -180,7 +180,9 @@ jobs:
         working-directory: .
         run: |
           docker build --pull --tag "$BACKEND_IMAGE" --file backend/Dockerfile .
-          docker build --pull --tag "$FRONTEND_IMAGE" --file frontend/Dockerfile frontend
+          docker build --pull --tag "$FRONTEND_IMAGE" --file frontend/Dockerfile \
+            --build-arg VITE_TICKET_PROVIDER_ALLOWLIST='*.ru' \
+            frontend
       - name: Start smoke stack
         working-directory: .
         env:
@@ -286,6 +288,8 @@ jobs:
           build-args: |
             VITE_API_BASE_URL=/api/v1
             VITE_MAX_APP_URL=https://max.ru/t255_hakaton_max_bot
+            VITE_YANDEX_MAPS_API_KEY=${{ secrets.YANDEX_MAPS_API_KEY }}
+            VITE_TICKET_PROVIDER_ALLOWLIST=*.ru
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:${{ env.RELEASE_SHA }}
             ${{ env.IMAGE_PREFIX }}/frontend:${{ env.CHANNEL_TAG }}
