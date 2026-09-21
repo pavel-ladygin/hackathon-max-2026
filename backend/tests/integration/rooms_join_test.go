@@ -59,8 +59,8 @@ func TestJoinRoomPersistsSafeParticipantSnapshotAndIsRepeatable(t *testing.T) {
 	if creatorView.Id != created.Room.Id || nullableIsNull(creatorView.Invite) {
 		t.Fatalf("unexpected creator join response: %+v", creatorView)
 	}
-	if len(creatorView.AllowedActions) != 2 || creatorView.AllowedActions[0] != api.Invite || creatorView.AllowedActions[1] != api.EditIntent {
-		t.Fatalf("creator actions = %v; want invite, edit_intent", creatorView.AllowedActions)
+	if len(creatorView.AllowedActions) != 1 || creatorView.AllowedActions[0] != api.EditIntent {
+		t.Fatalf("creator actions = %v; want edit_intent for a full room", creatorView.AllowedActions)
 	}
 	var creatorJoinEvents int
 	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_join'", created.Room.Id, f.creator).Scan(&creatorJoinEvents); err != nil || creatorJoinEvents != 0 {
@@ -78,7 +78,10 @@ func TestJoinRoomPersistsSafeParticipantSnapshotAndIsRepeatable(t *testing.T) {
 		t.Fatalf("voting retry returned stale join snapshot: %+v", votingRetry)
 	}
 
-	if _, err := db.Exec(ctx, "UPDATE rooms SET state='exhausted', round_no=3, version=version+1 WHERE id=$1; UPDATE room_members SET is_active=false WHERE room_id=$1", created.Room.Id); err != nil {
+	if _, err := db.Exec(ctx, "UPDATE rooms SET state='exhausted', round_no=3, version=version+1 WHERE id=$1", created.Room.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, "UPDATE room_members SET is_active=false WHERE room_id=$1", created.Room.Id); err != nil {
 		t.Fatal(err)
 	}
 	terminalRetry, err := svc.Join(ctx, contracts.Principal{UserID: f.member}, created.Invite.Token, "join-terminal-retry")
@@ -171,7 +174,10 @@ func TestJoinRoomRetiresRestartableRoomAndRollsBackRecorderFailure(t *testing.T)
 	}
 	// A historical membership must not let the caller bypass the invariant
 	// that they can participate in only one live room at a time.
-	if _, err := db.Exec(ctx, "UPDATE rooms SET expires_at=now()+interval '1 hour' WHERE id=$1; UPDATE room_invites SET expires_at=now()+interval '1 hour' WHERE room_id=$1", old.Room.Id); err != nil {
+	if _, err := db.Exec(ctx, "UPDATE rooms SET expires_at=now()+interval '1 hour' WHERE id=$1", old.Room.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, "UPDATE room_invites SET expires_at=now()+interval '1 hour' WHERE room_id=$1", old.Room.Id); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Join(ctx, contracts.Principal{UserID: f.member}, old.Invite.Token, "old-room-retry"); !errors.Is(err, rooms.ErrActiveRoomExists) {

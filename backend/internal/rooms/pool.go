@@ -138,7 +138,7 @@ func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room room
 }
 
 func participantIntent(in roomsql.RoomIntent) contracts.ParticipantIntent {
-	out := contracts.ParticipantIntent{UserID: in.UserID, Version: in.Version, BudgetMaxMinor: in.BudgetMaxMinor, SubmittedAt: in.SubmittedAt.Time}
+	out := contracts.ParticipantIntent{UserID: in.UserID, Version: in.Version, BudgetMaxMinor: in.BudgetMaxMinor}
 	for _, date := range in.DateOptions {
 		out.Dates = append(out.Dates, date.Time.Format("2006-01-02"))
 	}

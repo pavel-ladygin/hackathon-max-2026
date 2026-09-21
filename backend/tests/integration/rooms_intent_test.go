@@ -214,29 +214,37 @@ func TestReplaceIntentConcurrentParticipants(t *testing.T) {
 	f, svc := setupIntentRoom(t, behavior.Recorder{})
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	errs := make(chan error, 2)
+	type result struct {
+		transitioned bool
+		err          error
+	}
+	results := make(chan result, 2)
 	for _, user := range []uuid.UUID{f.creator, f.member} {
 		wg.Add(1)
 		go func(user uuid.UUID) {
 			defer wg.Done()
 			<-start
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
-			errs <- err
+			_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
+			results <- result{transitioned: transitioned, err: err}
 		}(user)
 	}
 	close(start)
 	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
+	close(results)
+	transitioned := false
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
 		}
+		transitioned = transitioned || result.transitioned
 	}
 	// Under REPEATABLE READ, concurrent first submissions can both commit
 	// their readiness snapshots before either transaction observes the other's
 	// row. A deterministic retry by one participant completes the B6 build.
-	if _, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || !transitioned {
-		t.Fatalf("deterministic build retry transitioned=%v err=%v", transitioned, err)
+	if !transitioned {
+		if _, retried, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || !retried {
+			t.Fatalf("deterministic build retry transitioned=%v err=%v", retried, err)
+		}
 	}
 	var state string
 	var version, pools, intents, ready int

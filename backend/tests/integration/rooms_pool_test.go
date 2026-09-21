@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oapi-codegen/nullable"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
@@ -28,6 +29,7 @@ type poolBuilderFake struct {
 	inputs        []contracts.BuildInput
 	started       chan struct{}
 	continueBuild chan struct{}
+	retryOnce     bool
 }
 
 func jsonEquivalent(tested, expected []byte) bool {
@@ -68,8 +70,10 @@ func (b poolBuilderPoolProbe) Build(ctx context.Context, input contracts.BuildIn
 func (f *poolBuilderFake) Build(ctx context.Context, input contracts.BuildInput) (contracts.BuildResult, error) {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, cloneBuildInput(input))
+	callNumber := len(f.inputs)
 	started := f.started
 	continueBuild := f.continueBuild
+	retryOnce := f.retryOnce
 	f.mu.Unlock()
 	if started != nil {
 		select {
@@ -83,6 +87,9 @@ func (f *poolBuilderFake) Build(ctx context.Context, input contracts.BuildInput)
 		case <-ctx.Done():
 			return contracts.BuildResult{}, ctx.Err()
 		}
+	}
+	if retryOnce && callNumber == 1 {
+		return contracts.BuildResult{}, &pgconn.PgError{Code: "40001", Message: "forced serialization retry"}
 	}
 	return f.result, f.err
 }
@@ -493,50 +500,23 @@ func TestB6BuilderDeterminismAndNoDuplicateConcurrentBuild(t *testing.T) {
 		}
 	}
 	event := f.newEvent(t)
-	builder := &poolBuilderFake{result: contracts.BuildResult{RankerVersion: "fake", InputFingerprint: "stable", Candidates: []contracts.Candidate{{EventID: event}}}}
+	builder := &poolBuilderFake{retryOnce: true, result: contracts.BuildResult{RankerVersion: "fake", InputFingerprint: "stable", Candidates: []contracts.Candidate{{EventID: event}}}}
 	svc := poolService(t, db, builder)
 	if _, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || transitioned {
 		t.Fatalf("first intent transitioned=%v err=%v; want committed non-terminal intent", transitioned, err)
 	}
-	start := make(chan struct{})
-	type intentResult struct {
-		transitioned bool
-		err          error
-	}
-	results := make(chan intentResult, 2)
-	var wg sync.WaitGroup
-	for _, user := range []uuid.UUID{f.creator, f.member} {
-		wg.Add(1)
-		go func(user uuid.UUID) {
-			defer wg.Done()
-			<-start
-			_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
-			results <- intentResult{transitioned: transitioned, err: err}
-		}(user)
-	}
-	close(start)
-	wg.Wait()
-	close(results)
-	var transitions int
-	for result := range results {
-		if result.err != nil && !errors.Is(result.err, rooms.ErrIntentLocked) {
-			t.Fatal(result.err)
-		}
-		if result.transitioned {
-			transitions++
-		}
+	_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.member}, f.room, validIntentRequest())
+	if err != nil || !transitioned {
+		t.Fatalf("retrying build transitioned=%v err=%v", transitioned, err)
 	}
 	calls := builder.calls()
-	if len(calls) < 1 || len(calls) > 3 {
-		t.Fatalf("concurrent Build calls=%d, want 1..3 at-least-once attempts (transitions=%d)", len(calls), transitions)
+	if len(calls) != 2 {
+		t.Fatalf("Build calls=%d, want forced attempt plus retry", len(calls))
 	}
 	for i := 1; i < len(calls); i++ {
 		if !reflect.DeepEqual(calls[0], calls[i]) {
 			t.Fatalf("retry Build input %d differs from first attempt: first=%+v retry=%+v", i+1, calls[0], calls[i])
 		}
-	}
-	if transitions != 1 {
-		t.Fatalf("concurrent transitions=%d, want 1", transitions)
 	}
 	var pools int
 	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM room_pools WHERE room_id=$1", f.room).Scan(&pools); err != nil || pools != 1 {

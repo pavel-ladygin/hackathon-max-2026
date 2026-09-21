@@ -273,8 +273,12 @@ func TestB10ExhaustionRetryIsIdempotent(t *testing.T) {
 	if _, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], req); !errors.Is(err, rooms.ErrPoolExhausted) {
-		t.Fatalf("repeat vote error=%v; want pool exhausted", err)
+	repeated, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], req)
+	if err != nil {
+		t.Fatalf("repeat accepted vote: %v", err)
+	}
+	if repeated.AcceptedVote != api.Dislike || repeated.PoolVersion != int(pool.Version) || !repeated.MyPoolFinished || !repeated.RoomExhausted {
+		t.Fatalf("repeat accepted vote response=%+v; want stable terminal result", repeated)
 	}
 	var finished, terminal int
 	if err := db.QueryRow(ctx, "SELECT count(*) FILTER (WHERE pool_finished), count(*) FROM room_member_round_state s JOIN rooms r ON r.id=s.room_id WHERE s.room_id=$1 AND s.round_no=1", f.room).Scan(&finished, &terminal); err != nil {

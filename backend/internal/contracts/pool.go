@@ -2,7 +2,6 @@ package contracts
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -43,7 +42,6 @@ type ParticipantIntent struct {
 	Location       *GeoPoint
 	ExclusionSlugs []string
 	FreeText       *string
-	SubmittedAt    time.Time
 }
 
 type GeoPoint struct {
