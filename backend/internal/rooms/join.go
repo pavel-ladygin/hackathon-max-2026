@@ -41,31 +41,7 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 			if _, err := repo.Queries.LockMembershipUser(ctx, principal.UserID); err != nil {
 				return err
 			}
-			now, err := repo.Queries.ClockNow(ctx)
-			if err != nil {
-				return err
-			}
-			clock := now.Time
 			idem := roomsql.GetCreateIdempotencyParams{UserID: principal.UserID, Key: key, Route: joinRoute}
-			cached, err := repo.Queries.GetCreateIdempotency(ctx, idem)
-			if err == nil {
-				if !cached.ExpiresAt.Time.After(clock) {
-					if _, err := repo.Queries.DeleteExpiredCreateIdempotency(ctx, roomsql.DeleteExpiredCreateIdempotencyParams{UserID: principal.UserID, Key: key, Route: joinRoute, ExpiresAt: pgTimestamp(clock)}); err != nil {
-						return err
-					}
-				} else {
-					if cached.RequestHash != requestHash {
-						return ErrIdempotencyConflict
-					}
-					plain, err := s.invites.OpenJoinResponse(principal.UserID, key, cached.ResponseBody)
-					if err != nil {
-						return err
-					}
-					return json.Unmarshal(plain, &response)
-				}
-			} else if !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
 			discoveredInvite, err := repo.Queries.GetRoomInviteByHash(ctx, tokenHash)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrInviteNotFound
@@ -113,14 +89,52 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 			if errors.Is(membershipErr, pgx.ErrNoRows) && activeErr == nil {
 				return errJoinMembershipChanged
 			}
+			// The locks above may block. Read the database clock only after they
+			// are acquired, so expiration and idempotency use the time at which
+			// this transaction can actually make its join decision.
+			now, err := repo.Queries.ClockNow(ctx)
+			if err != nil {
+				return err
+			}
+			clock := now.Time
+			cached, err := repo.Queries.GetCreateIdempotency(ctx, idem)
+			if err == nil {
+				if !cached.ExpiresAt.Time.After(clock) {
+					if _, err := repo.Queries.DeleteExpiredCreateIdempotency(ctx, roomsql.DeleteExpiredCreateIdempotencyParams{UserID: principal.UserID, Key: key, Route: joinRoute, ExpiresAt: pgTimestamp(clock)}); err != nil {
+						return err
+					}
+				} else {
+					if cached.RequestHash != requestHash {
+						return ErrIdempotencyConflict
+					}
+					plain, err := s.invites.OpenJoinResponse(principal.UserID, key, cached.ResponseBody)
+					if err != nil {
+						return err
+					}
+					return json.Unmarshal(plain, &response)
+				}
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
 
-			if !invite.ExpiresAt.Time.After(clock) || !target.ExpiresAt.Time.After(clock) {
+			count, err := repo.Queries.CountRoomMembers(ctx, target.ID)
+			if err != nil {
+				return err
+			}
+			targetMembership, targetMembershipErr := repo.Queries.GetRoomMembership(ctx, roomsql.GetRoomMembershipParams{RoomID: target.ID, UserID: principal.UserID})
+			if targetMembershipErr != nil && !errors.Is(targetMembershipErr, pgx.ErrNoRows) {
+				return targetMembershipErr
+			}
+			// Membership is historical identity for a room. Matched and terminal
+			// rooms retire active memberships, but a repeated Join must still be
+			// idempotent and return the caller's current room snapshot.
+			alreadyJoined := targetMembershipErr == nil
+			switch roomInviteJoinability(invite.ExpiresAt.Time, target.ExpiresAt.Time, target.State, count, alreadyJoined, clock) {
+			case api.Expired:
 				return ErrInviteExpired
+			case api.Full:
+				return ErrRoomFull
 			}
-			if activeErr == nil && active.RoomID == target.ID && active.IsActive {
-				return s.finishJoinResponse(ctx, repo, principal.UserID, key, requestHash, target, target.ExpiresAt.Time, &invite, &response)
-			}
-
 			if activeErr == nil && active.RoomID != target.ID {
 				old := roomsByID[active.RoomID]
 				if old.ExpiresAt.Time.After(clock) && (old.State == string(RoomStateCollectingIntents) || old.State == string(RoomStateRanking) || old.State == string(RoomStateVoting)) {
@@ -143,15 +157,12 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 					return err
 				}
 			}
+			if alreadyJoined {
+				return s.finishJoinResponse(ctx, repo, principal.UserID, key, requestHash, target, targetMembership, clock, target.ExpiresAt.Time, &response)
+			}
 
-			count, err := repo.Queries.CountRoomMembers(ctx, target.ID)
+			targetMembership, err = repo.Queries.InsertRoomMember(ctx, roomsql.InsertRoomMemberParams{RoomID: target.ID, UserID: principal.UserID, Role: "participant"})
 			if err != nil {
-				return err
-			}
-			if count >= 2 {
-				return ErrRoomFull
-			}
-			if _, err := repo.Queries.InsertRoomMember(ctx, roomsql.InsertRoomMemberParams{RoomID: target.ID, UserID: principal.UserID, Role: "participant"}); err != nil {
 				return mapJoinDBError(err)
 			}
 			if _, err := repo.Queries.InsertRoomRoundState(ctx, roomsql.InsertRoomRoundStateParams{RoomID: target.ID, UserID: principal.UserID, RoundNo: target.RoundNo}); err != nil {
@@ -170,7 +181,7 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 			if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_join", RoomID: &target.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: clock}); err != nil {
 				return err
 			}
-			return s.finishJoinResponse(ctx, repo, principal.UserID, key, requestHash, target, invite.ExpiresAt.Time, nil, &response)
+			return s.finishJoinResponse(ctx, repo, principal.UserID, key, requestHash, target, targetMembership, clock, invite.ExpiresAt.Time, &response)
 		})
 		if !errors.Is(err, errJoinMembershipChanged) {
 			return response, err
@@ -179,19 +190,12 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 	return api.RoomSnapshot{}, errJoinMembershipChanged
 }
 
-func (s *Service) finishJoinResponse(ctx context.Context, repo *Repository, userID uuid.UUID, key, requestHash string, room roomsql.Room, expiresAt time.Time, invite *roomsql.RoomInvite, response *api.RoomSnapshot) error {
-	participants, err := repo.Queries.GetPublicParticipants(ctx, roomsql.GetPublicParticipantsParams{RoomID: room.ID, RoundNo: room.RoundNo})
+func (s *Service) finishJoinResponse(ctx context.Context, repo *Repository, userID uuid.UUID, key, requestHash string, room roomsql.Room, membership roomsql.RoomMember, now, expiresAt time.Time, response *api.RoomSnapshot) error {
+	current, err := s.snapshot(ctx, repo, userID, room, membership, now)
 	if err != nil {
 		return err
 	}
-	*response = joinSnapshot(room, participants)
-	if userID == room.CreatorUserID && invite != nil {
-		material, err := s.invites.Recover(room.ID, invite.TokenCiphertext, invite.EncryptionKeyVersion, invite.ExpiresAt.Time)
-		if err != nil {
-			return err
-		}
-		*response = createSnapshot(room, participants, material)
-	}
+	*response = current
 	body, err := json.Marshal(response)
 	if err != nil {
 		return err

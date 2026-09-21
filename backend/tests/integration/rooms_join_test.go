@@ -66,6 +66,29 @@ func TestJoinRoomPersistsSafeParticipantSnapshotAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_join'", created.Room.Id, f.creator).Scan(&creatorJoinEvents); err != nil || creatorJoinEvents != 0 {
 		t.Fatalf("creator own invite behavior count=%d err=%v; want zero", creatorJoinEvents, err)
 	}
+
+	if _, err := db.Exec(ctx, "UPDATE rooms SET state='voting', version=version+1 WHERE id=$1", created.Room.Id); err != nil {
+		t.Fatal(err)
+	}
+	votingRetry, err := svc.Join(ctx, contracts.Principal{UserID: f.member}, created.Invite.Token, "join-voting-retry")
+	if err != nil {
+		t.Fatalf("same participant retry after voting transition: %v", err)
+	}
+	if votingRetry.State != api.RoomStateVoting || len(votingRetry.AllowedActions) != 2 || votingRetry.AllowedActions[0] != api.ViewPool || votingRetry.AllowedActions[1] != api.Vote {
+		t.Fatalf("voting retry returned stale join snapshot: %+v", votingRetry)
+	}
+
+	if _, err := db.Exec(ctx, "UPDATE rooms SET state='exhausted', round_no=3, version=version+1 WHERE id=$1; UPDATE room_members SET is_active=false WHERE room_id=$1", created.Room.Id); err != nil {
+		t.Fatal(err)
+	}
+	terminalRetry, err := svc.Join(ctx, contracts.Principal{UserID: f.member}, created.Invite.Token, "join-terminal-retry")
+	if err != nil {
+		t.Fatalf("historical participant retry after retirement: %v", err)
+	}
+	if terminalRetry.State != api.RoomStateExhausted || len(terminalRetry.AllowedActions) != 0 {
+		t.Fatalf("terminal retry returned stale join snapshot: %+v", terminalRetry)
+	}
+	assertJoinRows(t, db, created.Room.Id, f.member, 1, 1)
 }
 
 func TestJoinRoomRejectsInvalidUnknownExpiredFullAndActiveRoom(t *testing.T) {
@@ -145,6 +168,14 @@ func TestJoinRoomRetiresRestartableRoomAndRollsBackRecorderFailure(t *testing.T)
 	}
 	if err := db.QueryRow(ctx, "SELECT expires_at <= now() FROM room_invites WHERE room_id=$1", old.Room.Id).Scan(&inviteExpired); err != nil || !inviteExpired {
 		t.Fatalf("old invite expired=%v err=%v", inviteExpired, err)
+	}
+	// A historical membership must not let the caller bypass the invariant
+	// that they can participate in only one live room at a time.
+	if _, err := db.Exec(ctx, "UPDATE rooms SET expires_at=now()+interval '1 hour' WHERE id=$1; UPDATE room_invites SET expires_at=now()+interval '1 hour' WHERE room_id=$1", old.Room.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Join(ctx, contracts.Principal{UserID: f.member}, old.Invite.Token, "old-room-retry"); !errors.Is(err, rooms.ErrActiveRoomExists) {
+		t.Fatalf("historical retry while another room is active error=%v; want active room exists", err)
 	}
 
 	failingUser := f.newUser(t)

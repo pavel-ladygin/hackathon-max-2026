@@ -31,7 +31,9 @@ function MaxBridgeReady() {
 function AppRoutes() {
   const location = useLocation()
   const bootstrap = useBootstrap()
-  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage />
+  const inviteContext = bootstrap.data?.inviteContext
+  const inviteToken = location.pathname.match(/^\/join\/([^/]+)$/)?.[1]
+  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={inviteToken ? decodeInviteToken(inviteToken) : null} />
   if (bootstrap.isPending) return <Loading label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
 
@@ -42,8 +44,8 @@ function AppRoutes() {
   if (bootstrap.data.onboardingState === 'complete' && isOnboarding) {
     return <Navigate to="/" replace />
   }
-  if (location.pathname === '/' && bootstrap.data.inviteContext?.token) {
-    return <Navigate to={`/join/${encodeURIComponent(bootstrap.data.inviteContext.token)}`} replace />
+  if (location.pathname === '/' && inviteContext?.token && !inviteContext.already_joined) {
+    return <Navigate to={`/join/${encodeURIComponent(inviteContext.token)}`} replace />
   }
 
   return (
@@ -67,6 +69,10 @@ function AppRoutes() {
     </Routes>
     </Suspense>
   )
+}
+
+function decodeInviteToken(token: string) {
+  try { return decodeURIComponent(token) } catch { return token }
 }
 
 export function App() {

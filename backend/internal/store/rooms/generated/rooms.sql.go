@@ -329,19 +329,30 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 	return i, err
 }
 
-const markRoomExhausted = `-- name: MarkRoomExhausted :execrows
-UPDATE rooms
-SET state = 'exhausted', version = version + 1
-WHERE id = $1 AND state = 'voting'
+const markRoomExhausted = `-- name: MarkRoomExhausted :one
+WITH exhausted_room AS (
+  UPDATE rooms
+  SET state = 'exhausted', version = version + 1
+  WHERE id = $1 AND state = 'voting'
+  RETURNING id, active_pool_version, round_no
+), exhausted_pool AS (
+  UPDATE room_pools AS p
+  SET state = 'exhausted'
+  FROM exhausted_room AS r
+  WHERE p.room_id = r.id
+    AND p.version = r.active_pool_version
+    AND p.round_no = r.round_no
+    AND p.state = 'ready'
+)
+SELECT count(*) FROM exhausted_room
 `
 
 // Exhaustion is only valid from voting; callers must verify both users finished.
 func (q *Queries) MarkRoomExhausted(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, markRoomExhausted, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, markRoomExhausted, id)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const markRoomMatched = `-- name: MarkRoomMatched :execrows

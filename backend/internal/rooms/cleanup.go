@@ -14,31 +14,52 @@ const expiryCleanupBatch = 100
 // CleanupExpired retires expired rooms without deleting their audit history.
 func (s *Service) CleanupExpired(ctx context.Context) (int, error) {
 	cleaned := 0
-	err := s.pool.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		repo := NewRepository(tx)
-		now, err := repo.Queries.ClockNow(ctx)
+	for {
+		if err := ctx.Err(); err != nil {
+			return cleaned, err
+		}
+		batchCleaned := 0
+		err := s.pool.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+			repo := NewRepository(tx)
+			now, err := repo.Queries.ClockNow(ctx)
+			if err != nil {
+				return err
+			}
+			rooms, err := repo.Queries.LockExpiredRoomsForCleanup(ctx, roomsql.LockExpiredRoomsForCleanupParams{ExpiresAt: now, Limit: expiryCleanupBatch})
+			if err != nil {
+				return err
+			}
+			for _, room := range rooms {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
+					return err
+				}
+				if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
+					return err
+				}
+				if _, err := repo.Queries.ExpireRoomInvites(ctx, roomsql.ExpireRoomInvitesParams{RoomID: room.ID, ExpiresAt: pgtype.Timestamptz{Time: now.Time, Valid: true}}); err != nil {
+					return err
+				}
+			}
+			// Expired invite rows retain encrypted material only for 24 hours.
+			// This sweep is intentionally independent of active membership so
+			// terminal and previously cleaned rooms are included.
+			if _, err := repo.Queries.DeleteInviteSecretsExpiredBefore(ctx, pgtype.Timestamptz{Time: now.Time.Add(-24 * time.Hour), Valid: true}); err != nil {
+				return err
+			}
+			batchCleaned = len(rooms)
+			return nil
+		})
 		if err != nil {
-			return err
+			return cleaned, err
 		}
-		rooms, err := repo.Queries.LockExpiredRoomsForCleanup(ctx, roomsql.LockExpiredRoomsForCleanupParams{ExpiresAt: now, Limit: expiryCleanupBatch})
-		if err != nil {
-			return err
+		cleaned += batchCleaned
+		if batchCleaned == 0 {
+			return cleaned, nil
 		}
-		for _, room := range rooms {
-			if _, err := repo.Queries.RetireRoomMemberships(ctx, room.ID); err != nil {
-				return err
-			}
-			if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
-				return err
-			}
-			if _, err := repo.Queries.ExpireRoomInvites(ctx, roomsql.ExpireRoomInvitesParams{RoomID: room.ID, ExpiresAt: pgtype.Timestamptz{Time: now.Time, Valid: true}}); err != nil {
-				return err
-			}
-		}
-		cleaned = len(rooms)
-		return nil
-	})
-	return cleaned, err
+	}
 }
 
 // RunExpiryCleanup performs one startup pass and then periodic bounded passes.

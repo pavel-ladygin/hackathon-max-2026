@@ -179,15 +179,14 @@ jobs:
       - name: Build application images
         working-directory: .
         run: |
-          docker compose build --pull
-          docker build --tag ci-backend:local --file backend/Dockerfile .
-          docker build --tag ci-frontend:local --file frontend/Dockerfile frontend
+          docker build --pull --tag "$BACKEND_IMAGE" --file backend/Dockerfile .
+          docker build --pull --tag "$FRONTEND_IMAGE" --file frontend/Dockerfile frontend
       - name: Start smoke stack
         working-directory: .
         env:
           TICKET_PROVIDER_ALLOWLIST: tickets.example.invalid
         run: |
-          docker compose up --detach postgres migrate backend
+          docker compose up --detach --no-build postgres migrate backend
           docker run --detach --name ci-frontend --network max-together-foundation_default --publish 127.0.0.1:8081:80 ci-frontend:local
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null \

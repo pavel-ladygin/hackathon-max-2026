@@ -54,11 +54,36 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if room.State == string(RoomStateMatched) {
 			return ErrAlreadyMatched
 		}
+		// Final-round cleanup retires memberships, but existing members must be
+		// able to safely retry an already accepted terminal request. Rebuild the
+		// response from immutable pool/vote state; a stranger has no membership
+		// row and was rejected above.
+		if room.State == string(RoomStateExhausted) {
+			pool, poolErr := repo.Queries.GetActivePool(ctx, room.ID)
+			if errors.Is(poolErr, pgx.ErrNoRows) {
+				return ErrPoolExhausted
+			}
+			if poolErr != nil {
+				return poolErr
+			}
+			response.PoolVersion = int(pool.Version)
+			if int(pool.Version) != request.PoolVersion {
+				return stalePoolVersionError{Current: int(pool.Version)}
+			}
+			existing, voteErr := repo.Queries.GetRoomVote(ctx, roomsql.GetRoomVoteParams{PoolID: pool.ID, EventID: eventID, UserID: principal.UserID})
+			if errors.Is(voteErr, pgx.ErrNoRows) {
+				return ErrPoolExhausted
+			}
+			if voteErr != nil {
+				return voteErr
+			}
+			if existing.Vote != string(request.Vote) {
+				return ErrVoteAlreadyCast
+			}
+			return s.currentVoteResponse(ctx, repo, room, pool, principal.UserID, &response)
+		}
 		if !membership.IsActive || !room.ExpiresAt.Time.After(now.Time) {
 			return ErrRoomNotFound
-		}
-		if room.State == string(RoomStateExhausted) {
-			return ErrPoolExhausted
 		}
 		if room.State != string(RoomStateVoting) {
 			return ErrPoolNotReady
@@ -274,6 +299,6 @@ func (s *Service) currentVoteResponse(ctx context.Context, repo *Repository, roo
 	if err != nil {
 		return err
 	}
-	response.RoomExhausted = both.Valid && both.Bool
+	response.RoomExhausted = room.State == string(RoomStateExhausted) || both.Valid && both.Bool
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -30,12 +31,7 @@ func (s *Service) ResolveInviteContext(ctx context.Context, userID uuid.UUID, to
 		if err != nil {
 			return err
 		}
-		status := api.Joinable
-		if !preview.ExpiresAt.Time.After(now.Time) || !preview.RoomExpiresAt.Time.After(now.Time) {
-			status = api.Expired
-		} else if preview.MemberCount >= 2 && !preview.AlreadyJoined {
-			status = api.Full
-		}
+		status := roomInviteJoinability(preview.ExpiresAt.Time, preview.RoomExpiresAt.Time, preview.RoomState, preview.MemberCount, preview.AlreadyJoined, now.Time)
 		inviter := api.PublicParticipant{
 			Id: preview.InviterID, DisplayName: preview.InviterDisplayName,
 			Role: api.PublicParticipantRole("creator"), IntentReady: preview.InviterIntentReady,
@@ -48,4 +44,20 @@ func (s *Service) ResolveInviteContext(ctx context.Context, userID uuid.UUID, to
 		return nil
 	})
 	return result, err
+}
+
+// roomInviteJoinability is shared by preview and Join. Keep this limited to
+// the three public preview states so Join returns the same expiry/capacity
+// outcome that a caller just observed in its preview.
+func roomInviteJoinability(inviteExpiresAt, roomExpiresAt time.Time, roomState string, memberCount int64, alreadyJoined bool, now time.Time) api.InviteContextStatus {
+	if !inviteExpiresAt.After(now) || !roomExpiresAt.After(now) {
+		return api.Expired
+	}
+	if alreadyJoined {
+		return api.Joinable
+	}
+	if roomState != string(RoomStateCollectingIntents) || memberCount >= 2 {
+		return api.Full
+	}
+	return api.Joinable
 }

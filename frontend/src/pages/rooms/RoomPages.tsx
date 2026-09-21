@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
+import { relaxedIntent } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
@@ -77,10 +78,19 @@ export function JoinPage() {
   const bootstrap = useBootstrap()
   const inviteContext = bootstrap.data?.inviteContext
   const context = inviteContext?.token === inviteToken ? inviteContext : null
+  const queryClient = useQueryClient()
   const join = useMutation({ mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
     return apiClient.joinRoom(inviteToken)
-  }, onSuccess: (room) => navigate(`/rooms/${room.id}/intent`, { replace: true }) })
+  }, onSuccess: async (room) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['bootstrap'] }),
+      queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
+      queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
+      queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
+    ])
+    navigate(`/rooms/${room.id}/intent`, { replace: true })
+  } })
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
@@ -174,17 +184,27 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const [pendingVote, setPendingVote] = useState<VoteValue | null>(null)
   const vote = useMutation({
     mutationFn: ({ eventId, value }: { eventId: string; value: VoteValue }) => apiClient.vote(room.id, eventId, { pool_version: room.pool?.version ?? room.version, vote: value }),
-    onSuccess: async () => { setPendingVote(null); await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) },
+    onSuccess: async () => {
+      setPendingVote(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
+        queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
+      ])
+    },
     onError: async (error) => { setPendingVote(null); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
   if (events.isPending) return <Loading label="Загружаем общий пул…" />
-  if (events.isError) return <Empty title={isRoomError(events.error, 'POOL_NOT_READY') ? 'Пул пока не готов' : 'Не удалось загрузить подборку'} description={roomErrorMessage(events.error)} action={<Button onClick={() => void events.refetch()}>Повторить</Button>} />
-  const index = room.pool?.voted_by_me ?? 0
-  const item = events.data.items[index]
+  if (events.isError) {
+    if (isRoomError(events.error, 'POOL_EXHAUSTED')) return <WaitingScreen room={room} />
+    return <Empty title={isRoomError(events.error, 'POOL_NOT_READY') ? 'Пул пока не готов' : 'Не удалось загрузить подборку'} description={roomErrorMessage(events.error)} action={<Button onClick={() => void events.refetch()}>Повторить</Button>} />
+  }
+  const votedByMe = room.pool?.voted_by_me ?? 0
+  const poolTotal = room.pool?.total ?? events.data.total
+  const item = events.data.items[0]
   if (!item) return <WaitingScreen room={room} />
   const cast = (value: VoteValue) => { if (!vote.isPending) { setPendingVote(value); vote.mutate({ eventId: item.event.id, value }) } }
   return (
-    <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} right={<span>{index + 1} / {events.data.total}</span>} /><PageContent className={styles.poolWrap}>
+    <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} right={<span>{Math.min(votedByMe + 1, poolTotal)} / {poolTotal}</span>} /><PageContent className={styles.poolWrap}>
       <p className={`${styles.subtitle} ${styles.center}`}>Один и тот же пул, независимые оценки</p>
       <AnimatePresence mode="wait">
         <motion.article key={item.event.id} className={styles.poolCard} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0, x: pendingVote ? (pendingVote === 'like' ? 520 : -520) : 0, rotate: pendingVote ? (pendingVote === 'like' ? 12 : -12) : 0 }} exit={{ opacity: 0, scale: .9 }} transition={{ type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { if (info.offset.x > 90) cast('like'); else if (info.offset.x < -90) cast('dislike') }}>
@@ -220,6 +240,15 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const [selected, setSelected] = useState('budget')
   const restart = useMutation({ mutationFn: () => apiClient.replaceMyIntent(room.id, relaxedIntent(room.myIntent, selected)), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
   const suggestions = [{ id: 'budget', title: 'Увеличить бюджет до 3 500 ₽', meta: '+8 подходящих событий' }, { id: 'date', title: 'Добавить пятницу вечером', meta: '+5 событий' }, { id: 'radius', title: 'Увеличить радиус до 10 км', meta: '+7 событий' }, { id: 'category', title: 'Добавить выставки', meta: '+4 события' }]
+  if (!room.allowed_actions.includes('restart_with_new_intent')) {
+    return (
+      <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
+        <p className={styles.eyebrow}>{room.round_no >= 3 ? 'ТРЕТИЙ РАУНД ЗАВЕРШЁН' : 'ПУЛ ЗАКОНЧИЛСЯ'}</p><h1 className={styles.title}>На сегодня вариантов больше нет</h1><p className={styles.subtitle}>{room.round_no >= 3 ? 'Мы уже расширили условия в трёх приватных раундах. Создайте новую комнату, когда появятся другие планы.' : 'Для этой комнаты больше нельзя запускать новый раунд. Создайте новую комнату, когда появятся другие планы.'}</p>
+        <PrivacyNote>Предпочтения второго участника по-прежнему не раскрываются.</PrivacyNote>
+        <div className={styles.footer}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+      </PageContent></PageShell>
+    )
+  }
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Можно немного расширить только ваши условия и запустить новый приватный раунд.</p>
@@ -239,22 +268,13 @@ function ChoiceField<T extends string>({ title, options, selected, onToggle, err
 function expectedScreen(room: RoomSnapshot) {
   if (room.state === 'matched') return 'match'
   if (room.state === 'exhausted') return 'recovery'
-  if (room.state === 'voting') return 'vote'
+  if (room.state === 'voting') return room.pool?.my_pool_finished || !room.allowed_actions.includes('vote') ? 'waiting' : 'vote'
   if (room.state === 'ranking') return 'waiting'
   return room.allowed_actions.includes('edit_intent') ? 'intent' : 'waiting'
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
   return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: values.radius, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
-}
-
-function relaxedIntent(current: RoomSnapshot['myIntent'], kind: string): RoomIntentRequestDto {
-  const base: RoomIntentRequestDto = current ? { dates: current.dates, day_types: current.day_types, time_slots: current.time_slots, category_slugs: current.category_slugs, budget_max_minor: current.budget_max_minor, radius_m: current.radius_m, exclusion_slugs: current.exclusion_slugs, location: current.location, free_text: current.free_text } : { dates: [localDate(new Date())], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 300_000, radius_m: 5_000, exclusion_slugs: [], location: null, free_text: null }
-  if (kind === 'budget') base.budget_max_minor = 350_000
-  if (kind === 'date') base.dates = [...new Set([...base.dates, localDate(addDays(new Date(), 1))])]
-  if (kind === 'radius') base.radius_m = 10_000
-  if (kind === 'category') base.category_slugs = [...new Set([...base.category_slugs, 'exhibitions' as CategorySlug])]
-  return base
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }

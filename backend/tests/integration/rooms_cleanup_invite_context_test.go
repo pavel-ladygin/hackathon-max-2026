@@ -116,11 +116,59 @@ func TestResolveInviteContextIsReadOnlyAndReportsJoinability(t *testing.T) {
 		t.Fatal(err)
 	}
 	inactive, err := svc.ResolveInviteContext(ctx, f.member, token)
-	if err != nil || inactive == nil || inactive.AlreadyJoined || inactive.Status != api.Joinable {
-		t.Fatalf("inactive member preview=%+v err=%v; want not joined/joinable", inactive, err)
+	if err != nil || inactive == nil || inactive.AlreadyJoined || inactive.Status != api.Full {
+		t.Fatalf("inactive member preview=%+v err=%v; want not joined/full because historical capacity is consumed", inactive, err)
 	}
 	unknown, err := svc.ResolveInviteContext(ctx, f.third, "unknown-invite-token-that-is-long-enough")
 	if err != nil || unknown != nil {
 		t.Fatalf("unknown preview=%+v err=%v; want nil/nil", unknown, err)
+	}
+}
+
+func TestCleanupExpiredDeletesRetainedInviteSecretsForInactiveRoom(t *testing.T) {
+	db := openTestDB(t)
+	f := newRoomFixture(t, db)
+	ctx := context.Background()
+	token, svc := insertPreviewInvite(t, f, time.Now().UTC().Add(-25*time.Hour))
+	if token == "" {
+		t.Fatal("fixture did not create invite token")
+	}
+	cleaned, err := svc.CleanupExpired(ctx)
+	if err != nil || cleaned != 0 {
+		t.Fatalf("inactive cleanup cleaned=%d err=%v; want 0/nil", cleaned, err)
+	}
+	var invites int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_invites WHERE room_id=$1", f.room).Scan(&invites); err != nil {
+		t.Fatal(err)
+	}
+	if invites != 0 {
+		t.Fatalf("retained expired invites=%d; want hash/ciphertext row deleted", invites)
+	}
+}
+
+func TestCleanupExpiredDrainsMoreThanOneBatch(t *testing.T) {
+	db := openTestDB(t)
+	f := newRoomFixture(t, db)
+	ctx := context.Background()
+	q := roomsql.New(db)
+	const roomCount = 101
+	for i := 0; i < roomCount; i++ {
+		user := f.newUser(t)
+		roomID := f.insertRoom(t, user)
+		if _, err := q.InsertRoomMember(ctx, roomsql.InsertRoomMemberParams{RoomID: roomID, UserID: user, Role: "creator"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(ctx, "UPDATE rooms SET expires_at=now()-interval '1 minute' WHERE id=$1", roomID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := rooms.NewService(db)
+	cleaned, err := svc.CleanupExpired(ctx)
+	if err != nil || cleaned != roomCount {
+		t.Fatalf("cleanup drained=%d err=%v; want %d/nil", cleaned, err, roomCount)
+	}
+	var active int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members m JOIN rooms r ON r.id=m.room_id WHERE r.city_id=$1 AND m.is_active", f.city).Scan(&active); err != nil || active != 0 {
+		t.Fatalf("active memberships after multi-batch cleanup=%d err=%v; want 0/nil", active, err)
 	}
 }

@@ -27,11 +27,25 @@ UPDATE rooms
 SET state = 'matched', matched_event_id = sqlc.arg('event_id'), version = version + 1
 WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL;
 
--- name: MarkRoomExhausted :execrows
+-- name: MarkRoomExhausted :one
 -- Exhaustion is only valid from voting; callers must verify both users finished.
-UPDATE rooms
-SET state = 'exhausted', version = version + 1
-WHERE id = $1 AND state = 'voting';
+-- The active pool and room transition are one statement, so a committed
+-- exhausted room never points at a ready active pool.
+WITH exhausted_room AS (
+  UPDATE rooms
+  SET state = 'exhausted', version = version + 1
+  WHERE id = $1 AND state = 'voting'
+  RETURNING id, active_pool_version, round_no
+), exhausted_pool AS (
+  UPDATE room_pools AS p
+  SET state = 'exhausted'
+  FROM exhausted_room AS r
+  WHERE p.room_id = r.id
+    AND p.version = r.active_pool_version
+    AND p.round_no = r.round_no
+    AND p.state = 'ready'
+)
+SELECT count(*) FROM exhausted_room;
 
 -- name: CityExists :one
 SELECT EXISTS(SELECT 1 FROM cities WHERE id = $1);
