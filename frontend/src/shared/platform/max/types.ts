@@ -38,7 +38,7 @@ export interface MaxPlatformAdapter {
   ready(): void;
   shareInvite(payload: InviteSharePayload): Promise<boolean>;
   openMaxLink(url: string): Promise<boolean>;
-  openExternalLink(url: string): Promise<boolean>;
+  openTicketLink(url: string): Promise<boolean>;
   requestLocation(): Promise<GeoPosition | null>;
   copyText(value: string): Promise<boolean>;
   setClosingConfirmation(enabled: boolean): void;

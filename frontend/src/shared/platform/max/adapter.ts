@@ -6,7 +6,7 @@ import type {
   MaxViewport,
 } from "./types";
 
-const MAX_URL = /^https:\/\/max\.ru(?:\/|$)/i;
+const MAX_HOST = "max.ru";
 const getWebApp = (): MaxWebApp | undefined => (typeof window === "undefined" ? undefined : window.WebApp);
 
 const asPositiveNumber = (value: string | number | undefined): number | null => {
@@ -21,6 +21,45 @@ const safeUrl = (value: string): URL | null => {
   } catch {
     return null;
   }
+};
+
+const isIpAddress = (hostname: string): boolean => {
+  const normalized = hostname.toLowerCase();
+  if (normalized.startsWith("[") && normalized.endsWith("]")) return true;
+  if (normalized.includes(":")) return true;
+  const octets = normalized.split(".");
+  return octets.length === 4 && octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255);
+};
+
+const validExternalUrl = (value: string): URL | null => {
+  const url = safeUrl(value);
+  if (!url || url.username || url.password || url.port || isIpAddress(url.hostname)) return null;
+  return url;
+};
+
+const configuredTicketProviders = (): string[] =>
+  (import.meta.env.VITE_TICKET_PROVIDER_ALLOWLIST ?? "")
+    .split(",")
+    .map((rule) => rule.trim().toLowerCase().replace(/^\.+/, "."))
+    .filter(Boolean);
+
+const matchesHostRule = (hostname: string, rule: string): boolean => {
+  if (rule.startsWith("*.")) {
+    const suffix = rule.slice(1);
+    return hostname.endsWith(suffix) && hostname.length > suffix.length;
+  }
+  return hostname === rule;
+};
+
+export const isAllowedTicketUrl = (value: string, rules = configuredTicketProviders()): boolean => {
+  const url = validExternalUrl(value);
+  return Boolean(
+    url &&
+      rules
+        .map((rule) => rule.trim().toLowerCase())
+        .filter(Boolean)
+        .some((rule) => matchesHostRule(url.hostname.toLowerCase(), rule)),
+  );
 };
 
 export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
@@ -102,8 +141,8 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
   }
 
   async openMaxLink(url: string): Promise<boolean> {
-    const parsed = safeUrl(url);
-    if (!parsed || !MAX_URL.test(parsed.toString())) return this.openExternalLink(url);
+    const parsed = validExternalUrl(url);
+    if (!parsed || parsed.hostname.toLowerCase() !== MAX_HOST) return false;
     try {
       if (getWebApp()?.openMaxLink) {
         await getWebApp()!.openMaxLink!(parsed.toString());
@@ -112,11 +151,22 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
     } catch {
       return false;
     }
-    return this.openExternalLink(parsed.toString());
+    if (getWebApp()?.openLink) {
+      try {
+        await getWebApp()!.openLink!(parsed.toString());
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (typeof window === "undefined") return false;
+    const opened = window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+    return opened !== null;
   }
 
-  async openExternalLink(url: string): Promise<boolean> {
-    const parsed = safeUrl(url);
+  async openTicketLink(url: string): Promise<boolean> {
+    if (!isAllowedTicketUrl(url)) return false;
+    const parsed = validExternalUrl(url);
     if (!parsed) return false;
     try {
       if (getWebApp()?.openLink) {

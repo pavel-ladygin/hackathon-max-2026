@@ -79,3 +79,4 @@
 .viewSwitch { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0; }
 .mapWrap { min-height: 430px; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-paper); }
 .map { width: 100%; height: min(62vh, 620px); min-height: 430px; }
+.mapMarker { width: 28px; height: 28px; padding: 0 0 8px; border: 0; border-radius: 50% 50% 50% 0; background: #ff5b5b; box-shadow: 0 3px 10px rgb(23 23 22 / 28%); color: #171716; cursor: pointer; font-size: 30px; line-height: 20px; transform: rotate(-45deg); }

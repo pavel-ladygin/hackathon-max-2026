@@ -1,10 +1,11 @@
-import { lazy, Suspense, useDeferredValue, useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEventSearch, useSetSavedEvent } from '../../features/discovery/queries'
 import type { CategorySlug } from '../../shared/api/types'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { BottomNav, Button, Chip, ChipGroup, Empty, EventCard, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
+import { BottomNav, Button, Chip, ChipGroup, Empty, EventCard, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
+import { useDebouncedValue } from './useDebouncedValue'
 
 const categories: Array<{ slug: CategorySlug; label: string }> = [
   { slug: 'concerts', label: 'Концерты' }, { slug: 'cinema', label: 'Кино' }, { slug: 'theatre', label: 'Театр' },
@@ -15,7 +16,7 @@ const CatalogMap = lazy(() => import('./CatalogMap').then((module) => ({ default
 export function CatalogPage() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
-  const deferredQuery = useDeferredValue(query)
+  const debouncedQuery = useDebouncedValue(query)
   const [selected, setSelected] = useState<CategorySlug[]>([])
   const [freeOnly, setFreeOnly] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
@@ -24,17 +25,20 @@ export function CatalogPage() {
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
   const [locationDenied, setLocationDenied] = useState(false)
-  const params = useMemo(() => ({ q: deferredQuery.trim() || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, distance_m: position ? 10_000 : undefined, lat: position?.lat, lng: position?.lng, limit: 24 }), [dateFrom, dateTo, deferredQuery, freeOnly, position, price, selected])
+  const normalizedQuery = debouncedQuery.trim()
+  const params = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, distance_m: position ? 10_000 : undefined, lat: position?.lat, lng: position?.lng, limit: 24 }), [dateFrom, dateTo, freeOnly, normalizedQuery, position, price, selected])
   const results = useEventSearch(params)
   const save = useSetSavedEvent()
   const events = results.data?.pages.flatMap((page) => page.items) ?? []
   const totalEstimate = results.data?.pages[0]?.totalEstimate ?? 0
+  const isRefreshing = results.isFetching && !results.isFetchingNextPage && results.isPlaceholderData
 
   return <PageShell>
     <TopBar title="Афиша" onBack={() => navigate('/')} />
     <PageContent>
       <label className={styles.searchLabel} htmlFor="catalog-search">Найти событие</label>
       <input id="catalog-search" className={styles.searchInput} type="search" maxLength={120} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, место или жанр" />
+      {isRefreshing ? <InlineNotice>Обновляем результаты…</InlineNotice> : null}
       <div className={styles.filterRow} aria-label="Фильтры">
         <Chip selected={freeOnly} onClick={() => setFreeOnly((value) => !value)}>Бесплатно</Chip>
         <Chip selected={selected.length > 0} onClick={() => setSelected([])}>Сбросить</Chip>

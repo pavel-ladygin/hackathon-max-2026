@@ -15,7 +15,7 @@ export function EventPage() {
   const behaviorId = useRef(crypto.randomUUID())
   const ticket = useMutation({
     mutationFn: () => apiClient.recordTicketClick(eventId!, { source: 'event_detail' }),
-    onSuccess: ({ external_url }) => void maxPlatform.openExternalLink(external_url),
+    onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url),
   })
 
   useEffect(() => {

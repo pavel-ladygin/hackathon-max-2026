@@ -222,7 +222,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
 function MatchScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const event = useEventDetail(room.match?.event_id)
-  const ticket = useMutation({ mutationFn: () => apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), onSuccess: ({ external_url }) => void maxPlatform.openExternalLink(external_url) })
+  const ticket = useMutation({ mutationFn: () => apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url) })
   if (event.isPending) return <Loading label="Открываем ваш мэтч…" />
   if (event.isError) return <Empty title="Мэтч найден, но событие не загрузилось" />
   return (
