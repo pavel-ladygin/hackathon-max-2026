@@ -1,0 +1,107 @@
+.intentPage {
+  padding-bottom: calc(48px + env(safe-area-inset-bottom));
+}
+
+.introEyebrow {
+  margin: 7px 0 0;
+}
+
+.introTitle {
+  margin-top: 7px;
+  margin-bottom: 10px;
+}
+
+.introSubtitle {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.intentForm {
+  display: grid;
+  gap: 24px;
+  padding-top: 2px;
+}
+
+.choiceField,
+.rangeField,
+.textField {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.choiceField legend {
+  margin-bottom: 2px;
+  padding: 0;
+  font: inherit;
+}
+
+.choiceOptions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.choiceOptions button {
+  max-width: 100%;
+}
+
+.fieldError {
+  margin: -1px 0 0;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.rangeField input {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+}
+
+.textField textarea {
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+
+.formErrors {
+  display: grid;
+  gap: 5px;
+  margin: -8px 0 0;
+}
+
+.intentFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 16px 0 calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgb(250 249 246 / 0%), var(--color-canvas) 24%);
+}
+
+@media (max-width: 359px) {
+  .choiceOptions {
+    gap: 7px;
+  }
+
+  .choiceOptions button {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+}
+
+@media (min-width: 768px) {
+  .intentFooter {
+    border-radius: var(--radius-xl);
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}

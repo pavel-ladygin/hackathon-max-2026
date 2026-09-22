@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { relaxedIntent } from '../../features/rooms/relaxation'
+import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 
 const now = new Date(2026, 8, 21, 12) // Monday, 21 September 2026
 
@@ -39,5 +40,20 @@ describe('relaxedIntent', () => {
     }, 'radius', now)
 
     expect(result.radius_m).toBe(15_000)
+  })
+})
+
+describe('room motion helpers', () => {
+  it('resolves intentional swipes by distance or velocity', () => {
+    expect(resolveSwipeIntent(90)).toBe('like')
+    expect(resolveSwipeIntent(-90)).toBe('dislike')
+    expect(resolveSwipeIntent(12, 650)).toBe('like')
+    expect(resolveSwipeIntent(-12, -650)).toBe('dislike')
+    expect(resolveSwipeIntent(89, 649)).toBeNull()
+  })
+
+  it('creates stable participant initials for animated avatars', () => {
+    expect(participantInitials('Анна Петрова')).toBe('АП')
+    expect(participantInitials('')).toBe('?')
   })
 })

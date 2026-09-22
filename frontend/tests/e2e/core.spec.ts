@@ -105,3 +105,34 @@ test('event detail describes the external ticket action without opening it', asy
   await expect(page.getByText('Билетный сервис откроется во внешнем окне.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Открыть билеты во внешнем билетном сервисе' })).toBeVisible()
 })
+
+test('navigation, favorite controls and warm hover keep the agreed geometry', async ({ page }) => {
+  await stubBackend(page, 'complete')
+  await openApp(page, '/events')
+
+  const navItems = page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button')
+  await expect(navItems).toHaveCount(3)
+  const navBoxes = await navItems.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().toJSON()))
+  expect(navBoxes.every((box) => box.height >= 48)).toBe(true)
+  expect(Math.max(...navBoxes.map((box) => box.width)) - Math.min(...navBoxes.map((box) => box.width))).toBeLessThan(1)
+
+  const saveButton = page.getByRole('button', { name: /Сохранить «Джазовый вечер/ })
+  await expect(saveButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(saveButton).toHaveCSS('border-radius', '14px')
+  expect(await saveButton.evaluate((button) => button.getBoundingClientRect().width)).toBe(40)
+
+  const supportsHover = await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)
+  if (supportsHover) {
+    const filter = page.getByRole('button', { name: 'Фильтры' })
+    const before = await filter.evaluate((button) => getComputedStyle(button).backgroundColor)
+    await filter.hover()
+    await expect.poll(() => filter.evaluate((button) => getComputedStyle(button).backgroundColor)).not.toBe(before)
+  }
+
+  await openApp(page, `/events/${event.id}`)
+  const back = page.getByRole('button', { name: 'Назад' })
+  const detailFavorite = page.getByRole('button', { name: 'Сохранить событие' })
+  expect(await back.evaluate((button) => button.getBoundingClientRect().width)).toBe(48)
+  expect(await detailFavorite.evaluate((button) => button.getBoundingClientRect().width)).toBe(48)
+  await expect(detailFavorite).toHaveAttribute('aria-pressed', 'false')
+})

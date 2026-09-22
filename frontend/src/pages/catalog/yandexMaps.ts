@@ -1,5 +1,10 @@
 export type YandexCoordinates = [number, number]
 
+/** Keep event thumbnails within a usable range while following map zoom. */
+export function markerSizeForZoom(zoom: number) {
+  return Math.min(64, Math.max(36, 48 + (zoom - 11) * 4))
+}
+
 export interface YandexMap {
   addChild(child: unknown): YandexMap
   destroy(): void
@@ -13,12 +18,26 @@ interface YandexMarkerConstructor {
   new (options: { coordinates: YandexCoordinates }, element: HTMLElement): unknown
 }
 
+export interface YandexMapUpdateEvent {
+  location?: { zoom?: number }
+  camera?: { zoom?: number }
+}
+
+interface YandexMapListenerOptions {
+  onUpdate?: (event: YandexMapUpdateEvent) => void
+}
+
+interface YandexMapListenerConstructor {
+  new (options: YandexMapListenerOptions): unknown
+}
+
 export interface YandexMapsApi {
   ready: Promise<void>
   YMap: YandexMapConstructor
   YMapDefaultSchemeLayer: new () => unknown
   YMapDefaultFeaturesLayer: new () => unknown
   YMapMarker: YandexMarkerConstructor
+  YMapListener: YandexMapListenerConstructor
 }
 
 declare global {
