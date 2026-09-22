@@ -91,7 +91,11 @@ func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedInt
 	}
 	distance := 0.0
 	if intent.radius.enabled {
-		d := catalog.HaversineMeters(intent.radius.lat, intent.radius.lng, venue.Latitude, venue.Longitude)
+		latitude, longitude, ok := venueCoordinates(venue)
+		if !ok {
+			return participantFeatures{}
+		}
+		d := catalog.HaversineMeters(intent.radius.lat, intent.radius.lng, latitude, longitude)
 		if intent.radius.meters == 0 {
 			if d == 0 {
 				distance = 1
