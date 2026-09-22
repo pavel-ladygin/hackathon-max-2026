@@ -114,6 +114,12 @@ func TestRestartRoundLimitDoesNotMutateTerminalRoom(t *testing.T) {
 	if _, err := f.db.Exec(ctx, "UPDATE rooms SET state='exhausted', round_no=3 WHERE id=$1", f.room); err != nil {
 		t.Fatal(err)
 	}
+	// Final-round exhaustion retires both memberships.  A former member must
+	// still receive the stable round-limit error instead of an access-shaped
+	// NOT_FOUND response when they try to restart the terminal room.
+	if _, err := f.db.Exec(ctx, "UPDATE room_members SET is_active=false WHERE room_id=$1", f.room); err != nil {
+		t.Fatal(err)
+	}
 	_, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, validIntentRequest())
 	if !errors.Is(err, rooms.ErrRoundLimitReached) {
 		t.Fatalf("restart at round three error=%v; want %v", err, rooms.ErrRoundLimitReached)

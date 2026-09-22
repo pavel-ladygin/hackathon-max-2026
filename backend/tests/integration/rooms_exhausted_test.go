@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -12,6 +13,78 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
 )
+
+func TestB10ConcurrentFinishDoesNotRelaxIntents(t *testing.T) {
+	db := openTestDB(t)
+	f, pool, events := seedB8VotingPool(t, db, 1)
+	svc := newVoteService(t, db, behavior.Recorder{})
+	ctx := context.Background()
+
+	readFilters := func() []byte {
+		t.Helper()
+		var filters []byte
+		err := db.QueryRow(ctx, `
+			SELECT jsonb_agg(jsonb_build_object(
+				'user_id', user_id,
+				'date_options', date_options,
+				'day_types', day_types,
+				'time_slots', time_slots,
+				'category_slugs', category_slugs,
+				'exclusion_slugs', exclusion_slugs,
+				'budget_max_minor', budget_max_minor,
+				'radius_m', radius_m
+			) ORDER BY user_id)::text::bytea
+			FROM room_intents
+			WHERE room_id=$1 AND round_no=1`, f.room).Scan(&filters)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return filters
+	}
+	before := readFilters()
+
+	type result struct {
+		response api.VoteResponse
+		err      error
+	}
+	results := make(chan result, 2)
+	request := api.VoteRequest{PoolVersion: int(pool.Version), Vote: api.Dislike}
+	for _, userID := range []uuid.UUID{f.creator, f.member} {
+		go func(userID uuid.UUID) {
+			response, err := svc.Vote(ctx, contracts.Principal{UserID: userID}, f.room, events[0], request)
+			results <- result{response: response, err: err}
+		}(userID)
+	}
+
+	exhaustedResponses := 0
+	for range 2 {
+		result := <-results
+		if result.err != nil || !result.response.MyPoolFinished {
+			t.Fatalf("concurrent finish response=%+v err=%v", result.response, result.err)
+		}
+		if result.response.RoomExhausted {
+			exhaustedResponses++
+		}
+	}
+	if exhaustedResponses != 1 {
+		t.Fatalf("room_exhausted responses=%d; want exactly one transition response", exhaustedResponses)
+	}
+
+	var state string
+	var finished int
+	if err := db.QueryRow(ctx, "SELECT state FROM rooms WHERE id=$1", f.room).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND round_no=1 AND pool_finished", f.room).Scan(&finished); err != nil {
+		t.Fatal(err)
+	}
+	if state != "exhausted" || finished != 2 {
+		t.Fatalf("terminal state=%q finished=%d; want exhausted/2", state, finished)
+	}
+	if after := readFilters(); !reflect.DeepEqual(after, before) {
+		t.Fatalf("intent filters changed during exhaustion: before=%s after=%s", before, after)
+	}
+}
 
 func TestB10OneThenBothFinishAndReconnect(t *testing.T) {
 	db := openTestDB(t)
