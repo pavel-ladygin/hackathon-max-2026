@@ -26,6 +26,11 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("KUDAGO_TIMEOUT", "")
 	t.Setenv("KUDAGO_LOCATION", "")
 	t.Setenv("KUDAGO_PAGE_SIZE", "")
+	t.Setenv("EVENT_SYNC_INTERVAL", "")
+	t.Setenv("TIMEPAD_BASE_URL", "")
+	t.Setenv("TIMEPAD_TOKEN", "")
+	t.Setenv("TIMEPAD_TIMEOUT", "")
+	t.Setenv("TIMEPAD_PAGE_SIZE", "")
 }
 
 func TestKudaGoConfigDefaultsAndOverrides(t *testing.T) {
@@ -75,7 +80,7 @@ func TestLoadParsesTicketProviderAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(cfg.TicketProviderAllowlist, ","), "kudago.com,*.kudago.com,tickets.example,*.partner.example"; got != want {
+	if got, want := strings.Join(cfg.TicketProviderAllowlist, ","), "kudago.com,*.kudago.com,timepad.ru,*.timepad.ru,tickets.example,*.partner.example"; got != want {
 		t.Fatalf("ticket provider allowlist = %q, want %q", got, want)
 	}
 }

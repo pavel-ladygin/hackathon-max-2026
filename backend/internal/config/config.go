@@ -33,6 +33,11 @@ type Config struct {
 	KudaGoTimeout              time.Duration
 	KudaGoLocation             string
 	KudaGoPageSize             int
+	EventSyncInterval          time.Duration
+	TimepadBaseURL             string
+	TimepadToken               string
+	TimepadTimeout             time.Duration
+	TimepadPageSize            int
 }
 
 // Load reads and validates all required environment variables.
@@ -50,8 +55,13 @@ func Load() (Config, error) {
 		KudaGoTimeout:              30 * time.Second,
 		KudaGoLocation:             "msk",
 		KudaGoPageSize:             100,
+		EventSyncInterval:          time.Hour,
+		TimepadBaseURL:             "https://api.timepad.ru/v1",
+		TimepadToken:               strings.TrimSpace(os.Getenv("TIMEPAD_TOKEN")),
+		TimepadTimeout:             30 * time.Second,
+		TimepadPageSize:            100,
 	}
-	cfg.TicketProviderAllowlist = append([]string{"kudago.com", "*.kudago.com"}, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
+	cfg.TicketProviderAllowlist = append([]string{"kudago.com", "*.kudago.com", "timepad.ru", "*.timepad.ru"}, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
 		cfg.KudaGoBaseURL = value
 	}
@@ -72,8 +82,35 @@ func Load() (Config, error) {
 		}
 		cfg.KudaGoPageSize = pageSize
 	}
+	if value := strings.TrimSpace(os.Getenv("EVENT_SYNC_INTERVAL")); value != "" {
+		interval, err := time.ParseDuration(value)
+		if err != nil || interval <= 0 {
+			return Config{}, fmt.Errorf("EVENT_SYNC_INTERVAL is invalid")
+		}
+		cfg.EventSyncInterval = interval
+	}
 	if !validProviderBaseURL(cfg.KudaGoBaseURL) {
 		return Config{}, fmt.Errorf("KUDAGO_BASE_URL is invalid")
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_BASE_URL")); value != "" {
+		cfg.TimepadBaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_TIMEOUT")); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout <= 0 {
+			return Config{}, fmt.Errorf("TIMEPAD_TIMEOUT is invalid")
+		}
+		cfg.TimepadTimeout = timeout
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_PAGE_SIZE")); value != "" {
+		pageSize, err := strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return Config{}, fmt.Errorf("TIMEPAD_PAGE_SIZE is invalid")
+		}
+		cfg.TimepadPageSize = pageSize
+	}
+	if !validProviderBaseURL(cfg.TimepadBaseURL) {
+		return Config{}, fmt.Errorf("TIMEPAD_BASE_URL is invalid")
 	}
 	// Migration and seed commands do not need invite credentials. The server
 	// requires them when constructing its routes; malformed provided values
