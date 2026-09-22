@@ -23,7 +23,7 @@ func TestLocationCoordinatesDecodeNumericAndNumericStrings(t *testing.T) {
 	}
 }
 
-func TestLocationCoordinatesInvalidOrMissingAreUnusable(t *testing.T) {
+func TestLocationCoordinatesInvalidOrMissingNormalizeAsAbsent(t *testing.T) {
 	for name, raw := range map[string]string{
 		"invalid string": `{"coordinates":["invalid","37.618423"]}`,
 		"invalid type":   `{"coordinates":[true,37.618423]}`,
@@ -36,9 +36,13 @@ func TestLocationCoordinatesInvalidOrMissingAreUnusable(t *testing.T) {
 			if err := json.Unmarshal([]byte(raw), &location); err != nil {
 				t.Fatalf("invalid coordinates must not fail the page: %v", err)
 			}
-			event := eventDTO{ID: 1, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00", Location: location}
-			if _, ok := normalizeEvent(event); ok {
-				t.Fatalf("coordinates %#v must be rejected by normalizer", location.Coordinates)
+			event := eventDTO{ID: 1, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00", Location: locationDTO{Address: "Venue address", Coordinates: location.Coordinates}}
+			normalized, ok := normalizeEvent(event)
+			if !ok {
+				t.Fatalf("coordinates %#v must not reject otherwise valid event", location.Coordinates)
+			}
+			if normalized.Venue.Latitude != nil || normalized.Venue.Longitude != nil || normalized.Venue.Address != "Venue address" || normalized.Venue.Name != "Venue address" {
+				t.Fatalf("normalized venue = %#v", normalized.Venue)
 			}
 		})
 	}

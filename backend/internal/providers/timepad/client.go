@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	maxErrorBodyBytes = 4 * 1024
-	importHorizon     = 90 * 24 * time.Hour
-	requestInterval   = 1100 * time.Millisecond
-	moscowCity        = "Москва"
+	maxErrorBodyBytes  = 4 * 1024
+	importHorizon      = 90 * 24 * time.Hour
+	requestInterval    = 1100 * time.Millisecond
+	maxRequestAttempts = 3
+	retryBaseDelay     = time.Second
+	moscowCity         = "Москва"
 )
 
 type Options struct {
@@ -90,28 +92,66 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+c.token)
 
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return eventsPage{}, fmt.Errorf("perform timepad request: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return eventsPage{}, responseError(response)
+	for attempt := 1; attempt <= maxRequestAttempts; attempt++ {
+		response, err := c.httpClient.Do(request)
+		if err != nil {
+			if ctx.Err() != nil {
+				return eventsPage{}, ctx.Err()
+			}
+			if attempt == maxRequestAttempts {
+				return eventsPage{}, fmt.Errorf("perform timepad request after %d attempts: %w", attempt, err)
+			}
+			if err := waitForRetry(ctx, retryBaseDelay*time.Duration(1<<(attempt-1))); err != nil {
+				return eventsPage{}, err
+			}
+			continue
+		}
+
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			statusCode := response.StatusCode
+			responseErr := responseError(response)
+			response.Body.Close()
+
+			if statusCode >= http.StatusInternalServerError && attempt < maxRequestAttempts {
+				if err := waitForRetry(ctx, retryBaseDelay*time.Duration(1<<(attempt-1))); err != nil {
+					return eventsPage{}, err
+				}
+				continue
+			}
+			return eventsPage{}, responseErr
+		}
+
+		var page eventsPage
+		decoder := json.NewDecoder(response.Body)
+		if err := decoder.Decode(&page); err != nil {
+			response.Body.Close()
+			return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
+		}
+		var extra any
+		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+			response.Body.Close()
+			if err == nil {
+				err = errors.New("multiple JSON values")
+			}
+			return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
+		}
+		response.Body.Close()
+		return page, nil
 	}
 
-	var page eventsPage
-	decoder := json.NewDecoder(response.Body)
-	if err := decoder.Decode(&page); err != nil {
-		return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
+	return eventsPage{}, errors.New("timepad request attempts exhausted")
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			err = errors.New("multiple JSON values")
-		}
-		return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
-	}
-	return page, nil
 }
 
 func responseError(response *http.Response) error {
