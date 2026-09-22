@@ -111,7 +111,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	detailHandler := discovery.NewDetailHandler(discoveryService)
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
 	poolKey := sha256.Sum256(poolKeyInput)
-	poolBuilder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), poolKey[:])
+	poolBuilder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), poolKey[:], preferencesService)
 	if err != nil {
 		return nil, err
 	}
