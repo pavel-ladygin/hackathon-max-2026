@@ -15,7 +15,7 @@ import (
 const countDiscoveryEventCards = `-- name: CountDiscoveryEventCards :one
 WITH base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name,
-           CASE WHEN $10::double precision IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $10::double precision) / 2), 2) + cos(radians($10::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $11::double precision) / 2), 2)))) END AS distance_m
+           CASE WHEN $10::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $10::double precision) / 2), 2) + cos(radians($10::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $11::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
     WHERE v.city_id = $12 AND e.status = 'published'
       AND e.is_demo = false AND e.starts_at > now()
@@ -72,7 +72,7 @@ const getDiscoveryEventDetail = `-- name: GetDiscoveryEventDetail :one
 SELECT e.id, e.title, e.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary) AS category_slug,
        e.starts_at, e.timezone, v.name,
-       CASE WHEN $1::double precision IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $1::double precision) / 2), 2) + cos(radians($1::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $2::double precision) / 2), 2)))) END,
+       CASE WHEN $1::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $1::double precision) / 2), 2) + cos(radians($1::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $2::double precision) / 2), 2)))) END,
        e.price_from_minor, e.currency, coalesce(image.url, '') AS image_url,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = $3 AND se.event_id = e.id),
        e.description, e.ends_at, v.id, v.address, v.latitude, v.longitude, v.metro, v.district,
@@ -110,8 +110,8 @@ type GetDiscoveryEventDetailRow struct {
 	EndsAt          pgtype.Timestamptz
 	ID_2            uuid.UUID
 	Address         string
-	Latitude        float64
-	Longitude       float64
+	Latitude        pgtype.Float8
+	Longitude       pgtype.Float8
 	Metro           pgtype.Text
 	District        pgtype.Text
 	TicketAvailable bool
@@ -214,7 +214,7 @@ WITH base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at, e.timezone, e.price_from_minor,
            e.currency, v.name AS venue_name,
            e.starts_at AT TIME ZONE e.timezone AS local_starts_at,
-           CASE WHEN $5::double precision IS NULL THEN NULL
+           CASE WHEN $5::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL
                 ELSE 6371000.0 * 2 * asin(sqrt(least(1.0,
                     power(sin(radians(v.latitude - $5::double precision) / 2), 2) +
                     cos(radians($5::double precision)) * cos(radians(v.latitude)) *
