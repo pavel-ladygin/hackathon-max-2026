@@ -136,7 +136,7 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 			if err != nil {
 				return err
 			}
-			if !roomEventAvailable(availability, budget) {
+			if !roomEventAvailable(availability, budget, now.Time) {
 				continue
 			}
 			eligible = append(eligible, row)
@@ -226,8 +226,8 @@ func roomHardBudget(ctx context.Context, repo *Repository, room roomsql.Room, st
 	return budget, nil
 }
 
-func roomEventAvailable(a contracts.Availability, hardBudget int32) bool {
-	return a.Exists && a.Status == "published" && a.TicketAvailable && a.TicketURL != nil && *a.TicketURL != "" && a.PriceFromMinor != nil && hardBudget >= 0 && *a.PriceFromMinor <= hardBudget
+func roomEventAvailable(a contracts.Availability, hardBudget int32, now time.Time) bool {
+	return a.Exists && a.Status == "published" && a.StartsAt.After(now) && a.TicketAvailable && a.TicketURL != nil && *a.TicketURL != "" && a.PriceFromMinor != nil && hardBudget >= 0 && *a.PriceFromMinor <= hardBudget
 }
 
 func roomEventCard(row roomsql.GetRoomEventCardsRow) api.EventCard {

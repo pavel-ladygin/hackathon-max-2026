@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
@@ -31,7 +32,7 @@ func (l *rankingProfileLoader) LoadRankingPreferences(_ context.Context, userID 
 
 func profileBuilder(t *testing.T, snapshot catalog.Snapshot, loader contracts.RankingPreferencesLoader) *recommendations.PoolBuilder {
 	t.Helper()
-	builder, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: snapshot}, testPoolKey, loader)
+	builder, err := recommendations.NewPoolBuilderWithClock(&fakeCatalog{snapshot: snapshot}, testPoolKey, func() time.Time { return testPoolNow }, loader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +42,7 @@ func profileBuilder(t *testing.T, snapshot catalog.Snapshot, loader contracts.Ra
 func TestRankingComponentsAndWeightedGroupScore(t *testing.T) {
 	city, venue := uuid.New(), uuid.New()
 	eid := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	s := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venue, CityID: city, Latitude: 0, Longitude: 0}}, Events: []catalog.Event{event(eid, venue, "2026-09-20T13:00:00Z", 500, true, "published")}}
+	s := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venue, CityID: city, Latitude: coordinate(0), Longitude: coordinate(0)}}, Events: []catalog.Event{event(eid, venue, "2026-09-20T13:00:00Z", 500, true, "published")}}
 	s.Events[0].Categories = []platform.EventCategory{{EventID: eid, CategorySlug: "theatre", Weight: 0.8, IsPrimary: true}}
 	in := validInput(city)
 	in.FirstIntent.CategorySlugs, in.SecondIntent.CategorySlugs = []string{"theatre"}, []string{"cinema"}
@@ -379,7 +380,7 @@ func TestRankingDiversityVenueCapAndDeterministicRelaxation(t *testing.T) {
 func TestRankingExplanationAndFingerprintPrivacy(t *testing.T) {
 	city, venue := uuid.New(), uuid.New()
 	id := uuid.UUID{15: 1}
-	s := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venue, CityID: city, Latitude: 42.123456, Longitude: 43.654321}}, Events: []catalog.Event{event(id, venue, "2026-09-20T13:00:00Z", 0, true, "published")}}
+	s := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venue, CityID: city, Latitude: coordinate(42.123456), Longitude: coordinate(43.654321)}}, Events: []catalog.Event{event(id, venue, "2026-09-20T13:00:00Z", 0, true, "published")}}
 	s.Events[0].Categories = []platform.EventCategory{{EventID: id, CategorySlug: "theatre", Weight: 1, IsPrimary: true}}
 	in := validInput(city)
 	in.FirstIntent.UserID = uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

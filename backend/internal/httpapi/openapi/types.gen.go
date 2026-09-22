@@ -1199,13 +1199,13 @@ type User struct {
 
 // Venue defines model for Venue.
 type Venue struct {
-	Address   string                    `json:"address"`
-	District  nullable.Nullable[string] `json:"district,omitempty"`
-	Id        openapi_types.UUID        `json:"id"`
-	Latitude  float32                   `json:"latitude"`
-	Longitude float32                   `json:"longitude"`
-	Metro     nullable.Nullable[string] `json:"metro,omitempty"`
-	Name      string                    `json:"name"`
+	Address   string                     `json:"address"`
+	District  nullable.Nullable[string]  `json:"district,omitempty"`
+	Id        openapi_types.UUID         `json:"id"`
+	Latitude  nullable.Nullable[float32] `json:"latitude,omitempty"`
+	Longitude nullable.Nullable[float32] `json:"longitude,omitempty"`
+	Metro     nullable.Nullable[string]  `json:"metro,omitempty"`
+	Name      string                     `json:"name"`
 }
 
 // VoteRequest defines model for VoteRequest.

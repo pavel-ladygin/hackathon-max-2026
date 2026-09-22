@@ -61,6 +61,7 @@ func availabilityFromRow(event platform.GetEventAvailabilityRow) contracts.Avail
 	availability := contracts.Availability{
 		Exists:          true,
 		Status:          event.Status,
+		StartsAt:        event.StartsAt.Time,
 		Currency:        event.Currency,
 		TicketAvailable: event.TicketAvailable,
 	}

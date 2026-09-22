@@ -69,7 +69,7 @@ func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID) (string,
 		if err != nil {
 			return err
 		}
-		if availability.Status != "published" || !availability.TicketAvailable || !availability.TicketUrl.Valid {
+		if availability.Status != "published" || !availability.StartsAt.Valid || !availability.StartsAt.Time.After(s.now()) || !availability.TicketAvailable || !availability.TicketUrl.Valid {
 			return ErrUnavailable
 		}
 		if !s.isAllowedURL(availability.TicketUrl.String) {

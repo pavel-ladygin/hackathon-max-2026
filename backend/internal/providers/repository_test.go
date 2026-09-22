@@ -11,11 +11,13 @@ import (
 func validPersistenceEvent() NormalizedEvent {
 	return NormalizedEvent{
 		Source: "kudago", ExternalID: "42:1700000000", Title: "Event", Description: "Description",
-		Venue:    NormalizedVenue{Name: "Venue", Address: "Address", Latitude: 55.75, Longitude: 37.61, VenueType: "other"},
+		Venue:    NormalizedVenue{Name: "Venue", Address: "Address", Latitude: float64Pointer(55.75), Longitude: float64Pointer(37.61), VenueType: "other"},
 		StartsAt: time.Unix(1_700_000_000, 0), Timezone: "Europe/Moscow", Currency: "RUB", Status: "published",
 		Categories: []NormalizedCategory{{Slug: "concerts", Weight: 1, IsPrimary: true}},
 	}
 }
+
+func float64Pointer(value float64) *float64 { return &value }
 
 func TestProviderStableIDIsDeterministicAndNamespaced(t *testing.T) {
 	first := providerStableID("event", "kudago\x0042:1700000000")

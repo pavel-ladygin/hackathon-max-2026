@@ -3,6 +3,7 @@ package rooms
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -150,7 +151,7 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if err != nil {
 			return err
 		}
-		if !roomEventAvailable(availability, budget) {
+		if !roomEventAvailable(availability, budget, now.Time) {
 			if err := s.updatePoolFinished(ctx, repo, room, pool, principal.UserID, budget, &response); err != nil {
 				return err
 			}
@@ -214,7 +215,11 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 }
 
 func (s *Service) updatePoolFinished(ctx context.Context, repo *Repository, room roomsql.Room, pool roomsql.RoomPool, userID uuid.UUID, budget int32, response *api.VoteResponse) error {
-	finished, err := s.memberFinishedPool(ctx, repo, room, pool, userID, budget)
+	now, err := repo.Queries.ClockNow(ctx)
+	if err != nil {
+		return err
+	}
+	finished, err := s.memberFinishedPool(ctx, repo, pool, userID, budget, now.Time)
 	if err != nil {
 		return err
 	}
@@ -263,7 +268,7 @@ func (s *Service) finalizeExhaustedRoom(ctx context.Context, repo *Repository, r
 	return err
 }
 
-func (s *Service) memberFinishedPool(ctx context.Context, repo *Repository, room roomsql.Room, pool roomsql.RoomPool, userID uuid.UUID, budget int32) (bool, error) {
+func (s *Service) memberFinishedPool(ctx context.Context, repo *Repository, pool roomsql.RoomPool, userID uuid.UUID, budget int32, now time.Time) (bool, error) {
 	cards, err := repo.Queries.GetRoomEventCards(ctx, roomsql.GetRoomEventCardsParams{UserID: userID, PoolID: pool.ID})
 	if err != nil {
 		return false, err
@@ -276,7 +281,7 @@ func (s *Service) memberFinishedPool(ctx context.Context, repo *Repository, room
 		if err != nil {
 			return false, err
 		}
-		if roomEventAvailable(a, budget) {
+		if roomEventAvailable(a, budget, now) {
 			return false, nil
 		}
 	}

@@ -79,9 +79,13 @@ func detailResponse(detail Detail) api.EventDetail {
 		Timezone:        detail.Timezone,
 		Title:           detail.Title,
 		Venue: api.Venue{Id: detail.Venue.ID, Name: detail.Venue.Name, Address: detail.Venue.Address,
-			Latitude: float32(detail.Venue.Latitude), Longitude: float32(detail.Venue.Longitude), Metro: nullable.NewNullNullable[string](), District: nullable.NewNullNullable[string]()},
+			Latitude: nullable.NewNullNullable[float32](), Longitude: nullable.NewNullNullable[float32](), Metro: nullable.NewNullNullable[string](), District: nullable.NewNullNullable[string]()},
 		VenueName: detail.VenueName,
 		AgeRating: nullable.NewNullNullable[api.EventDetailAgeRating](),
+	}
+	if detail.Venue.Latitude != nil && detail.Venue.Longitude != nil {
+		response.Venue.Latitude = nullable.NewNullableWithValue(float32(*detail.Venue.Latitude))
+		response.Venue.Longitude = nullable.NewNullableWithValue(float32(*detail.Venue.Longitude))
 	}
 	if detail.Subtitle != nil {
 		response.Subtitle = nullable.NewNullableWithValue(*detail.Subtitle)

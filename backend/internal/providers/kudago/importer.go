@@ -43,7 +43,9 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 		if err != nil {
 			return ingestion.Stats(), fmt.Errorf("fetch kudago page: %w", err)
 		}
+		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Results))
+		ingestion.AddMatched(len(page.Results))
 		for _, event := range page.Results {
 			occurrences := normalizeEvent(event)
 			if len(occurrences) == 0 {

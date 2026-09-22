@@ -42,6 +42,7 @@ type PoolBuilder struct {
 	tieBreakSecret []byte
 	profiles       contracts.RankingPreferencesLoader
 	behavior       contracts.BehavioralAffinityLoader
+	now            func() time.Time
 }
 
 // NewPoolBuilderWithBehavior adds provider-neutral behavioral aggregates while
@@ -57,8 +58,18 @@ func NewPoolBuilderWithBehavior(catalog Catalog, tieBreakSecret []byte, profiles
 
 // NewPoolBuilder returns a contracts.PoolBuilder backed by catalog.
 func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte, profiles ...contracts.RankingPreferencesLoader) (*PoolBuilder, error) {
+	return NewPoolBuilderWithClock(catalog, tieBreakSecret, time.Now, profiles...)
+}
+
+// NewPoolBuilderWithClock constructs a builder with an injectable clock. The
+// clock is sampled once per build so every candidate is evaluated against the
+// same reference time.
+func NewPoolBuilderWithClock(catalog Catalog, tieBreakSecret []byte, now func() time.Time, profiles ...contracts.RankingPreferencesLoader) (*PoolBuilder, error) {
 	if len(tieBreakSecret) < 32 {
 		return nil, errors.New("pool builder tie-break secret must be at least 32 bytes")
+	}
+	if now == nil {
+		return nil, errors.New("pool builder clock is required")
 	}
 	if len(profiles) > 1 {
 		return nil, errors.New("pool builder accepts at most one preferences loader")
@@ -67,7 +78,7 @@ func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte, profiles ...contract
 	if len(profiles) == 1 {
 		profileLoader = profiles[0]
 	}
-	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...), profiles: profileLoader}, nil
+	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...), profiles: profileLoader, now: now}, nil
 }
 
 var _ contracts.PoolBuilder = (*PoolBuilder)(nil)
@@ -79,6 +90,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	if err := ctx.Err(); err != nil {
 		return contracts.BuildResult{}, err
 	}
+	referenceTime := b.now()
 	snapshot, err := b.catalog.LoadCity(ctx, input.CityID)
 	if err != nil {
 		return contracts.BuildResult{}, fmt.Errorf("load city catalog: %w", err)
@@ -141,7 +153,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
 		}
-		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, first.radius, second.radius) {
+		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, referenceTime, first.radius, second.radius) {
 			continue
 		}
 		venue := venues[event.VenueID]
@@ -419,9 +431,12 @@ func copySet(a map[string]bool) map[string]bool {
 	}
 	return r
 }
-func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, radii ...radiusConstraint) bool {
+func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, radii ...radiusConstraint) bool {
 	venue, ok := venues[event.VenueID]
-	if !ok || event.Status != "published" || !event.TicketAvailable || !event.StartsAt.Valid {
+	if !ok || event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" || !event.StartsAt.Valid {
+		return false
+	}
+	if !event.StartsAt.Time.After(referenceTime) {
 		return false
 	}
 	if !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
@@ -440,21 +455,29 @@ func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations
 	if c.exclusions["outdoor"] && event.Indoor.Valid && !event.Indoor.Bool {
 		return false
 	}
-	if (c.exclusions["far_from_metro"] || hasEnabledRadius(radii)) && !validCoordinates(venue.Latitude, venue.Longitude) {
+	latitude, longitude, hasCoordinates := venueCoordinates(venue)
+	if (c.exclusions["far_from_metro"] || hasEnabledRadius(radii)) && !hasCoordinates {
 		return false
 	}
 	if c.exclusions["far_from_metro"] {
-		d, ok := catalog.NearestMetroDistance(venue.Latitude, venue.Longitude, stations)
+		d, ok := catalog.NearestMetroDistance(latitude, longitude, stations)
 		if !ok || d > metroLimitM+distanceEpsM {
 			return false
 		}
 	}
 	for _, r := range radii {
-		if r.enabled && catalog.HaversineMeters(r.lat, r.lng, venue.Latitude, venue.Longitude) > float64(r.meters)+distanceEpsM {
+		if r.enabled && catalog.HaversineMeters(r.lat, r.lng, latitude, longitude) > float64(r.meters)+distanceEpsM {
 			return false
 		}
 	}
 	return true
+}
+
+func venueCoordinates(venue platform.Venue) (float64, float64, bool) {
+	if !venue.Latitude.Valid || !venue.Longitude.Valid || !validCoordinates(venue.Latitude.Float64, venue.Longitude.Float64) {
+		return 0, 0, false
+	}
+	return venue.Latitude.Float64, venue.Longitude.Float64, true
 }
 func hasEnabledRadius(radii []radiusConstraint) bool {
 	for _, radius := range radii {

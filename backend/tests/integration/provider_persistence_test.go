@@ -143,6 +143,27 @@ func TestProviderRepositoryPersistence(t *testing.T) {
 		}
 	})
 
+	t.Run("coordinate-less venue preserves address without sentinel coordinates", func(t *testing.T) {
+		withoutCoordinates := event
+		withoutCoordinates.ExternalID = "without-coordinates-" + uuid.NewString()
+		withoutCoordinates.Venue.ExternalID = "without-coordinates-venue-" + uuid.NewString()
+		withoutCoordinates.Venue.Address = "Address without coordinates"
+		withoutCoordinates.Venue.Latitude = nil
+		withoutCoordinates.Venue.Longitude = nil
+		result, err := repo.UpsertWithResult(ctx, cityID, withoutCoordinates)
+		if err != nil {
+			t.Fatalf("upsert coordinate-less event: %v", err)
+		}
+		var address string
+		var coordinatesMissing bool
+		if err := db.QueryRow(ctx, `SELECT v.address, v.latitude IS NULL AND v.longitude IS NULL FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.id=$1`, result.EventID).Scan(&address, &coordinatesMissing); err != nil {
+			t.Fatalf("read coordinate-less venue: %v", err)
+		}
+		if address != withoutCoordinates.Venue.Address || !coordinatesMissing {
+			t.Fatalf("address=%q coordinates_missing=%v", address, coordinatesMissing)
+		}
+	})
+
 	t.Run("invalid image role rolls back parent and dependents", func(t *testing.T) {
 		bad := event
 		bad.ExternalID = "rollback-" + uuid.NewString()
@@ -192,7 +213,7 @@ func providerEvent(source, externalID, venueExternalID string) providers.Normali
 		Source: source, ExternalID: externalID, Title: "Provider integration event",
 		Description: "An isolated provider fixture", Venue: providers.NormalizedVenue{
 			ExternalID: venueExternalID, Name: "provider venue " + venueExternalID,
-			Address: "Provider street 1", Latitude: 55.75, Longitude: 37.61,
+			Address: "Provider street 1", Latitude: providerFloatPtr(55.75), Longitude: providerFloatPtr(37.61),
 			VenueType: "theatre",
 		}, StartsAt: start, EndsAt: &end, Timezone: "Europe/Moscow",
 		PriceFromMinor: &price, Currency: "RUB", TicketAvailable: true,
@@ -203,4 +224,5 @@ func providerEvent(source, externalID, venueExternalID string) providers.Normali
 	}
 }
 
-func providerStringPtr(value string) *string { return &value }
+func providerStringPtr(value string) *string  { return &value }
+func providerFloatPtr(value float64) *float64 { return &value }

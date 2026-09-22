@@ -129,8 +129,8 @@ func normalizeVenue(place placeDTO) providers.NormalizedVenue {
 	venue := providers.NormalizedVenue{
 		Name:      strings.TrimSpace(place.Title),
 		Address:   strings.TrimSpace(place.Address),
-		Latitude:  *place.Coords.Lat,
-		Longitude: *place.Coords.Lon,
+		Latitude:  place.Coords.Lat,
+		Longitude: place.Coords.Lon,
 		VenueType: "other",
 	}
 	if place.ID > 0 {
