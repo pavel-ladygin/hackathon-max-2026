@@ -36,7 +36,7 @@ func TestHTTPRoomTwoClientMatchAcceptance(t *testing.T) {
 	if _, err := db.Exec(ctx, `INSERT INTO venues(id,city_id,name,address,latitude,longitude,venue_type) VALUES($1,$2,'HTTP acceptance venue','test address',55.75,37.61,'concert_hall')`, venueID, cityID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO events(id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_url,ticket_available,status) VALUES($1,'http-acceptance',$2,true,'HTTP acceptance event','test event',$3,$4,'UTC',1000,'RUB','https://tickets.example.test/http-acceptance',true,'published')`, eventID, eventID.String(), venueID, startsAt); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO events(id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_url,ticket_available,status) VALUES($1,'http-acceptance',$2,false,'HTTP acceptance event','test event',$3,$4,'UTC',1000,'RUB','https://tickets.example.test/http-acceptance',true,'published')`, eventID, eventID.String(), venueID, startsAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(ctx, `INSERT INTO event_categories(event_id,category_slug,is_primary) VALUES($1,'concerts',true)`, eventID); err != nil {

@@ -365,7 +365,7 @@ func (f *roomFixture) newEvent(t *testing.T) uuid.UUID {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.db.Exec(context.Background(), "INSERT INTO events (id,source,external_id,title,description,venue_id,starts_at,timezone,status) VALUES ($1,'test',$2,'e','d',$3,now(),'UTC','published')", event, fmt.Sprintf("%d-%s", f.seq, event), venue)
+	_, err = f.db.Exec(context.Background(), "INSERT INTO events (id,source,external_id,title,description,venue_id,starts_at,timezone,status) VALUES ($1,'test',$2,'e','d',$3,clock_timestamp()+interval '1 day','UTC','published')", event, fmt.Sprintf("%d-%s", f.seq, event), venue)
 	if err != nil {
 		t.Fatal(err)
 	}
