@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -28,6 +29,15 @@ type Config struct {
 	InviteURLTemplate          string
 	MAXDeepLinkTemplate        string
 	TicketProviderAllowlist    []string
+	KudaGoBaseURL              string
+	KudaGoTimeout              time.Duration
+	KudaGoLocation             string
+	KudaGoPageSize             int
+	EventSyncInterval          time.Duration
+	TimepadBaseURL             string
+	TimepadToken               string
+	TimepadTimeout             time.Duration
+	TimepadPageSize            int
 }
 
 // Load reads and validates all required environment variables.
@@ -41,8 +51,67 @@ func Load() (Config, error) {
 		InviteEncryptionKeyVersion: 1,
 		InviteURLTemplate:          strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
 		MAXDeepLinkTemplate:        strings.TrimSpace(os.Getenv("MAX_DEEP_LINK_TEMPLATE")),
+		KudaGoBaseURL:              "https://kudago.com/public-api/v1.4",
+		KudaGoTimeout:              30 * time.Second,
+		KudaGoLocation:             "msk",
+		KudaGoPageSize:             100,
+		EventSyncInterval:          time.Hour,
+		TimepadBaseURL:             "https://api.timepad.ru/v1",
+		TimepadToken:               strings.TrimSpace(os.Getenv("TIMEPAD_TOKEN")),
+		TimepadTimeout:             30 * time.Second,
+		TimepadPageSize:            100,
 	}
-	cfg.TicketProviderAllowlist = splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))
+	cfg.TicketProviderAllowlist = append([]string{"kudago.com", "*.kudago.com", "timepad.ru", "*.timepad.ru"}, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
+	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
+		cfg.KudaGoBaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("KUDAGO_LOCATION")); value != "" {
+		cfg.KudaGoLocation = value
+	}
+	if value := strings.TrimSpace(os.Getenv("KUDAGO_TIMEOUT")); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout <= 0 {
+			return Config{}, fmt.Errorf("KUDAGO_TIMEOUT is invalid")
+		}
+		cfg.KudaGoTimeout = timeout
+	}
+	if value := strings.TrimSpace(os.Getenv("KUDAGO_PAGE_SIZE")); value != "" {
+		pageSize, err := strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return Config{}, fmt.Errorf("KUDAGO_PAGE_SIZE is invalid")
+		}
+		cfg.KudaGoPageSize = pageSize
+	}
+	if value := strings.TrimSpace(os.Getenv("EVENT_SYNC_INTERVAL")); value != "" {
+		interval, err := time.ParseDuration(value)
+		if err != nil || interval <= 0 {
+			return Config{}, fmt.Errorf("EVENT_SYNC_INTERVAL is invalid")
+		}
+		cfg.EventSyncInterval = interval
+	}
+	if !validProviderBaseURL(cfg.KudaGoBaseURL) {
+		return Config{}, fmt.Errorf("KUDAGO_BASE_URL is invalid")
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_BASE_URL")); value != "" {
+		cfg.TimepadBaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_TIMEOUT")); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout <= 0 {
+			return Config{}, fmt.Errorf("TIMEPAD_TIMEOUT is invalid")
+		}
+		cfg.TimepadTimeout = timeout
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_PAGE_SIZE")); value != "" {
+		pageSize, err := strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			return Config{}, fmt.Errorf("TIMEPAD_PAGE_SIZE is invalid")
+		}
+		cfg.TimepadPageSize = pageSize
+	}
+	if !validProviderBaseURL(cfg.TimepadBaseURL) {
+		return Config{}, fmt.Errorf("TIMEPAD_BASE_URL is invalid")
+	}
 	// Migration and seed commands do not need invite credentials. The server
 	// requires them when constructing its routes; malformed provided values
 	// always fail without including secret values in errors.
@@ -100,6 +169,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("LOG_LEVEL is invalid")
 	}
 	return cfg, nil
+}
+
+func validProviderBaseURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func parseCIDRs(raw string) ([]net.IPNet, error) {

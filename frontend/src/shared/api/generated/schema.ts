@@ -438,8 +438,8 @@ export interface components {
             id: string;
             name: string;
             address: string;
-            latitude: number;
-            longitude: number;
+            latitude?: number | null;
+            longitude?: number | null;
             metro?: string | null;
             district?: string | null;
         };

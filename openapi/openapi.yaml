@@ -1191,8 +1191,6 @@ components:
       - id
       - name
       - address
-      - latitude
-      - longitude
       properties:
         id:
           type: string
@@ -1202,9 +1200,13 @@ components:
         address:
           type: string
         latitude:
-          type: number
+          type:
+          - number
+          - 'null'
         longitude:
-          type: number
+          type:
+          - number
+          - 'null'
         metro:
           type:
           - string

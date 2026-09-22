@@ -23,7 +23,7 @@ WHERE v.city_id = $1
 ORDER BY e.starts_at, e.id;
 
 -- name: GetEventAvailability :one
-SELECT status, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+SELECT status, starts_at, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
 FROM events
 WHERE id = $1;
 

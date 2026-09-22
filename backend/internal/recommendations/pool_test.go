@@ -19,6 +19,7 @@ import (
 )
 
 var testPoolKey = []byte("0123456789abcdef0123456789abcdef")
+var testPoolNow = time.Date(2026, 9, 19, 0, 0, 0, 0, time.UTC)
 
 func newBuilder(t *testing.T, c *fakeCatalog) *recommendations.PoolBuilder {
 	return newBuilderWithKey(t, c, testPoolKey)
@@ -26,7 +27,7 @@ func newBuilder(t *testing.T, c *fakeCatalog) *recommendations.PoolBuilder {
 
 func newBuilderWithKey(t *testing.T, c *fakeCatalog, key []byte) *recommendations.PoolBuilder {
 	t.Helper()
-	b, err := recommendations.NewPoolBuilder(c, key)
+	b, err := recommendations.NewPoolBuilderWithClock(c, key, func() time.Time { return testPoolNow })
 	if err != nil {
 		t.Fatalf("new pool builder: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 	venueID := uuid.New()
 	snapshot := catalog.Snapshot{
 		City:          platform.City{ID: cityID, Timezone: "Europe/Moscow", CenterLat: 55.75, CenterLng: 37.61},
-		Venues:        []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 55.75, Longitude: 37.61}},
+		Venues:        []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(55.75), Longitude: coordinate(37.61)}},
 		MetroStations: []platform.MetroStation{{ID: uuid.New(), CityID: cityID, Latitude: 55.750, Longitude: 37.610}},
 	}
 	base := contracts.BuildInput{
@@ -84,7 +85,7 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 			t.Fatalf("candidate %s lacks ranking output: %+v", candidate.EventID, candidate)
 		}
 	}
-	if result.RankerVersion != "scoring-diversity-v1" {
+	if result.RankerVersion != "scoring-diversity-v3-behavior" {
 		t.Fatalf("ranker version = %q", result.RankerVersion)
 	}
 	slices.Reverse(fake.snapshot.Events)
@@ -102,12 +103,40 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 	}
 }
 
+func TestPoolBuilderExcludesEventsAtOrBeforeReferenceTime(t *testing.T) {
+	cityID, venueID := uuid.New(), uuid.New()
+	referenceTime := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	snapshot := catalog.Snapshot{
+		City:   platform.City{ID: cityID, Timezone: "UTC", CenterLat: 0, CenterLng: 0},
+		Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}},
+	}
+	past := event(uuid.New(), venueID, referenceTime.Add(-time.Second).Format(time.RFC3339), 0, true, "published")
+	atBoundary := event(uuid.New(), venueID, referenceTime.Format(time.RFC3339), 0, true, "published")
+	future := event(uuid.New(), venueID, referenceTime.Add(time.Hour).Format(time.RFC3339), 0, true, "published")
+	snapshot.Events = []catalog.Event{past, atBoundary, future}
+
+	input := validInput(cityID)
+	input.FirstIntent.TimeSlots = nil
+	input.SecondIntent.TimeSlots = nil
+	builder, err := recommendations.NewPoolBuilderWithClock(&fakeCatalog{snapshot: snapshot}, testPoolKey, func() time.Time { return referenceTime })
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := builder.Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := candidateIDs(result.Candidates); !reflect.DeepEqual(got, []uuid.UUID{future.ID}) {
+		t.Fatalf("candidates = %v, want only future event %s", got, future.ID)
+	}
+}
+
 func TestPoolBuilderBoundaryFilters(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
 	base := contracts.BuildInput{RoomID: uuid.New(), CityID: cityID, RoundNo: 1, PoolVersion: 1,
 		FirstIntent:  contracts.ParticipantIntent{Dates: []string{"2026-09-20"}, TimeSlots: []string{"morning"}, BudgetMaxMinor: 1000},
 		SecondIntent: contracts.ParticipantIntent{Dates: []string{"2026-09-20"}, TimeSlots: []string{"morning"}, BudgetMaxMinor: 1000}}
-	baseSnapshot := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "Europe/Moscow", CenterLat: 55.75, CenterLng: 37.61}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 55.75, Longitude: 37.61}}}
+	baseSnapshot := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "Europe/Moscow", CenterLat: 55.75, CenterLng: 37.61}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(55.75), Longitude: coordinate(37.61)}}}
 	cases := []struct {
 		name string
 		when string
@@ -143,8 +172,8 @@ func TestPoolBuilderExclusionsUnionAndBudgetSemantics(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
 	otherVenue := uuid.New()
 	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "Europe/Moscow", CenterLat: 55.75, CenterLng: 37.61}, Venues: []platform.Venue{
-		{ID: venueID, CityID: cityID, Latitude: 55.75, Longitude: 37.61, VenueType: "nightclub"},
-		{ID: otherVenue, CityID: cityID, Latitude: 55.75, Longitude: 37.61},
+		{ID: venueID, CityID: cityID, Latitude: coordinate(55.75), Longitude: coordinate(37.61), VenueType: "nightclub"},
+		{ID: otherVenue, CityID: cityID, Latitude: coordinate(55.75), Longitude: coordinate(37.61)},
 	}}
 	base := contracts.BuildInput{RoomID: uuid.New(), CityID: cityID,
 		FirstIntent:  contracts.ParticipantIntent{Dates: []string{"2026-09-20"}, TimeSlots: []string{"day"}, BudgetMaxMinor: 1000, ExclusionSlugs: []string{"nightclubs", "very_loud", "outdoor"}},
@@ -170,9 +199,33 @@ func TestPoolBuilderExclusionsUnionAndBudgetSemantics(t *testing.T) {
 	}
 }
 
+func TestPoolBuilderExcludesDemoAndEventsWithoutUsableTicketURL(t *testing.T) {
+	cityID, venueID := uuid.New(), uuid.New()
+	snapshot := catalog.Snapshot{
+		City:   platform.City{ID: cityID, Timezone: "UTC"},
+		Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
+	}
+	eligible := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	demo := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	demo.IsDemo = true
+	missingURL := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	missingURL.TicketUrl = pgtype.Text{}
+	emptyURL := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	emptyURL.TicketUrl = pgtype.Text{Valid: true}
+	snapshot.Events = []catalog.Event{eligible, demo, missingURL, emptyURL}
+
+	result, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), validInput(cityID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := candidateIDs(result.Candidates); len(got) != 1 || got[0] != eligible.ID {
+		t.Fatalf("only non-demo event with a usable ticket URL should remain: %v", got)
+	}
+}
+
 func TestPoolBuilderPreviousIDsBeforeCapAndFingerprintNormalization(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
-	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 0, Longitude: 0}}}
+	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}}}
 	input := contracts.BuildInput{RoomID: uuid.New(), CityID: cityID, RoundNo: 3, PoolVersion: 4,
 		FirstIntent:  contracts.ParticipantIntent{Dates: []string{"2026-09-20", "2026-09-20"}, TimeSlots: []string{"day", "day"}},
 		SecondIntent: contracts.ParticipantIntent{Dates: []string{"2026-09-20"}, TimeSlots: []string{"day"}}}
@@ -237,6 +290,26 @@ func TestPoolBuilderStatusDateAndCityBoundaries(t *testing.T) {
 	}
 }
 
+func TestPoolBuilderAllowsMissingVenueCoordinatesWithoutRadius(t *testing.T) {
+	cityID, venueID := uuid.New(), uuid.New()
+	snapshot := catalog.Snapshot{
+		City:   platform.City{ID: cityID, Timezone: "UTC", CenterLat: 55.75, CenterLng: 37.61},
+		Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
+		Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")},
+	}
+	input := validInput(cityID)
+	withoutRadius, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), input)
+	if err != nil || len(withoutRadius.Candidates) != 1 {
+		t.Fatalf("coordinate-less event without radius: candidates=%d err=%v", len(withoutRadius.Candidates), err)
+	}
+	radius := int32(1000)
+	input.FirstIntent.RadiusM = &radius
+	withRadius, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), input)
+	if err != nil || len(withRadius.Candidates) != 0 {
+		t.Fatalf("coordinate-less event with radius: candidates=%d err=%v", len(withRadius.Candidates), err)
+	}
+}
+
 func TestPoolBuilderDisjointParticipantDateAndSlotSetsAreEmpty(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
 	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venueID, CityID: cityID}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
@@ -278,7 +351,7 @@ func TestPoolBuilderRadiusUsesEachParticipantOriginAndInclusiveBoundary(t *testi
 	vNear, vEdge, vOutside := uuid.New(), uuid.New(), uuid.New()
 	edgeLat := latitudeForMeters(1000)
 	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC", CenterLat: 50, CenterLng: 50}, Venues: []platform.Venue{
-		{ID: vNear, CityID: cityID, Latitude: 0, Longitude: 0}, {ID: vEdge, CityID: cityID, Latitude: edgeLat, Longitude: 0}, {ID: vOutside, CityID: cityID, Latitude: latitudeForMeters(1201), Longitude: 0},
+		{ID: vNear, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}, {ID: vEdge, CityID: cityID, Latitude: coordinate(edgeLat), Longitude: coordinate(0)}, {ID: vOutside, CityID: cityID, Latitude: coordinate(latitudeForMeters(1201)), Longitude: coordinate(0)},
 	}, Events: []catalog.Event{event(near, vNear, "2026-09-20T13:00:00Z", 0, true, "published"), event(edge, vEdge, "2026-09-20T14:00:00Z", 0, true, "published"), event(outside, vOutside, "2026-09-20T15:00:00Z", 0, true, "published")}}
 	in := validInput(cityID)
 	radius := int32(1000)
@@ -310,7 +383,7 @@ func TestPoolBuilderMetroDistanceAndMissingStation(t *testing.T) {
 		want int
 	}{{"1199", longitudeForMeters(1199), 1}, {"1200", longitudeForMeters(1200), 1}, {"1201", longitudeForMeters(1201), 0}} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 0, Longitude: 0}}, MetroStations: []platform.MetroStation{{ID: uuid.New(), CityID: cityID, Latitude: 0, Longitude: tc.lng}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
+			s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}}, MetroStations: []platform.MetroStation{{ID: uuid.New(), CityID: cityID, Latitude: 0, Longitude: tc.lng}}, Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")}}
 			got, err := newBuilder(t, &fakeCatalog{snapshot: s}).Build(context.Background(), in)
 			if err != nil || len(got.Candidates) != tc.want {
 				t.Fatalf("metro boundary: got=%v err=%v", got.Candidates, err)
@@ -476,7 +549,7 @@ func TestPoolBuilderIndividualConstraints(t *testing.T) {
 				input: validInput(cityID),
 				data: catalog.Snapshot{
 					City:   platform.City{ID: cityID, Timezone: "UTC"},
-					Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
+					Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}},
 					Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 1000, true, "published")},
 				},
 			}
@@ -495,7 +568,7 @@ func TestPoolBuilderMetroUsesNearestValidCityStation(t *testing.T) {
 	in.SecondIntent.ExclusionSlugs = []string{"far_from_metro"}
 	snapshot := catalog.Snapshot{
 		City:   platform.City{ID: cityID, Timezone: "UTC"},
-		Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
+		Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: coordinate(0), Longitude: coordinate(0)}},
 		Events: []catalog.Event{event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")},
 	}
 	foreign := platform.MetroStation{CityID: uuid.New()}
@@ -581,6 +654,10 @@ func validInput(cityID uuid.UUID) contracts.BuildInput {
 func event(id, venueID uuid.UUID, starts string, price int32, ticket bool, status string) catalog.Event {
 	tm, _ := time.Parse(time.RFC3339, starts)
 	return catalog.Event{Event: platform.Event{ID: id, VenueID: venueID, StartsAt: pgtype.Timestamptz{Time: tm, Valid: true}, PriceFromMinor: pgtype.Int4{Int32: price, Valid: true}, TicketAvailable: ticket, TicketUrl: pgtype.Text{String: "https://tickets.example/event", Valid: ticket}, Status: status}}
+}
+
+func coordinate(value float64) pgtype.Float8 {
+	return pgtype.Float8{Float64: value, Valid: true}
 }
 
 func candidateIDs(candidates []contracts.Candidate) []uuid.UUID {

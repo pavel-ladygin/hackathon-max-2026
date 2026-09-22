@@ -41,6 +41,15 @@ func openTestDB(t *testing.T) *store.Pool {
 	return db
 }
 
+func databaseNow(t *testing.T, db *store.Pool) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := db.QueryRow(context.Background(), "SELECT clock_timestamp()").Scan(&now); err != nil {
+		t.Fatalf("read database clock: %v", err)
+	}
+	return now
+}
+
 func TestPostgresFoundationAndTransactions(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

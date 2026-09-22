@@ -71,7 +71,7 @@ func TestDetailHandlerMapsCompletePublicDetail(t *testing.T) {
 	price, distance, width, height := 0, 734, 1280, 720
 	endsAt := time.Date(2026, 10, 1, 22, 0, 0, 0, time.UTC)
 	sourceUpdatedAt := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
-	provider := &fakeDetailProvider{detail: Detail{Card: Card{ID: event, Title: "Концерт", Subtitle: &subtitle, CategorySlug: "concerts", StartsAt: time.Date(2026, 10, 1, 19, 0, 0, 0, time.UTC), Timezone: "Europe/Moscow", DateLabel: "1 октября, 22:00", VenueName: "Клуб", DistanceMeters: &distance, DistanceLabel: stringPointer("734 м"), PriceFromMinor: &price, Currency: "RUB", PriceLabel: "Бесплатно", ImageURL: &imageURL, Saved: true, Reasons: []Reason{{Code: "popular", Text: "Популярно"}}}, Description: "Полное описание", EndsAt: &endsAt, Venue: Venue{ID: venue, Name: "Клуб", Address: "Москва, ул. Пример, 1", Latitude: 55.751, Longitude: 37.617, Metro: &metro, District: &district}, Images: []Image{{URL: "https://cdn.example.test/hero.jpg", Width: &width, Height: &height, Role: "hero"}, {URL: "https://cdn.example.test/gallery.jpg", Role: "gallery"}}, TicketAvailable: true, Status: "published", AgeRating: &age, Provenance: Provenance{Source: "demo", SourceUpdatedAt: &sourceUpdatedAt, IsDemo: true}}}
+	provider := &fakeDetailProvider{detail: Detail{Card: Card{ID: event, Title: "Концерт", Subtitle: &subtitle, CategorySlug: "concerts", StartsAt: time.Date(2026, 10, 1, 19, 0, 0, 0, time.UTC), Timezone: "Europe/Moscow", DateLabel: "1 октября, 22:00", VenueName: "Клуб", DistanceMeters: &distance, DistanceLabel: stringPointer("734 м"), PriceFromMinor: &price, Currency: "RUB", PriceLabel: "Бесплатно", ImageURL: &imageURL, Saved: true, Reasons: []Reason{{Code: "popular", Text: "Популярно"}}}, Description: "Полное описание", EndsAt: &endsAt, Venue: Venue{ID: venue, Name: "Клуб", Address: "Москва, ул. Пример, 1", Latitude: floatPointer(55.751), Longitude: floatPointer(37.617), Metro: &metro, District: &district}, Images: []Image{{URL: "https://cdn.example.test/hero.jpg", Width: &width, Height: &height, Role: "hero"}, {URL: "https://cdn.example.test/gallery.jpg", Role: "gallery"}}, TicketAvailable: true, Status: "published", AgeRating: &age, Provenance: Provenance{Source: "demo", SourceUpdatedAt: &sourceUpdatedAt, IsDemo: true}}}
 	res := serveDetail(provider, &user, "/api/v1/events/"+event.String()+"?lat=55&lng=37")
 	if res.Code != http.StatusOK || provider.calls != 1 || provider.userID != user || provider.eventID != event || provider.location != nil {
 		t.Fatalf("status=%d provider=%#v body=%s", res.Code, provider, res.Body.String())
@@ -117,7 +117,8 @@ func TestDetailResponseKeepsNullableFieldsAndAllowedStatuses(t *testing.T) {
 			if err := json.Unmarshal(body, &decoded); err != nil {
 				t.Fatal(err)
 			}
-			if decoded["status"] != status || decoded["price_from_minor"] != nil || decoded["image_url"] != nil || decoded["ends_at"] != nil || decoded["age_rating"] != nil || decoded["venue"].(map[string]any)["metro"] != nil || decoded["venue"].(map[string]any)["district"] != nil || decoded["data_provenance"].(map[string]any)["source_updated_at"] != nil {
+			venue := decoded["venue"].(map[string]any)
+			if decoded["status"] != status || decoded["price_from_minor"] != nil || decoded["image_url"] != nil || decoded["ends_at"] != nil || decoded["age_rating"] != nil || venue["latitude"] != nil || venue["longitude"] != nil || venue["metro"] != nil || venue["district"] != nil || decoded["data_provenance"].(map[string]any)["source_updated_at"] != nil {
 				t.Fatalf("response = %#v", decoded)
 			}
 		})
@@ -141,4 +142,5 @@ func detailErrorCode(t *testing.T, res *httptest.ResponseRecorder, want string) 
 	return strings.Contains(res.Body.String(), `"code":"`+want+`"`)
 }
 
-func stringPointer(value string) *string { return &value }
+func stringPointer(value string) *string  { return &value }
+func floatPointer(value float64) *float64 { return &value }

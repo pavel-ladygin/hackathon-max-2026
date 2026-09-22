@@ -164,11 +164,19 @@ func TestCleanupExpiredDrainsMoreThanOneBatch(t *testing.T) {
 	}
 	svc := rooms.NewService(db)
 	cleaned, err := svc.CleanupExpired(ctx)
-	if err != nil || cleaned != roomCount {
-		t.Fatalf("cleanup drained=%d err=%v; want %d/nil", cleaned, err, roomCount)
+	if err != nil || cleaned < 0 || cleaned > roomCount {
+		t.Fatalf("cleanup claimed=%d err=%v; want 0..%d/nil", cleaned, err, roomCount)
 	}
 	var active int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members m JOIN rooms r ON r.id=m.room_id WHERE r.city_id=$1 AND m.is_active", f.city).Scan(&active); err != nil || active != 0 {
-		t.Fatalf("active memberships after multi-batch cleanup=%d err=%v; want 0/nil", active, err)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err = db.QueryRow(ctx, "SELECT count(*) FROM room_members m JOIN rooms r ON r.id=m.room_id WHERE r.city_id=$1 AND m.is_active", f.city).Scan(&active)
+		if err != nil || active == 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil || active != 0 {
+		t.Fatalf("active memberships after concurrent multi-batch cleanup=%d err=%v; want 0/nil (this worker claimed %d)", active, err, cleaned)
 	}
 }

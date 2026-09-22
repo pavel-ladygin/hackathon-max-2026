@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -111,8 +110,13 @@ func TestB9TwoClientMatchEndToEnd(t *testing.T) {
 				}
 			}
 
-			if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, event, voteRequest); !errors.Is(err, rooms.ErrAlreadyMatched) {
-				t.Fatalf("post-match vote error=%v; want ErrAlreadyMatched", err)
+			retried, err := svc.Vote(ctx, contracts.Principal{UserID: f.member}, f.room, event, voteRequest)
+			if err != nil {
+				t.Fatalf("terminal vote retry: %v", err)
+			}
+			retriedMatch, err := retried.Match.Get()
+			if err != nil || retriedMatch.Id != match.Id {
+				t.Fatalf("terminal retry match=%+v err=%v; want %s", retriedMatch, err, match.Id)
 			}
 
 			var matches, terminalEvents, activeMembers, coordinates int

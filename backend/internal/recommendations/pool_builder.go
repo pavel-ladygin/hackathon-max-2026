@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v1"
+	rankerVersion = "scoring-diversity-v3-behavior"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
@@ -39,14 +40,45 @@ type Catalog interface {
 type PoolBuilder struct {
 	catalog        Catalog
 	tieBreakSecret []byte
+	profiles       contracts.RankingPreferencesLoader
+	behavior       contracts.BehavioralAffinityLoader
+	now            func() time.Time
+}
+
+// NewPoolBuilderWithBehavior adds provider-neutral behavioral aggregates while
+// preserving the constructor used by callers that do not enable G8.
+func NewPoolBuilderWithBehavior(catalog Catalog, tieBreakSecret []byte, profiles contracts.RankingPreferencesLoader, behavior contracts.BehavioralAffinityLoader) (*PoolBuilder, error) {
+	builder, err := NewPoolBuilder(catalog, tieBreakSecret, profiles)
+	if err != nil {
+		return nil, err
+	}
+	builder.behavior = behavior
+	return builder, nil
 }
 
 // NewPoolBuilder returns a contracts.PoolBuilder backed by catalog.
-func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte) (*PoolBuilder, error) {
+func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte, profiles ...contracts.RankingPreferencesLoader) (*PoolBuilder, error) {
+	return NewPoolBuilderWithClock(catalog, tieBreakSecret, time.Now, profiles...)
+}
+
+// NewPoolBuilderWithClock constructs a builder with an injectable clock. The
+// clock is sampled once per build so every candidate is evaluated against the
+// same reference time.
+func NewPoolBuilderWithClock(catalog Catalog, tieBreakSecret []byte, now func() time.Time, profiles ...contracts.RankingPreferencesLoader) (*PoolBuilder, error) {
 	if len(tieBreakSecret) < 32 {
 		return nil, errors.New("pool builder tie-break secret must be at least 32 bytes")
 	}
-	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...)}, nil
+	if now == nil {
+		return nil, errors.New("pool builder clock is required")
+	}
+	if len(profiles) > 1 {
+		return nil, errors.New("pool builder accepts at most one preferences loader")
+	}
+	var profileLoader contracts.RankingPreferencesLoader
+	if len(profiles) == 1 {
+		profileLoader = profiles[0]
+	}
+	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...), profiles: profileLoader, now: now}, nil
 }
 
 var _ contracts.PoolBuilder = (*PoolBuilder)(nil)
@@ -58,6 +90,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	if err := ctx.Err(); err != nil {
 		return contracts.BuildResult{}, err
 	}
+	referenceTime := b.now()
 	snapshot, err := b.catalog.LoadCity(ctx, input.CityID)
 	if err != nil {
 		return contracts.BuildResult{}, fmt.Errorf("load city catalog: %w", err)
@@ -73,6 +106,20 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	if err != nil {
 		return contracts.BuildResult{}, fmt.Errorf("invalid second intent: %w", err)
 	}
+	first.profile, err = b.loadProfile(ctx, input.CityID, input.FirstIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load first participant preferences: %w", err)
+	}
+	second.profile, err = b.loadProfile(ctx, input.CityID, input.SecondIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load second participant preferences: %w", err)
+	}
+	behaviors, err := b.loadBehavior(ctx, input.FirstIntent.UserID, input.SecondIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load participant behavioral affinity: %w", err)
+	}
+	first.behavior = behaviors[input.FirstIntent.UserID]
+	second.behavior = behaviors[input.SecondIntent.UserID]
 	zone, err := time.LoadLocation(snapshot.City.Timezone)
 	if err != nil {
 		return contracts.BuildResult{}, errors.New("catalog city has invalid timezone")
@@ -106,7 +153,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
 		}
-		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, first.radius, second.radius) {
+		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, referenceTime, first.radius, second.radius) {
 			continue
 		}
 		venue := venues[event.VenueID]
@@ -134,7 +181,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	result := contracts.BuildResult{
 		Candidates:       candidates,
 		RankerVersion:    rankerVersion,
-		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first.radius, second.radius),
+		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first, second),
 	}
 	switch len(candidates) {
 	case 0:
@@ -151,6 +198,19 @@ type normalizedIntent struct {
 	categories              map[string]bool
 	budget                  int32
 	radius                  radiusConstraint
+	profile                 normalizedProfile
+	behavior                normalizedBehavior
+}
+type normalizedProfile struct {
+	present                 bool
+	categories, days, slots map[string]bool
+	budget                  int32
+	version                 int32
+	digest                  string
+}
+type normalizedBehavior struct {
+	categories map[string]float64
+	digest     string
 }
 type radiusConstraint struct {
 	enabled, hasLocation bool
@@ -203,6 +263,98 @@ func normalizeIntent(in contracts.ParticipantIntent) (normalizedIntent, error) {
 		}
 	}
 	return normalizedIntent{dates: dates, days: days, slots: slots, categories: normalizeCategories(in.CategorySlugs), exclusions: exclusions, budget: in.BudgetMaxMinor, radius: r}, nil
+}
+
+func (b *PoolBuilder) loadProfile(ctx context.Context, cityID, userID uuid.UUID) (normalizedProfile, error) {
+	if b.profiles == nil || userID == uuid.Nil {
+		return normalizedProfile{}, nil
+	}
+	value, found, err := b.profiles.LoadRankingPreferences(ctx, userID)
+	if err != nil {
+		return normalizedProfile{}, err
+	}
+	if !found || value.CityID != cityID {
+		return normalizedProfile{}, nil
+	}
+	categories := normalizeCategories(value.InterestSlugs)
+	days := normalizedSet(value.UsualDayTypes)
+	slots := normalizedSet(value.UsualTimeSlots)
+	type digestPayload struct {
+		City, Categories, Days, Slots string
+		Budget, Version               int32
+	}
+	payload := digestPayload{
+		City: value.CityID.String(), Categories: strings.Join(sortedKeys(categories), ","),
+		Days: strings.Join(sortedKeys(days), ","), Slots: strings.Join(sortedKeys(slots), ","),
+		Budget: value.BudgetMaxMinor, Version: value.Version,
+	}
+	encoded, _ := json.Marshal(payload)
+	digest := sha256.Sum256(encoded)
+	return normalizedProfile{
+		present: true, categories: categories, days: days, slots: slots,
+		budget: value.BudgetMaxMinor, version: value.Version, digest: hex.EncodeToString(digest[:]),
+	}, nil
+}
+
+func (b *PoolBuilder) loadBehavior(ctx context.Context, userIDs ...uuid.UUID) (map[uuid.UUID]normalizedBehavior, error) {
+	result := make(map[uuid.UUID]normalizedBehavior, len(userIDs))
+	if b.behavior == nil {
+		return result, nil
+	}
+	unique := make([]uuid.UUID, 0, len(userIDs))
+	seen := make(map[uuid.UUID]bool, len(userIDs))
+	for _, userID := range userIDs {
+		if userID != uuid.Nil && !seen[userID] {
+			seen[userID] = true
+			unique = append(unique, userID)
+		}
+	}
+	countsByUser, err := b.behavior.LoadBehavioralCategoryCounts(ctx, unique)
+	if err != nil {
+		return nil, err
+	}
+	type digestCount struct {
+		Category string `json:"category"`
+		Likes    int64  `json:"likes"`
+		Dislikes int64  `json:"dislikes"`
+	}
+	for _, userID := range unique {
+		counts := countsByUser[userID]
+		sort.Slice(counts, func(i, j int) bool {
+			return normalizeCategorySlug(counts[i].CategorySlug) < normalizeCategorySlug(counts[j].CategorySlug)
+		})
+		categories := make(map[string]float64, len(counts))
+		digestCounts := make([]digestCount, 0, len(counts))
+		for _, count := range counts {
+			category := normalizeCategorySlug(count.CategorySlug)
+			if category == "" || count.Likes < 0 || count.Dislikes < 0 || count.Likes+count.Dislikes == 0 {
+				continue
+			}
+			// Four virtual neutral observations smooth cold and sparse history;
+			// dislikes are slightly stronger to avoid repeatedly poor suggestions.
+			signal := (float64(count.Likes) - 1.25*float64(count.Dislikes)) /
+				(float64(count.Likes+count.Dislikes) + 4)
+			categories[category] = math.Max(-1, math.Min(1, signal))
+			digestCounts = append(digestCounts, digestCount{category, count.Likes, count.Dislikes})
+		}
+		if len(digestCounts) == 0 {
+			continue
+		}
+		encoded, _ := json.Marshal(digestCounts)
+		digest := sha256.Sum256(encoded)
+		result[userID] = normalizedBehavior{categories: categories, digest: hex.EncodeToString(digest[:])}
+	}
+	return result, nil
+}
+
+func normalizedSet(values []string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		if normalized := strings.ToLower(strings.TrimSpace(value)); normalized != "" {
+			result[normalized] = true
+		}
+	}
+	return result
 }
 
 func enumSet(values []string, valid map[string]bool) (map[string]bool, error) {
@@ -279,9 +431,12 @@ func copySet(a map[string]bool) map[string]bool {
 	}
 	return r
 }
-func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, radii ...radiusConstraint) bool {
+func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, radii ...radiusConstraint) bool {
 	venue, ok := venues[event.VenueID]
-	if !ok || event.Status != "published" || !event.TicketAvailable || !event.StartsAt.Valid {
+	if !ok || event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" || !event.StartsAt.Valid {
+		return false
+	}
+	if !event.StartsAt.Time.After(referenceTime) {
 		return false
 	}
 	if !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
@@ -300,21 +455,29 @@ func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations
 	if c.exclusions["outdoor"] && event.Indoor.Valid && !event.Indoor.Bool {
 		return false
 	}
-	if (c.exclusions["far_from_metro"] || hasEnabledRadius(radii)) && !validCoordinates(venue.Latitude, venue.Longitude) {
+	latitude, longitude, hasCoordinates := venueCoordinates(venue)
+	if (c.exclusions["far_from_metro"] || hasEnabledRadius(radii)) && !hasCoordinates {
 		return false
 	}
 	if c.exclusions["far_from_metro"] {
-		d, ok := catalog.NearestMetroDistance(venue.Latitude, venue.Longitude, stations)
+		d, ok := catalog.NearestMetroDistance(latitude, longitude, stations)
 		if !ok || d > metroLimitM+distanceEpsM {
 			return false
 		}
 	}
 	for _, r := range radii {
-		if r.enabled && catalog.HaversineMeters(r.lat, r.lng, venue.Latitude, venue.Longitude) > float64(r.meters)+distanceEpsM {
+		if r.enabled && catalog.HaversineMeters(r.lat, r.lng, latitude, longitude) > float64(r.meters)+distanceEpsM {
 			return false
 		}
 	}
 	return true
+}
+
+func venueCoordinates(venue platform.Venue) (float64, float64, bool) {
+	if !venue.Latitude.Valid || !venue.Longitude.Valid || !validCoordinates(venue.Latitude.Float64, venue.Longitude.Float64) {
+		return 0, 0, false
+	}
+	return venue.Latitude.Float64, venue.Longitude.Float64, true
 }
 func hasEnabledRadius(radii []radiusConstraint) bool {
 	for _, radius := range radii {
@@ -350,7 +513,7 @@ func uuidSet(values []uuid.UUID) map[uuid.UUID]bool {
 	return r
 }
 
-func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, tieBreakSecret []byte, radii ...radiusConstraint) string {
+func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, tieBreakSecret []byte, first, second normalizedIntent) string {
 	type radiusFingerprint struct {
 		Meters    int32   `json:"m"`
 		Latitude  float64 `json:"a"`
@@ -369,6 +532,9 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		Dates, Days, Slots, Exclusions, Previous    []string
 		Budget                                      int32
 		Radii                                       []radiusFingerprint
+		FirstProfileVersion, SecondProfileVersion   int32
+		FirstProfileDigest, SecondProfileDigest     string
+		FirstBehaviorDigest, SecondBehaviorDigest   string
 	}
 	previous := make([]string, 0, len(input.PreviousEventIDs))
 	for id := range uuidSet(input.PreviousEventIDs) {
@@ -390,8 +556,11 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		SecondTimeConstrained: len(input.SecondIntent.DayTypes) > 0 || len(input.SecondIntent.TimeSlots) > 0,
 		Dates:                 sortedKeys(c.dates), Days: sortedKeys(c.days), Slots: sortedKeys(c.slots),
 		Exclusions: sortedKeys(c.exclusions), Previous: previous, Budget: c.budget,
+		FirstProfileVersion: first.profile.version, SecondProfileVersion: second.profile.version,
+		FirstProfileDigest: first.profile.digest, SecondProfileDigest: second.profile.digest,
+		FirstBehaviorDigest: first.behavior.digest, SecondBehaviorDigest: second.behavior.digest,
 	}
-	for _, r := range radii {
+	for _, r := range []radiusConstraint{first.radius, second.radius} {
 		if r.enabled {
 			p.Radii = append(p.Radii, radiusFingerprint{r.meters, r.lat, r.lng})
 		}

@@ -56,6 +56,28 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
+  event-sync:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    command: ["/app/event-sync"]
+    environment:
+      <<: *backend_environment
+      KUDAGO_BASE_URL: ${KUDAGO_BASE_URL:-https://kudago.com/public-api/v1.4}
+      KUDAGO_TIMEOUT: ${KUDAGO_TIMEOUT:-30s}
+      KUDAGO_LOCATION: ${KUDAGO_LOCATION:-msk}
+      KUDAGO_PAGE_SIZE: ${KUDAGO_PAGE_SIZE:-100}
+      EVENT_SYNC_INTERVAL: ${EVENT_SYNC_INTERVAL:-60m}
+      TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
+      TIMEPAD_TOKEN: ${TIMEPAD_TOKEN:-}
+      TIMEPAD_TIMEOUT: ${TIMEPAD_TIMEOUT:-30s}
+      TIMEPAD_PAGE_SIZE: ${TIMEPAD_PAGE_SIZE:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
   frontend:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
     ports:

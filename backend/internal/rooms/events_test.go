@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -92,13 +93,14 @@ func TestRoomEventsInputValidation(t *testing.T) {
 }
 
 func TestRoomEventAvailabilityUsesBothParticipantsHardBudget(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	url := "https://tickets.example/event"
 	price := int32(1500)
-	available := contracts.Availability{Exists: true, Status: "published", TicketAvailable: true, TicketURL: &url, PriceFromMinor: &price}
-	if !roomEventAvailable(available, 1500) {
+	available := contracts.Availability{Exists: true, Status: "published", TicketAvailable: true, TicketURL: &url, PriceFromMinor: &price, StartsAt: now.Add(time.Second)}
+	if !roomEventAvailable(available, 1500, now) {
 		t.Fatal("inclusive budget boundary must be available")
 	}
-	if roomEventAvailable(available, 1499) {
+	if roomEventAvailable(available, 1499, now) {
 		t.Fatal("price above the strictest participant budget must be unavailable")
 	}
 	for name, mutate := range map[string]func(*contracts.Availability){
@@ -112,8 +114,28 @@ func TestRoomEventAvailabilityUsesBothParticipantsHardBudget(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := available
 			mutate(&candidate)
-			if roomEventAvailable(candidate, 2000) {
+			if roomEventAvailable(candidate, 2000, now) {
 				t.Fatal("unavailable catalog state was accepted")
+			}
+		})
+	}
+}
+
+func TestRoomEventAvailabilityRejectsStartedEvents(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	url := "https://tickets.example/event"
+	price := int32(1500)
+	available := contracts.Availability{Exists: true, Status: "published", TicketAvailable: true, TicketURL: &url, PriceFromMinor: &price}
+
+	for name, startsAt := range map[string]time.Time{
+		"already started": now.Add(-time.Nanosecond),
+		"starts now":      now,
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := available
+			candidate.StartsAt = startsAt
+			if roomEventAvailable(candidate, 2000, now) {
+				t.Fatalf("event starting at %s was accepted at %s", startsAt, now)
 			}
 		})
 	}

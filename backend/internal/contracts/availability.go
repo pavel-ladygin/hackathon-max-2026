@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +19,7 @@ type EventAvailability interface {
 type Availability struct {
 	Exists          bool
 	Status          string // published, sold_out or cancelled.
+	StartsAt        time.Time
 	PriceFromMinor  *int32
 	PriceToMinor    *int32
 	Currency        string

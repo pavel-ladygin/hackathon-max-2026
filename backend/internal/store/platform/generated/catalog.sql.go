@@ -32,13 +32,14 @@ func (q *Queries) GetCatalogCity(ctx context.Context, id uuid.UUID) (City, error
 }
 
 const getEventAvailability = `-- name: GetEventAvailability :one
-SELECT status, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+SELECT status, starts_at, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
 FROM events
 WHERE id = $1
 `
 
 type GetEventAvailabilityRow struct {
 	Status          string
+	StartsAt        pgtype.Timestamptz
 	PriceFromMinor  pgtype.Int4
 	PriceToMinor    pgtype.Int4
 	Currency        string
@@ -51,6 +52,7 @@ func (q *Queries) GetEventAvailability(ctx context.Context, id uuid.UUID) (GetEv
 	var i GetEventAvailabilityRow
 	err := row.Scan(
 		&i.Status,
+		&i.StartsAt,
 		&i.PriceFromMinor,
 		&i.PriceToMinor,
 		&i.Currency,
