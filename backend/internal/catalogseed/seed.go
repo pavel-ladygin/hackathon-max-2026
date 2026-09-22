@@ -188,7 +188,7 @@ func fixtures(base time.Time) dataset {
 		d.metro = append(d.metro, platform.SeedMetroStationParams{ID: stableID("metro", s.key), CityID: cityID, Name: s.name, Latitude: s.lat, Longitude: s.lng})
 	}
 	for _, v := range locations {
-		d.venues = append(d.venues, platform.SeedVenueParams{ID: stableID("venue", v.key), CityID: cityID, Name: v.name, Address: v.address, Latitude: v.lat, Longitude: v.lng, Metro: text(v.metro), District: text(v.district), VenueType: v.kind})
+		d.venues = append(d.venues, platform.SeedVenueParams{ID: stableID("venue", v.key), CityID: cityID, Name: v.name, Address: v.address, Latitude: pgtype.Float8{Float64: v.lat, Valid: true}, Longitude: pgtype.Float8{Float64: v.lng, Valid: true}, Metro: text(v.metro), District: text(v.district), VenueType: v.kind})
 	}
 	titles := [...]string{"Джазовый вечер", "Кино и обсуждение", "Камерный спектакль", "Вечер стендапа", "Цвет города", "Спортивный день", "Вкусы Москвы", "Ночной ритм", "Городской фестиваль", "Прогулка по тропам", "Творческая встреча"}
 	hours := [...]int{10, 14, 19, 23}

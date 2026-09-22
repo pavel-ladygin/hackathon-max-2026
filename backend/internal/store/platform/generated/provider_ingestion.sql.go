@@ -187,7 +187,7 @@ const upsertProviderVenue = `-- name: UpsertProviderVenue :exec
 INSERT INTO venues (id, city_id, name, address, latitude, longitude, metro, district, venue_type)
 VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7::text,
+    $5::double precision, $6::double precision, $7::text,
     $8::text, $9
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -206,8 +206,8 @@ type UpsertProviderVenueParams struct {
 	CityID    uuid.UUID
 	Name      string
 	Address   string
-	Latitude  float64
-	Longitude float64
+	Latitude  pgtype.Float8
+	Longitude pgtype.Float8
 	Metro     pgtype.Text
 	District  pgtype.Text
 	VenueType string

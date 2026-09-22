@@ -20,7 +20,7 @@ const (
 func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 	title := strings.TrimSpace(event.Name)
 	startsAt, err := parseTime(event.StartsAt)
-	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed || len(event.Location.Coordinates) < 2 || !validCoordinates(event.Location.Coordinates[0], event.Location.Coordinates[1]) {
+	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed {
 		return providers.NormalizedEvent{}, false
 	}
 	registrationURL := ticketURL(event.URL)
@@ -42,8 +42,6 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 			ExternalID: fmt.Sprintf("event:%d", event.ID),
 			Name:       venueName,
 			Address:    strings.TrimSpace(event.Location.Address),
-			Latitude:   event.Location.Coordinates[0],
-			Longitude:  event.Location.Coordinates[1],
 			VenueType:  "other",
 		},
 		StartsAt:        startsAt,
@@ -55,6 +53,10 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		AgeRating:       ageRating(event.AgeLimit),
 		Categories:      normalizeCategories(event.Categories.Values),
 		Images:          normalizeImages(event.PosterImage),
+	}
+	if len(event.Location.Coordinates) >= 2 && validCoordinates(event.Location.Coordinates[0], event.Location.Coordinates[1]) {
+		normalized.Venue.Latitude = &event.Location.Coordinates[0]
+		normalized.Venue.Longitude = &event.Location.Coordinates[1]
 	}
 	if endsAt, err := parseTime(event.EndsAt); err == nil && endsAt.After(startsAt) {
 		normalized.EndsAt = &endsAt

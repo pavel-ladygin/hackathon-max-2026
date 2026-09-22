@@ -64,7 +64,7 @@ func (r *Repository) UpsertWithResult(ctx context.Context, cityID uuid.UUID, eve
 		}
 		if err := queries.UpsertProviderVenue(ctx, platform.UpsertProviderVenueParams{
 			ID: venueID, CityID: cityID, Name: event.Venue.Name, Address: event.Venue.Address,
-			Latitude: event.Venue.Latitude, Longitude: event.Venue.Longitude,
+			Latitude: optionalFloat64(event.Venue.Latitude), Longitude: optionalFloat64(event.Venue.Longitude),
 			Metro: optionalText(event.Venue.Metro), VenueType: venueType,
 		}); err != nil {
 			return fmt.Errorf("upsert provider venue: %w", err)
@@ -177,4 +177,11 @@ func optionalBool(value *bool) pgtype.Bool {
 		return pgtype.Bool{}
 	}
 	return pgtype.Bool{Bool: *value, Valid: true}
+}
+
+func optionalFloat64(value *float64) pgtype.Float8 {
+	if value == nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *value, Valid: true}
 }

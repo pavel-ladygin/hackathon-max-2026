@@ -5,7 +5,7 @@
 INSERT INTO venues (id, city_id, name, address, latitude, longitude, metro, district, venue_type)
 VALUES (
     sqlc.arg('id'), sqlc.arg('city_id'), sqlc.arg('name'), sqlc.arg('address'),
-    sqlc.arg('latitude'), sqlc.arg('longitude'), sqlc.narg('metro')::text,
+    sqlc.narg('latitude')::double precision, sqlc.narg('longitude')::double precision, sqlc.narg('metro')::text,
     sqlc.narg('district')::text, sqlc.arg('venue_type')
 )
 ON CONFLICT (id) DO UPDATE SET

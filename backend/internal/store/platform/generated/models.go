@@ -85,8 +85,8 @@ type Venue struct {
 	CityID    uuid.UUID
 	Name      string
 	Address   string
-	Latitude  float64
-	Longitude float64
+	Latitude  pgtype.Float8
+	Longitude pgtype.Float8
 	Metro     pgtype.Text
 	District  pgtype.Text
 	VenueType string
