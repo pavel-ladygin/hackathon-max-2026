@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v2-profile"
+	rankerVersion = "scoring-diversity-v3-behavior"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
@@ -41,6 +41,18 @@ type PoolBuilder struct {
 	catalog        Catalog
 	tieBreakSecret []byte
 	profiles       contracts.RankingPreferencesLoader
+	behavior       contracts.BehavioralAffinityLoader
+}
+
+// NewPoolBuilderWithBehavior adds provider-neutral behavioral aggregates while
+// preserving the constructor used by callers that do not enable G8.
+func NewPoolBuilderWithBehavior(catalog Catalog, tieBreakSecret []byte, profiles contracts.RankingPreferencesLoader, behavior contracts.BehavioralAffinityLoader) (*PoolBuilder, error) {
+	builder, err := NewPoolBuilder(catalog, tieBreakSecret, profiles)
+	if err != nil {
+		return nil, err
+	}
+	builder.behavior = behavior
+	return builder, nil
 }
 
 // NewPoolBuilder returns a contracts.PoolBuilder backed by catalog.
@@ -90,6 +102,12 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	if err != nil {
 		return contracts.BuildResult{}, fmt.Errorf("load second participant preferences: %w", err)
 	}
+	behaviors, err := b.loadBehavior(ctx, input.FirstIntent.UserID, input.SecondIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load participant behavioral affinity: %w", err)
+	}
+	first.behavior = behaviors[input.FirstIntent.UserID]
+	second.behavior = behaviors[input.SecondIntent.UserID]
 	zone, err := time.LoadLocation(snapshot.City.Timezone)
 	if err != nil {
 		return contracts.BuildResult{}, errors.New("catalog city has invalid timezone")
@@ -169,6 +187,7 @@ type normalizedIntent struct {
 	budget                  int32
 	radius                  radiusConstraint
 	profile                 normalizedProfile
+	behavior                normalizedBehavior
 }
 type normalizedProfile struct {
 	present                 bool
@@ -176,6 +195,10 @@ type normalizedProfile struct {
 	budget                  int32
 	version                 int32
 	digest                  string
+}
+type normalizedBehavior struct {
+	categories map[string]float64
+	digest     string
 }
 type radiusConstraint struct {
 	enabled, hasLocation bool
@@ -259,6 +282,57 @@ func (b *PoolBuilder) loadProfile(ctx context.Context, cityID, userID uuid.UUID)
 		present: true, categories: categories, days: days, slots: slots,
 		budget: value.BudgetMaxMinor, version: value.Version, digest: hex.EncodeToString(digest[:]),
 	}, nil
+}
+
+func (b *PoolBuilder) loadBehavior(ctx context.Context, userIDs ...uuid.UUID) (map[uuid.UUID]normalizedBehavior, error) {
+	result := make(map[uuid.UUID]normalizedBehavior, len(userIDs))
+	if b.behavior == nil {
+		return result, nil
+	}
+	unique := make([]uuid.UUID, 0, len(userIDs))
+	seen := make(map[uuid.UUID]bool, len(userIDs))
+	for _, userID := range userIDs {
+		if userID != uuid.Nil && !seen[userID] {
+			seen[userID] = true
+			unique = append(unique, userID)
+		}
+	}
+	countsByUser, err := b.behavior.LoadBehavioralCategoryCounts(ctx, unique)
+	if err != nil {
+		return nil, err
+	}
+	type digestCount struct {
+		Category string `json:"category"`
+		Likes    int64  `json:"likes"`
+		Dislikes int64  `json:"dislikes"`
+	}
+	for _, userID := range unique {
+		counts := countsByUser[userID]
+		sort.Slice(counts, func(i, j int) bool {
+			return normalizeCategorySlug(counts[i].CategorySlug) < normalizeCategorySlug(counts[j].CategorySlug)
+		})
+		categories := make(map[string]float64, len(counts))
+		digestCounts := make([]digestCount, 0, len(counts))
+		for _, count := range counts {
+			category := normalizeCategorySlug(count.CategorySlug)
+			if category == "" || count.Likes < 0 || count.Dislikes < 0 || count.Likes+count.Dislikes == 0 {
+				continue
+			}
+			// Four virtual neutral observations smooth cold and sparse history;
+			// dislikes are slightly stronger to avoid repeatedly poor suggestions.
+			signal := (float64(count.Likes) - 1.25*float64(count.Dislikes)) /
+				(float64(count.Likes+count.Dislikes) + 4)
+			categories[category] = math.Max(-1, math.Min(1, signal))
+			digestCounts = append(digestCounts, digestCount{category, count.Likes, count.Dislikes})
+		}
+		if len(digestCounts) == 0 {
+			continue
+		}
+		encoded, _ := json.Marshal(digestCounts)
+		digest := sha256.Sum256(encoded)
+		result[userID] = normalizedBehavior{categories: categories, digest: hex.EncodeToString(digest[:])}
+	}
+	return result, nil
 }
 
 func normalizedSet(values []string) map[string]bool {
@@ -437,6 +511,7 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		Radii                                       []radiusFingerprint
 		FirstProfileVersion, SecondProfileVersion   int32
 		FirstProfileDigest, SecondProfileDigest     string
+		FirstBehaviorDigest, SecondBehaviorDigest   string
 	}
 	previous := make([]string, 0, len(input.PreviousEventIDs))
 	for id := range uuidSet(input.PreviousEventIDs) {
@@ -460,6 +535,7 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		Exclusions: sortedKeys(c.exclusions), Previous: previous, Budget: c.budget,
 		FirstProfileVersion: first.profile.version, SecondProfileVersion: second.profile.version,
 		FirstProfileDigest: first.profile.digest, SecondProfileDigest: second.profile.digest,
+		FirstBehaviorDigest: first.behavior.digest, SecondBehaviorDigest: second.behavior.digest,
 	}
 	for _, r := range []radiusConstraint{first.radius, second.radius} {
 		if r.enabled {
