@@ -14,4 +14,10 @@ describe('event map marker', () => {
     fireEvent.click(marker)
     expect(onOpen).toHaveBeenCalledOnce()
   })
+
+  it('caps marker entrance delay so dense maps settle quickly', () => {
+    const marker = createEventMarkerElement({ title: 'Event', imageUrl: null, category_slug: 'concerts' }, vi.fn(), 240)
+
+    expect(marker.style.getPropertyValue('--marker-delay')).toBe('120ms')
+  })
 })

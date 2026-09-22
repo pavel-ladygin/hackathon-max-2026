@@ -2,9 +2,11 @@ import type { ButtonHTMLAttributes, HTMLAttributes, ImgHTMLAttributes, ReactNode
 import styles from "./ui.module.css";
 
 type Tone = "primary" | "secondary" | "ghost";
+export type ButtonState = "idle" | "loading" | "success";
 
-export function Button({ tone = "primary", className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
-  return <button className={`${styles.button} ${styles[tone]} ${className}`} {...props}>{children}</button>;
+export function Button({ tone = "primary", state = "idle", loadingLabel = "Загружаем…", successLabel = "Готово", className = "", children, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; state?: ButtonState; loadingLabel?: ReactNode; successLabel?: ReactNode }) {
+  const content = state === "loading" ? <><span className={styles.buttonIcon} aria-hidden="true"><span className={styles.buttonSpinner} /></span>{loadingLabel}</> : state === "success" ? <><span className={styles.buttonIcon} aria-hidden="true"><span className={styles.buttonCheck}>✓</span></span>{successLabel}</> : children;
+  return <button className={`${styles.button} ${styles[tone]} ${styles[`buttonState_${state}`]} ${className}`} aria-busy={state === "loading" ? true : undefined} disabled={disabled || state !== "idle"} {...props}>{content}</button>;
 }
 
 export function HeartIcon({ filled = false }: { filled?: boolean }) {
@@ -18,6 +20,11 @@ export function ArrowLeftIcon() {
 type IconButtonVariant = "default" | "surface" | "favorite";
 export function IconButton({ label, children, filled = false, selected = false, variant = "default", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; filled?: boolean; selected?: boolean; variant?: IconButtonVariant }) {
   return <button type="button" aria-label={label} aria-pressed={variant === "favorite" || selected ? selected : undefined} title={label} className={`${styles.iconButton} ${styles[`iconButton_${variant}`]} ${filled ? styles.filled : ""} ${selected ? styles.iconButtonSelected : ""} ${className}`} {...props}>{children}</button>;
+}
+
+export type FavoriteButtonSize = "card" | "action";
+export function FavoriteButton({ selected = false, pending = false, label, size = "card", onToggle, className = "", ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { selected?: boolean; pending?: boolean; label: string; size?: FavoriteButtonSize; onToggle?: () => void }) {
+  return <button {...props} type="button" className={`${styles.favoriteButton} ${styles[`favoriteButton_${size}`]} ${selected ? styles.favoriteButtonSelected : ""} ${pending ? styles.favoriteButtonPending : ""} ${className}`} aria-label={label} aria-pressed={selected} aria-busy={pending ? true : undefined} disabled={pending || props.disabled} onClick={onToggle}><span className={styles.favoriteIcon} aria-hidden="true"><HeartIcon filled={selected} /></span></button>;
 }
 
 export function Chip({ selected = false, children, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {

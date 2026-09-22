@@ -14,6 +14,7 @@
 
 .mapMarker {
   --marker-size: 48px;
+  --marker-delay: 0ms;
   position: relative;
   display: grid;
   width: max(44px, calc(var(--marker-size) + 8px));
@@ -27,6 +28,8 @@
   touch-action: manipulation;
   transform: translate(-50%, -50%);
   transition: transform 160ms ease, box-shadow 160ms ease;
+  animation: markerEntrance 220ms ease-out both;
+  animation-delay: var(--marker-delay);
 }
 
 .mapMarker:focus-visible,
@@ -47,6 +50,7 @@
   height: var(--marker-size);
   border-radius: var(--radius-sm);
   object-fit: cover;
+  transition: width 180ms ease, height 180ms ease;
 }
 
 .markerTooltip {
@@ -93,5 +97,47 @@
   .mapMarker,
   .markerTooltip {
     transition: none;
+    animation: none;
   }
+}
+
+@keyframes markerEntrance {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 260px);
+  margin: 14px 0;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-soft);
+}
+
+.segmentedItem {
+  position: relative;
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  touch-action: manipulation;
+}
+
+.segmentedItem:focus-visible { z-index: 1; outline: 3px solid var(--color-accent, #ef6b6b); outline-offset: 2px; }
+.segmentedLabel { position: relative; z-index: 1; }
+.segmentedIndicator { position: absolute; inset: 0; border-radius: inherit; background: var(--color-paper); box-shadow: var(--shadow-control-soft); }
+.segmentedItem[aria-selected='true'] { color: var(--color-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .markerImage { transition: none; }
 }

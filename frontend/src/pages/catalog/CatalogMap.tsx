@@ -38,12 +38,12 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
       nextMap.addChild(new YMapDefaultFeaturesLayer())
 
       const markers: HTMLElement[] = []
-      for (const event of points) {
+      for (const [index, event] of points.entries()) {
         const marker = createEventMarkerElement(event, () => {
           for (const item of markers) item.dataset.active = 'false'
           marker.dataset.active = 'true'
           navigate(`/events/${event.id}`)
-        })
+        }, Math.min(index * 20, 120))
         markers.push(marker)
         nextMap.addChild(new YMapMarker({ coordinates: [event.venue.longitude, event.venue.latitude] }, marker))
       }

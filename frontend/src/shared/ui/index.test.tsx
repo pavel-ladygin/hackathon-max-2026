@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { BottomNav, Empty, ErrorState, HeartIcon, IconButton, Loading } from './index'
+import { BottomNav, Button, Empty, ErrorState, FavoriteButton, HeartIcon, IconButton, Loading } from './index'
 
 describe('shared status states', () => {
   it('supports embedded and full-page presentation without changing live semantics', () => {
@@ -44,5 +44,27 @@ describe('IconButton', () => {
 
     expect(button).toHaveAttribute('aria-pressed', 'true')
     expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
+describe('animated actions', () => {
+  it('exposes loading and success button states without allowing a duplicate action', () => {
+    const { rerender } = render(<Button state="loading" loadingLabel="Отправляем">Создать</Button>)
+    expect(screen.getByRole('button', { name: 'Отправляем' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Отправляем' })).toHaveAttribute('aria-busy', 'true')
+
+    rerender(<Button state="success" successLabel="Готово">Создать</Button>)
+    expect(screen.getByRole('button', { name: 'Готово' })).toBeDisabled()
+  })
+
+  it('keeps favorite state accessible and blocks toggles while pending', () => {
+    const onToggle = vi.fn()
+    render(<FavoriteButton selected pending label="Убрать из сохранённых" onToggle={onToggle} />)
+    const favorite = screen.getByRole('button', { name: 'Убрать из сохранённых' })
+    expect(favorite).toHaveAttribute('aria-pressed', 'true')
+    expect(favorite).toHaveAttribute('aria-busy', 'true')
+    expect(favorite).toBeDisabled()
+    fireEvent.click(favorite)
+    expect(onToggle).not.toHaveBeenCalled()
   })
 })
