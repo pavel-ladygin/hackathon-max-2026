@@ -13,18 +13,8 @@ import (
 
 const importHorizon = 90 * 24 * time.Hour
 
-type EventStore interface {
-	UpsertWithResult(context.Context, uuid.UUID, providers.NormalizedEvent) (providers.UpsertResult, error)
-}
-
-type ImportStats struct {
-	Fetched    int
-	Normalized int
-	Inserted   int
-	Updated    int
-	Skipped    int
-	Errors     int
-}
+type EventStore = providers.EventStore
+type ImportStats = providers.ImportStats
 
 // Import fetches every KudaGo page and persists valid normalized occurrences.
 // A single invalid provider record or persistence error does not stop the run.
@@ -40,8 +30,10 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 		return ImportStats{}, errors.New("provider event store is required")
 	}
 
-	var stats ImportStats
-	seenOccurrences := make(map[string]struct{})
+	ingestion, err := providers.NewIngestion(cityID, store, reportError)
+	if err != nil {
+		return ImportStats{}, err
+	}
 	seenCursors := make(map[string]struct{})
 	actualSince := c.now().UTC()
 	actualUntil := actualSince.Add(importHorizon)
@@ -49,48 +41,28 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 	for {
 		page, err := c.fetchPage(ctx, fetchOptions{Cursor: cursor, ActualSince: actualSince, ActualUntil: actualUntil})
 		if err != nil {
-			return stats, fmt.Errorf("fetch kudago page: %w", err)
+			return ingestion.Stats(), fmt.Errorf("fetch kudago page: %w", err)
 		}
-		stats.Fetched += len(page.Results)
+		ingestion.AddFetched(len(page.Results))
 		for _, event := range page.Results {
 			occurrences := normalizeEvent(event)
 			if len(occurrences) == 0 {
-				stats.Skipped++
+				ingestion.AddSkipped(1)
 				continue
 			}
 			for _, occurrence := range occurrences {
-				key := occurrence.Source + "\x00" + occurrence.ExternalID
-				if _, duplicate := seenOccurrences[key]; duplicate {
-					stats.Skipped++
-					continue
-				}
-				seenOccurrences[key] = struct{}{}
-				stats.Normalized++
-				result, err := store.UpsertWithResult(ctx, cityID, occurrence)
-				if err != nil {
-					if ctx.Err() != nil {
-						return stats, ctx.Err()
-					}
-					stats.Errors++
-					if reportError != nil {
-						reportError(fmt.Errorf("persist kudago occurrence %s: %w", occurrence.ExternalID, err))
-					}
-					continue
-				}
-				if result.Inserted {
-					stats.Inserted++
-				} else {
-					stats.Updated++
+				if err := ingestion.Persist(ctx, occurrence); err != nil {
+					return ingestion.Stats(), err
 				}
 			}
 		}
 
 		next := strings.TrimSpace(page.Next)
 		if next == "" {
-			return stats, nil
+			return ingestion.Stats(), nil
 		}
 		if _, duplicate := seenCursors[next]; duplicate {
-			return stats, errors.New("kudago pagination cursor repeated")
+			return ingestion.Stats(), errors.New("kudago pagination cursor repeated")
 		}
 		seenCursors[next] = struct{}{}
 		cursor = next
