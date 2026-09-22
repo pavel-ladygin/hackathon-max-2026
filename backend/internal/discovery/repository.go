@@ -149,7 +149,11 @@ func cardFromGenerated(row platform.SearchDiscoveryEventCardsRow) Card {
 }
 func detailFromGenerated(row platform.GetDiscoveryEventDetailRow) Detail {
 	card := cardFromFields(row.ID, row.Title, row.Subtitle, row.CategorySlug, row.StartsAt, row.Timezone, row.Name, optionalDistance(row.Column8), row.PriceFromMinor, row.Currency, row.ImageUrl, row.Exists)
-	detail := Detail{Card: card, Description: row.Description, Venue: Venue{ID: row.ID_2, Name: row.Name, Address: row.Address, Latitude: row.Latitude, Longitude: row.Longitude}, Images: []Image{}, TicketAvailable: row.TicketAvailable, Status: row.Status, Provenance: Provenance{Source: row.Source, IsDemo: row.IsDemo}}
+	detail := Detail{Card: card, Description: row.Description, Venue: Venue{ID: row.ID_2, Name: row.Name, Address: row.Address}, Images: []Image{}, TicketAvailable: row.TicketAvailable, Status: row.Status, Provenance: Provenance{Source: row.Source, IsDemo: row.IsDemo}}
+	if row.Latitude.Valid && row.Longitude.Valid {
+		detail.Venue.Latitude = &row.Latitude.Float64
+		detail.Venue.Longitude = &row.Longitude.Float64
+	}
 	if row.EndsAt.Valid {
 		detail.EndsAt = timePtr(row.EndsAt.Time)
 	}

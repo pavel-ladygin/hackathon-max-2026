@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 )
 
@@ -56,6 +57,20 @@ func (s *Service) Get(ctx context.Context, userID uuid.UUID) (Value, bool, error
 		return Value{}, false, ErrInvalid
 	}
 	return s.repo.get(ctx, userID)
+}
+
+// LoadRankingPreferences exposes only the provider-neutral projection needed
+// by recommendation scoring.
+func (s *Service) LoadRankingPreferences(ctx context.Context, userID uuid.UUID) (contracts.RankingPreferences, bool, error) {
+	value, found, err := s.Get(ctx, userID)
+	if err != nil || !found {
+		return contracts.RankingPreferences{}, found, err
+	}
+	return contracts.RankingPreferences{
+		CityID: value.CityID, InterestSlugs: append([]string(nil), value.InterestSlugs...),
+		BudgetMaxMinor: int32(value.BudgetMaxMinor), UsualDayTypes: append([]string(nil), value.UsualDayTypes...),
+		UsualTimeSlots: append([]string(nil), value.UsualTimeSlots...), Version: int32(value.Version),
+	}, true, nil
 }
 
 // Replace validates input and replaces the entire persisted preference set.

@@ -16,7 +16,7 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 	ctx := context.Background()
 	city, venue, user := uuid.New(), uuid.New(), uuid.New()
 	events := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
-	created := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
+	created := databaseNow(t, db).UTC().Add(24 * time.Hour).Truncate(time.Hour)
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -84,12 +84,12 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 func TestDiscoverySearchAppliesFreeAndDistanceFilters(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	city, venue, user, event := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	city, venue, venueWithoutCoordinates, user, event, eventWithoutCoordinates := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	t.Cleanup(func() {
 		_, _ = db.Exec(ctx, "DELETE FROM users WHERE id=$1", user)
-		_, _ = db.Exec(ctx, "DELETE FROM event_categories WHERE event_id=$1", event)
-		_, _ = db.Exec(ctx, "DELETE FROM events WHERE id=$1", event)
-		_, _ = db.Exec(ctx, "DELETE FROM venues WHERE id=$1", venue)
+		_, _ = db.Exec(ctx, "DELETE FROM event_categories WHERE event_id=ANY($1::uuid[])", []uuid.UUID{event, eventWithoutCoordinates})
+		_, _ = db.Exec(ctx, "DELETE FROM events WHERE id=ANY($1::uuid[])", []uuid.UUID{event, eventWithoutCoordinates})
+		_, _ = db.Exec(ctx, "DELETE FROM venues WHERE id=ANY($1::uuid[])", []uuid.UUID{venue, venueWithoutCoordinates})
 		_, _ = db.Exec(ctx, "DELETE FROM cities WHERE id=$1", city)
 	})
 	for _, q := range []struct {
@@ -98,9 +98,12 @@ func TestDiscoverySearchAppliesFreeAndDistanceFilters(t *testing.T) {
 	}{
 		{`INSERT INTO cities (id,name,timezone,center_lat,center_lng) VALUES ($1,'Filter city','UTC',55.75,37.61)`, []any{city}},
 		{`INSERT INTO venues (id,city_id,name,address,latitude,longitude,venue_type) VALUES ($1,$2,'Filter venue','Address',55.75,37.61,'concert_hall')`, []any{venue, city}},
+		{`INSERT INTO venues (id,city_id,name,address,latitude,longitude,venue_type) VALUES ($1,$2,'Venue without coordinates','Coordinate-less address',NULL,NULL,'other')`, []any{venueWithoutCoordinates, city}},
 		{`INSERT INTO users (id,max_user_id,display_name,city_id) VALUES ($1,$2,'Filter user',$3)`, []any{user, time.Now().UnixNano(), city}},
-		{`INSERT INTO events (id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_available,status) VALUES ($1,'test',$2,false,'Free nearby','filter event',$3,$4,'UTC',0,'RUB',true,'published')`, []any{event, event.String(), venue, time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)}},
+		{`INSERT INTO events (id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_available,status) VALUES ($1,'test',$2,false,'Free nearby','filter event',$3,$4,'UTC',0,'RUB',true,'published')`, []any{event, event.String(), venue, databaseNow(t, db).UTC().Add(24 * time.Hour)}},
+		{`INSERT INTO events (id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_available,status) VALUES ($1,'test',$2,false,'Free without coordinates','filter event',$3,$4,'UTC',0,'RUB',true,'published')`, []any{eventWithoutCoordinates, eventWithoutCoordinates.String(), venueWithoutCoordinates, databaseNow(t, db).UTC().Add(25 * time.Hour)}},
 		{`INSERT INTO event_categories (event_id,category_slug,is_primary) VALUES ($1,'concerts',true)`, []any{event}},
+		{`INSERT INTO event_categories (event_id,category_slug,is_primary) VALUES ($1,'concerts',true)`, []any{eventWithoutCoordinates}},
 	} {
 		if _, err := db.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatal(err)
@@ -115,5 +118,14 @@ func TestDiscoverySearchAppliesFreeAndDistanceFilters(t *testing.T) {
 	page, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, FreeOnly: true, Location: &discovery.Location{Latitude: 55.75, Longitude: 37.61}, DistanceMeters: &distance, Limit: 5})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != event || page.Items[0].PriceFromMinor == nil || *page.Items[0].PriceFromMinor != 0 || page.Items[0].DistanceMeters == nil {
 		t.Fatalf("filtered page = %+v, err=%v", page, err)
+	}
+	withoutDistance, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, FreeOnly: true, Location: &discovery.Location{Latitude: 55.75, Longitude: 37.61}, Limit: 5})
+	if err != nil || len(withoutDistance.Items) != 2 {
+		t.Fatalf("page without distance filter = %+v, err=%v", withoutDistance, err)
+	}
+	for _, item := range withoutDistance.Items {
+		if item.ID == eventWithoutCoordinates && item.DistanceMeters != nil {
+			t.Fatalf("coordinate-less event distance = %v, want nil", *item.DistanceMeters)
+		}
 	}
 }

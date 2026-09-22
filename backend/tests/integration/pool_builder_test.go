@@ -14,6 +14,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
+	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
 )
 
@@ -24,11 +25,18 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := time.Date(2026, 9, 18, 0, 0, 0, 0, zone)
+	referenceTime := databaseNow(t, db)
+	base := referenceTime.In(zone).AddDate(0, 0, 1).Truncate(24 * time.Hour)
 	if _, err := catalogseed.Apply(ctx, db, base); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cleanupDemoCatalog(t, db) })
+	if _, err := db.Exec(ctx, `UPDATE events SET source='pool-builder-test', is_demo=false WHERE source='demo' AND is_demo AND venue_id IN (SELECT id FROM venues WHERE city_id=$1)`, catalogseed.MoscowCityID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(context.Background(), `UPDATE events SET source='demo', is_demo=true WHERE source='pool-builder-test' AND venue_id IN (SELECT id FROM venues WHERE city_id=$1)`, catalogseed.MoscowCityID)
+	})
 
 	f := newRoomFixture(t, db)
 	f.addTwoMembers(t)
@@ -62,8 +70,25 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		FirstIntent:  contracts.ParticipantIntent{UserID: f.creator, Version: 1, Dates: dates, BudgetMaxMinor: 250000, CategorySlugs: []string{"concerts"}},
 		SecondIntent: contracts.ParticipantIntent{UserID: f.member, Version: 1, Dates: slices.Clone(dates), BudgetMaxMinor: 250000, CategorySlugs: []string{"theatre"}},
 	}
+	rows, err := db.Query(ctx, `SELECT e.id FROM events e JOIN venues v ON v.id=e.venue_id WHERE v.city_id=$1 AND e.source NOT IN ('demo','pool-builder-test')`, cityID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		input.PreviousEventIDs = append(input.PreviousEventIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
 	repo := catalog.NewRepository(db)
-	builder, err := recommendations.NewPoolBuilder(repo, []byte("a4-postgres-integration-key-32-bytes"))
+	builder, err := recommendations.NewPoolBuilderWithClock(repo, []byte("a4-postgres-integration-key-32-bytes"), func() time.Time { return referenceTime })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,9 +183,16 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 
 	nearVenue := freeInput
 	radius := int32(100)
-	venue := snapshot.Venues[0]
+	venueID := events[free.Candidates[0].EventID].VenueID
+	var venue platform.Venue
+	for _, candidateVenue := range snapshot.Venues {
+		if candidateVenue.ID == venueID {
+			venue = candidateVenue
+			break
+		}
+	}
 	nearVenue.SecondIntent.RadiusM = &radius
-	nearVenue.SecondIntent.Location = &contracts.GeoPoint{Latitude: venue.Latitude, Longitude: venue.Longitude}
+	nearVenue.SecondIntent.Location = &contracts.GeoPoint{Latitude: venue.Latitude.Float64, Longitude: venue.Longitude.Float64}
 	near, err := builder.Build(ctx, nearVenue)
 	if err != nil || len(near.Candidates) == 0 || len(near.Candidates) >= len(free.Candidates) {
 		t.Fatalf("radius did not narrow seeded pool: count=%d, err=%v", len(near.Candidates), err)

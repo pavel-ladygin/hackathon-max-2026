@@ -57,13 +57,14 @@ func (s *Service) WithTx(ctx context.Context, fn func(*Repository) error) error 
 	})
 }
 
-// withRoomBuildTx gives the room transition and all catalog reads used by the
-// builder one coherent PostgreSQL snapshot. Concurrent room updates can make a
-// REPEATABLE READ transaction fail with SQLSTATE 40001; retrying the complete
-// deterministic operation is safe because no writes escape the transaction.
+// withRoomBuildTx serializes room transitions with the room row lock. READ
+// COMMITTED lets a concurrent intent submission that waited for that lock see
+// the first participant's committed readiness and build the pool. Retrying the
+// complete deterministic operation is safe because no writes escape the
+// transaction.
 func (s *Service) withRoomBuildTx(ctx context.Context, fn func(*Repository) error) error {
 	for attempt := 0; attempt < roomBuildTxAttempts; attempt++ {
-		err := s.pool.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead}, func(tx pgx.Tx) error {
+		err := s.pool.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 			return fn(NewRepository(tx))
 		})
 		if err == nil || !retryableRoomTxError(err) || attempt == roomBuildTxAttempts-1 {

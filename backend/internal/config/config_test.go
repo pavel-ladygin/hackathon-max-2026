@@ -22,6 +22,55 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("INVITE_URL_TEMPLATE", "")
 	t.Setenv("MAX_DEEP_LINK_TEMPLATE", "")
 	t.Setenv("TICKET_PROVIDER_ALLOWLIST", "")
+	t.Setenv("KUDAGO_BASE_URL", "")
+	t.Setenv("KUDAGO_TIMEOUT", "")
+	t.Setenv("KUDAGO_LOCATION", "")
+	t.Setenv("KUDAGO_PAGE_SIZE", "")
+	t.Setenv("EVENT_SYNC_INTERVAL", "")
+	t.Setenv("TIMEPAD_BASE_URL", "")
+	t.Setenv("TIMEPAD_TOKEN", "")
+	t.Setenv("TIMEPAD_TIMEOUT", "")
+	t.Setenv("TIMEPAD_PAGE_SIZE", "")
+}
+
+func TestKudaGoConfigDefaultsAndOverrides(t *testing.T) {
+	setValidConfigEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KudaGoBaseURL != "https://kudago.com/public-api/v1.4" || cfg.KudaGoTimeout != 30*time.Second || cfg.KudaGoLocation != "msk" || cfg.KudaGoPageSize != 100 {
+		t.Fatalf("unexpected KudaGo defaults: %+v", cfg)
+	}
+
+	t.Setenv("KUDAGO_BASE_URL", "http://127.0.0.1:9090/api")
+	t.Setenv("KUDAGO_TIMEOUT", "3s")
+	t.Setenv("KUDAGO_LOCATION", "test-city")
+	t.Setenv("KUDAGO_PAGE_SIZE", "25")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KudaGoBaseURL != "http://127.0.0.1:9090/api" || cfg.KudaGoTimeout != 3*time.Second || cfg.KudaGoLocation != "test-city" || cfg.KudaGoPageSize != 25 {
+		t.Fatalf("unexpected KudaGo overrides: %+v", cfg)
+	}
+}
+
+func TestKudaGoConfigRejectsInvalidValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"KUDAGO_BASE_URL":  "relative/path",
+		"KUDAGO_TIMEOUT":   "0s",
+		"KUDAGO_PAGE_SIZE": "101",
+	} {
+		t.Run(name, func(t *testing.T) {
+			setValidConfigEnv(t)
+			t.Setenv(name, value)
+			_, err := Load()
+			if err == nil || err.Error() != name+" is invalid" {
+				t.Fatalf("Load() error=%v", err)
+			}
+		})
+	}
 }
 
 func TestLoadParsesTicketProviderAllowlist(t *testing.T) {
@@ -31,7 +80,7 @@ func TestLoadParsesTicketProviderAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(cfg.TicketProviderAllowlist, ","), "tickets.example,*.partner.example"; got != want {
+	if got, want := strings.Join(cfg.TicketProviderAllowlist, ","), "kudago.com,*.kudago.com,timepad.ru,*.timepad.ru,tickets.example,*.partner.example"; got != want {
 		t.Fatalf("ticket provider allowlist = %q, want %q", got, want)
 	}
 }

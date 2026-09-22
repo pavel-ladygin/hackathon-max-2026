@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
@@ -10,6 +11,7 @@ import (
 func TestAvailabilityFromRowPreservesCatalogFacts(t *testing.T) {
 	priceFrom, priceTo := int32(0), int32(12500)
 	ticketURL := "https://tickets.example/free"
+	startsAt := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name            string
@@ -33,8 +35,8 @@ func TestAvailabilityFromRowPreservesCatalogFacts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := availabilityFromRow(platform.GetEventAvailabilityRow{Status: tt.status, PriceFromMinor: tt.priceFrom, PriceToMinor: tt.priceTo, Currency: tt.currency, TicketAvailable: tt.ticketAvailable, TicketUrl: tt.ticketURL})
-			if !got.Exists || got.Status != tt.status || got.Currency != tt.currency || got.TicketAvailable != tt.ticketAvailable {
+			got := availabilityFromRow(platform.GetEventAvailabilityRow{Status: tt.status, StartsAt: pgtype.Timestamptz{Time: startsAt, Valid: true}, PriceFromMinor: tt.priceFrom, PriceToMinor: tt.priceTo, Currency: tt.currency, TicketAvailable: tt.ticketAvailable, TicketUrl: tt.ticketURL})
+			if !got.Exists || got.Status != tt.status || !got.StartsAt.Equal(startsAt) || got.Currency != tt.currency || got.TicketAvailable != tt.ticketAvailable {
 				t.Fatalf("raw availability fields = %+v", got)
 			}
 			assertOptionalInt(t, "price from", got.PriceFromMinor, tt.wantFrom)

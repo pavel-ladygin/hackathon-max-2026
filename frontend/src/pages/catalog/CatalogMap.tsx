@@ -26,6 +26,7 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
     if (!mapNode.current || !apiKey || details.some((query) => query.isPending)) return
 
     const points = details.flatMap((query) => query.data ? [query.data] : [])
+
     if (points.length === 0) return
 
     let cancelled = false
@@ -38,14 +39,21 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
       nextMap.addChild(new YMapDefaultFeaturesLayer())
 
       const markers: HTMLElement[] = []
+
       for (const [index, event] of points.entries()) {
+        const { latitude, longitude } = event.venue
+        if (latitude == null || longitude == null) continue
+
         const marker = createEventMarkerElement(event, () => {
           for (const item of markers) item.dataset.active = 'false'
           marker.dataset.active = 'true'
           navigate(`/events/${event.id}`)
         }, Math.min(index * 20, 120))
+
         markers.push(marker)
-        nextMap.addChild(new YMapMarker({ coordinates: [event.venue.longitude, event.venue.latitude] }, marker))
+        nextMap.addChild(
+          new YMapMarker({ coordinates: [longitude, latitude] }, marker),
+        )
       }
 
       const updateMarkers = (update: YandexMapUpdateEvent) => {
@@ -78,7 +86,12 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
 
   if (details.some((query) => query.isPending)) return <Loading label="Готовим карту…" />
   const points = details.flatMap((query) => query.data ? [query.data] : [])
-  if (points.length === 0 || !apiKey || mapError) {
+  const hasMappablePoints = points.some(
+    (event) =>
+      event.venue.latitude != null &&
+      event.venue.longitude != null,
+  )
+  if (!hasMappablePoints || !apiKey || mapError) {
     return <Empty title="Карта сейчас недоступна" description={!apiKey ? 'Для карты не настроен API-ключ.' : 'Переключитесь на список — все события доступны там.'} />
   }
 
