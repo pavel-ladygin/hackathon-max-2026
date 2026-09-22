@@ -65,12 +65,14 @@ type EventStore interface {
 }
 
 type ImportStats struct {
-	Fetched    int
-	Normalized int
-	Inserted   int
-	Updated    int
-	Skipped    int
-	Errors     int
+	PagesFetched int
+	Fetched      int
+	Matched      int
+	Normalized   int
+	Inserted     int
+	Updated      int
+	Skipped      int
+	Errors       int
 }
 
 // Ingestion owns the provider-neutral duplicate detection and persistence
@@ -100,6 +102,14 @@ func NewIngestion(cityID uuid.UUID, store EventStore, reportError func(error)) (
 
 func (i *Ingestion) AddFetched(count int) {
 	i.stats.Fetched += count
+}
+
+func (i *Ingestion) AddPage() {
+	i.stats.PagesFetched++
+}
+
+func (i *Ingestion) AddMatched(count int) {
+	i.stats.Matched += count
 }
 
 func (i *Ingestion) AddSkipped(count int) {

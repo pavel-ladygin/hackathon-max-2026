@@ -421,7 +421,7 @@ func copySet(a map[string]bool) map[string]bool {
 }
 func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, radii ...radiusConstraint) bool {
 	venue, ok := venues[event.VenueID]
-	if !ok || event.Status != "published" || !event.TicketAvailable || !event.StartsAt.Valid {
+	if !ok || event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" || !event.StartsAt.Valid {
 		return false
 	}
 	if !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {

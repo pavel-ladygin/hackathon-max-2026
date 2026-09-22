@@ -20,7 +20,7 @@ const (
 func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 	title := strings.TrimSpace(event.Name)
 	startsAt, err := parseTime(event.StartsAt)
-	if event.ID <= 0 || title == "" || err != nil || len(event.Location.Coordinates) < 2 || !validCoordinates(event.Location.Coordinates[0], event.Location.Coordinates[1]) {
+	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed || len(event.Location.Coordinates) < 2 || !validCoordinates(event.Location.Coordinates[0], event.Location.Coordinates[1]) {
 		return providers.NormalizedEvent{}, false
 	}
 	registrationURL := ticketURL(event.URL)
@@ -53,7 +53,7 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		TicketAvailable: registrationURL != nil && event.RegistrationData.IsRegistrationOpen,
 		Status:          "published",
 		AgeRating:       ageRating(event.AgeLimit),
-		Categories:      normalizeCategories(event.Categories),
+		Categories:      normalizeCategories(event.Categories.Values),
 		Images:          normalizeImages(event.PosterImage),
 	}
 	if endsAt, err := parseTime(event.EndsAt); err == nil && endsAt.After(startsAt) {

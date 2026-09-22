@@ -23,7 +23,7 @@ type eventDTO struct {
 	PosterImage      imageDTO            `json:"poster_image"`
 	Location         locationDTO         `json:"location"`
 	Organization     organizationDTO     `json:"organization"`
-	Categories       []categoryDTO       `json:"categories"`
+	Categories       categoriesDTO       `json:"categories"`
 	TicketTypes      []ticketTypeDTO     `json:"ticket_types"`
 	AgeLimit         string              `json:"age_limit"`
 	RegistrationData registrationDataDTO `json:"registration_data"`
@@ -34,10 +34,42 @@ type imageDTO struct {
 }
 
 type locationDTO struct {
-	Country     string    `json:"country"`
-	City        string    `json:"city"`
-	Address     string    `json:"address"`
-	Coordinates []float64 `json:"coordinates"`
+	Country     string         `json:"country"`
+	City        string         `json:"city"`
+	Address     string         `json:"address"`
+	Coordinates coordinatesDTO `json:"coordinates"`
+}
+
+type coordinatesDTO []float64
+
+func (coordinates *coordinatesDTO) UnmarshalJSON(data []byte) error {
+	var values []json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		*coordinates = nil
+		return nil
+	}
+	decoded := make([]float64, 0, len(values))
+	for _, value := range values {
+		var number json.Number
+		decoder := json.NewDecoder(bytes.NewReader(value))
+		decoder.UseNumber()
+		if err := decoder.Decode(&number); err != nil {
+			var text string
+			if err := json.Unmarshal(value, &text); err != nil {
+				*coordinates = nil
+				return nil
+			}
+			number = json.Number(text)
+		}
+		parsed, err := strconv.ParseFloat(number.String(), 64)
+		if err != nil {
+			*coordinates = nil
+			return nil
+		}
+		decoded = append(decoded, parsed)
+	}
+	*coordinates = decoded
+	return nil
 }
 
 type organizationDTO struct {
@@ -48,6 +80,31 @@ type organizationDTO struct {
 type categoryDTO struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+}
+
+type categoriesDTO struct {
+	Values    []categoryDTO
+	Malformed bool
+}
+
+func (categories *categoriesDTO) UnmarshalJSON(data []byte) error {
+	var values []categoryDTO
+	if err := json.Unmarshal(data, &values); err == nil {
+		categories.Values = values
+		categories.Malformed = false
+		return nil
+	}
+
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err == nil && len(object) == 0 {
+		categories.Values = nil
+		categories.Malformed = false
+		return nil
+	}
+
+	categories.Values = nil
+	categories.Malformed = true
+	return nil
 }
 
 type ticketTypeDTO struct {

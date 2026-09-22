@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
@@ -25,13 +26,26 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 	startsAtMin := c.now().UTC()
 	startsAtMax := startsAtMin.Add(importHorizon)
 	skip := 0
+	firstPage := true
 	for {
+		if !firstPage {
+			if err := c.wait(ctx); err != nil {
+				return ingestion.Stats(), err
+			}
+		}
+		firstPage = false
 		page, err := c.fetchPage(ctx, skip, startsAtMin, startsAtMax)
 		if err != nil {
 			return ingestion.Stats(), fmt.Errorf("fetch timepad page: %w", err)
 		}
+		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Values))
 		for _, event := range page.Values {
+			if !isMoscowCity(event.Location.City) {
+				ingestion.AddSkipped(1)
+				continue
+			}
+			ingestion.AddMatched(1)
 			normalized, ok := normalizeEvent(event)
 			if !ok {
 				ingestion.AddSkipped(1)
@@ -41,7 +55,7 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 				return ingestion.Stats(), err
 			}
 		}
-		if len(page.Values) == 0 {
+		if len(page.Values) == 0 || len(page.Values) < c.pageSize {
 			return ingestion.Stats(), nil
 		}
 		skip += len(page.Values)
@@ -49,4 +63,8 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 			return ingestion.Stats(), nil
 		}
 	}
+}
+
+func isMoscowCity(city string) bool {
+	return strings.EqualFold(strings.TrimSpace(city), moscowCity)
 }

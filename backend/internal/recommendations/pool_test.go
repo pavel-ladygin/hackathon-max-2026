@@ -170,6 +170,30 @@ func TestPoolBuilderExclusionsUnionAndBudgetSemantics(t *testing.T) {
 	}
 }
 
+func TestPoolBuilderExcludesDemoAndEventsWithoutUsableTicketURL(t *testing.T) {
+	cityID, venueID := uuid.New(), uuid.New()
+	snapshot := catalog.Snapshot{
+		City:   platform.City{ID: cityID, Timezone: "UTC"},
+		Venues: []platform.Venue{{ID: venueID, CityID: cityID}},
+	}
+	eligible := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	demo := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	demo.IsDemo = true
+	missingURL := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	missingURL.TicketUrl = pgtype.Text{}
+	emptyURL := event(uuid.New(), venueID, "2026-09-20T13:00:00Z", 0, true, "published")
+	emptyURL.TicketUrl = pgtype.Text{Valid: true}
+	snapshot.Events = []catalog.Event{eligible, demo, missingURL, emptyURL}
+
+	result, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), validInput(cityID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := candidateIDs(result.Candidates); len(got) != 1 || got[0] != eligible.ID {
+		t.Fatalf("only non-demo event with a usable ticket URL should remain: %v", got)
+	}
+}
+
 func TestPoolBuilderPreviousIDsBeforeCapAndFingerprintNormalization(t *testing.T) {
 	cityID, venueID := uuid.New(), uuid.New()
 	s := catalog.Snapshot{City: platform.City{ID: cityID, Timezone: "UTC", CenterLat: 0, CenterLng: 0}, Venues: []platform.Venue{{ID: venueID, CityID: cityID, Latitude: 0, Longitude: 0}}}

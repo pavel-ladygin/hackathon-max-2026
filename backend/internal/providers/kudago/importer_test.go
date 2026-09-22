@@ -57,14 +57,14 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != (ImportStats{Fetched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
+	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	second, err := client.Import(context.Background(), cityID, store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second != (ImportStats{Fetched: 4, Normalized: 2, Updated: 2, Skipped: 2}) {
+	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2}) {
 		t.Fatalf("second stats = %+v", second)
 	}
 }
@@ -84,7 +84,7 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats != (ImportStats{Fetched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
+	if stats != (ImportStats{PagesFetched: 1, Fetched: 2, Matched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
 		t.Fatalf("stats=%+v reported=%d persisted=%v", stats, reported, store.persisted)
 	}
 }

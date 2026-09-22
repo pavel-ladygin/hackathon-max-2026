@@ -1,11 +1,51 @@
 package discovery
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+func TestDiscoveryQueriesExcludeDemoAndStartedEvents(t *testing.T) {
+	queryPath := filepath.Join("..", "store", "platform", "queries", "discovery.sql")
+	query, err := os.ReadFile(queryPath)
+	if err != nil {
+		t.Fatalf("read discovery query contract: %v", err)
+	}
+
+	for _, name := range []string{
+		"SearchDiscoveryEventCards",
+		"CountDiscoveryEventCards",
+		"GetDiscoveryEventDetail",
+	} {
+		t.Run(name, func(t *testing.T) {
+			section := discoveryQuerySection(t, string(query), name)
+			for _, predicate := range []string{"e.is_demo = false", "e.starts_at > now()"} {
+				if !strings.Contains(section, predicate) {
+					t.Errorf("%s must contain %q to hide demo and already-started events", name, predicate)
+				}
+			}
+		})
+	}
+}
+
+func discoveryQuerySection(t *testing.T, query, name string) string {
+	t.Helper()
+	marker := "-- name: " + name
+	start := strings.Index(query, marker)
+	if start < 0 {
+		t.Fatalf("query %q not found", name)
+	}
+	section := query[start+len(marker):]
+	if next := strings.Index(section, "-- name:"); next >= 0 {
+		section = section[:next]
+	}
+	return section
+}
 
 func TestSearchArgumentsPreserveUserFilterAndExclusiveCursor(t *testing.T) {
 	user, city, eventID := uuid.New(), uuid.New(), uuid.New()

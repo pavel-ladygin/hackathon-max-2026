@@ -17,6 +17,8 @@ import (
 const (
 	maxErrorBodyBytes = 4 * 1024
 	importHorizon     = 90 * 24 * time.Hour
+	requestInterval   = 1100 * time.Millisecond
+	moscowCity        = "Москва"
 )
 
 type Options struct {
@@ -32,6 +34,7 @@ type Client struct {
 	httpClient *http.Client
 	pageSize   int
 	now        func() time.Time
+	wait       func(context.Context) error
 }
 
 func NewClient(options Options) (*Client, error) {
@@ -56,6 +59,16 @@ func NewClient(options Options) (*Client, error) {
 		httpClient: &http.Client{Timeout: options.Timeout},
 		pageSize:   options.PageSize,
 		now:        time.Now,
+		wait: func(ctx context.Context) error {
+			timer := time.NewTimer(requestInterval)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return nil
+			}
+		},
 	}, nil
 }
 
@@ -65,7 +78,6 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 	query.Set("limit", strconv.Itoa(c.pageSize))
 	query.Set("skip", strconv.Itoa(skip))
 	query.Set("sort", "+starts_at")
-	query.Set("cities", "Москва")
 	query.Set("starts_at_min", startsAtMin.Format(time.RFC3339))
 	query.Set("starts_at_max", startsAtMax.Format(time.RFC3339))
 	query.Set("fields", "location,registration_data,ticket_types")
@@ -114,6 +126,12 @@ func responseError(response *http.Response) error {
 	message := strings.TrimSpace(string(body))
 	if truncated {
 		message += " [truncated]"
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		if message == "" {
+			return errors.New("timepad rate limit exceeded (status 429)")
+		}
+		return fmt.Errorf("timepad rate limit exceeded (status 429): %s", message)
 	}
 	if message == "" {
 		return fmt.Errorf("timepad response status %d", response.StatusCode)

@@ -14,6 +14,7 @@ WITH base AS (
                 ))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
     WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
+      AND e.is_demo = false AND e.starts_at > now()
 ), filtered AS (
     SELECT b.* FROM base b
     WHERE (sqlc.narg('query')::text IS NULL OR
@@ -49,7 +50,9 @@ LIMIT sqlc.arg('limit_count');
 WITH base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name,
            CASE WHEN sqlc.narg('latitude')::double precision IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - sqlc.narg('latitude')::double precision) / 2), 2) + cos(radians(sqlc.narg('latitude')::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - sqlc.narg('longitude')::double precision) / 2), 2)))) END AS distance_m
-    FROM events e JOIN venues v ON v.id = e.venue_id WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
+    FROM events e JOIN venues v ON v.id = e.venue_id
+    WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
+      AND e.is_demo = false AND e.starts_at > now()
 )
 SELECT count(*)::integer FROM base b
 WHERE (sqlc.narg('query')::text IS NULL OR
@@ -77,7 +80,8 @@ LEFT JOIN LATERAL (
     SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
-WHERE e.id = sqlc.arg('event_id') AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary);
+WHERE e.id = sqlc.arg('event_id') AND e.is_demo = false AND e.starts_at > now()
+  AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary);
 
 -- name: ListDiscoveryEventImages :many
 SELECT url, width, height, role FROM event_images WHERE event_id = sqlc.arg('event_id') ORDER BY CASE role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, position, id LIMIT 50;

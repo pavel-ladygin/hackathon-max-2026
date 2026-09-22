@@ -15,7 +15,7 @@ func TestTicketClickValidatesAvailabilityURLAndRecordsOnlySuccess(t *testing.T) 
 	db := openTestDB(t)
 	ctx := context.Background()
 	city, venue, user := uuid.New(), uuid.New(), uuid.New()
-	events := make([]uuid.UUID, 0, 7)
+	events := make([]uuid.UUID, 0, 8)
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -55,6 +55,11 @@ func TestTicketClickValidatesAvailabilityURLAndRecordsOnlySuccess(t *testing.T) 
 		if _, err := db.Exec(ctx, `INSERT INTO events (id,source,external_id,title,description,venue_id,starts_at,timezone,currency,ticket_url,ticket_available,status) VALUES ($1,'ticket-test',$2,$3,'Description',$4,$5,'UTC','RUB',$6,$7,$8)`, id, id.String(), "Ticket event "+id.String(), venue, time.Now().Add(time.Duration(i+1)*time.Hour), item.url, item.available, item.status); err != nil {
 			t.Fatal(err)
 		}
+	}
+	pastEvent := uuid.New()
+	events = append(events, pastEvent)
+	if _, err := db.Exec(ctx, `INSERT INTO events (id,source,external_id,title,description,venue_id,starts_at,timezone,currency,ticket_url,ticket_available,status) VALUES ($1,'ticket-test',$2,$3,'Description',$4,$5,'UTC','RUB',$6,true,'published')`, pastEvent, pastEvent.String(), "Past ticket event", venue, time.Now().Add(-time.Minute), allowed); err != nil {
+		t.Fatal(err)
 	}
 	service, err := tickets.NewService(db, behavior.Recorder{}, []string{"tickets.example.test"})
 	if err != nil {
