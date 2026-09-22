@@ -7,8 +7,17 @@ export function Button({ tone = "primary", className = "", children, ...props }:
   return <button className={`${styles.button} ${styles[tone]} ${className}`} {...props}>{children}</button>;
 }
 
-export function IconButton({ label, children, filled = false, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; filled?: boolean }) {
-  return <button type="button" aria-label={label} title={label} className={`${styles.iconButton} ${filled ? styles.filled : ""} ${className}`} {...props}>{children}</button>;
+export function HeartIcon({ filled = false }: { filled?: boolean }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 8.8c0 5.5-8.8 10.2-8.8 10.2S3.2 14.3 3.2 8.8A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.6Z" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>;
+}
+
+export function ArrowLeftIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5-7 7 7 7M8 12h12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+type IconButtonVariant = "default" | "surface" | "favorite";
+export function IconButton({ label, children, filled = false, selected = false, variant = "default", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; filled?: boolean; selected?: boolean; variant?: IconButtonVariant }) {
+  return <button type="button" aria-label={label} aria-pressed={variant === "favorite" || selected ? selected : undefined} title={label} className={`${styles.iconButton} ${styles[`iconButton_${variant}`]} ${filled ? styles.filled : ""} ${selected ? styles.iconButtonSelected : ""} ${className}`} {...props}>{children}</button>;
 }
 
 export function Chip({ selected = false, children, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {
@@ -19,13 +28,13 @@ export function ChipGroup({ children, label, className = "" }: { children: React
   return <div className={`${styles.chipGroup} ${className}`} role={label ? "group" : undefined} aria-label={label}>{children}</div>;
 }
 
-export function EventImage({ alt, className = "", ...props }: ImgHTMLAttributes<HTMLImageElement>) {
-  return <img alt={alt} className={`${styles.eventImage} ${className}`} loading="lazy" {...props} />;
+export function EventImage({ alt, className = "", width = 400, height = 400, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
+  return <img alt={alt} className={`${styles.eventImage} ${className}`} width={width} height={height} loading="lazy" {...props} />;
 }
 
 export type EventCardData = { id?: string; title: string; meta?: string; eyebrow?: string; image: string };
 export function EventCard({ event, compact = false, onClick, className = "" }: { event: EventCardData; compact?: boolean; onClick?: () => void; className?: string }) {
-  const content = <><EventImage src={event.image} alt={event.title} /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong>{event.title}</strong>{event.meta && <span>{event.meta}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
+  const content = <><EventImage src={event.image} alt="" /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong>{event.title}</strong>{event.meta && <span>{event.meta}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
   return onClick ? <button type="button" className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`} onClick={onClick}>{content}</button> : <article className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`}>{content}</article>;
 }
 
@@ -37,8 +46,8 @@ export function PageContent({ children, className = "" }: { children: ReactNode;
   return <div className={`${styles.pageContent} ${className}`}>{children}</div>;
 }
 
-export function TopBar({ title, onBack, right }: { title?: ReactNode; onBack?: () => void; right?: ReactNode }) {
-  return <header className={styles.topBar}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" onClick={onBack}>‹</IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
+export function TopBar({ title, onBack, right, prominentBack = false }: { title?: ReactNode; onBack?: () => void; right?: ReactNode; prominentBack?: boolean }) {
+  return <header className={styles.topBar}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" variant={prominentBack ? "surface" : "default"} className={prominentBack ? styles.prominentBack : ""} onClick={onBack}><ArrowLeftIcon /></IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
 }
 
 export function PrivacyNote({ title = "Ваши ответы видны только вам", children = "Мы показываем участникам только общие совпадения — никакой неловкости." }: { title?: string; children?: ReactNode }) {
@@ -70,7 +79,13 @@ export function Skeleton({ className = "", label = "Загрузка" }: { class
   return <span className={`${styles.skeleton} ${className}`} role="status" aria-label={label} />;
 }
 
-export type NavItem = { id: string; label: string; icon: ReactNode };
+export type NavIconName = "home" | "calendar" | "saved";
+export type NavItem = { id: string; label: string; icon: NavIconName };
+function NavIcon({ name }: { name: NavIconName }) {
+  if (name === "home") return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>;
+  if (name === "calendar") return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5.5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8 3.5v4M16 3.5v4M4 10h16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+  return <HeartIcon />;
+}
 export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; activeId?: string; onChange?: (id: string) => void }) {
-  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onChange?.(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>;
+  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onChange?.(item.id)}><span className={styles.navIcon}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>;
 }

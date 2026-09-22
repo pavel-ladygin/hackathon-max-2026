@@ -5,7 +5,7 @@ import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queri
 import { apiClient } from '../../shared/api/client'
 import { eventCategoryLabel, eventImage } from '../../shared/lib/events'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { Button, Empty, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
+import { Button, Empty, HeartIcon, IconButton, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
 export function EventPage() {
@@ -30,8 +30,8 @@ export function EventPage() {
   const item = event.data
   return (
     <PageShell>
-      <TopBar title="Событие" onBack={() => navigate(-1)} right={event.data ? <button type="button" className={styles.detailSaveButton} aria-label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} aria-pressed={event.data.saved} disabled={save.isPending} onClick={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })}>{event.data.saved ? '♥' : '♡'}</button> : null} />
-      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} />
+      <TopBar prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <IconButton variant="favorite" selected={event.data.saved} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} disabled={save.isPending} onClick={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })}><HeartIcon filled={event.data.saved} /></IconButton> : null} />
+      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
         <h1 className={styles.title}>{item.title}</h1>

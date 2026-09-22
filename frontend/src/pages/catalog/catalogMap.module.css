@@ -1,0 +1,97 @@
+.mapWrap {
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+}
+
+.map {
+  width: 100%;
+  height: min(62vh, 620px);
+  min-height: 430px;
+}
+
+.mapMarker {
+  --marker-size: 48px;
+  position: relative;
+  display: grid;
+  width: max(44px, calc(var(--marker-size) + 8px));
+  height: max(44px, calc(var(--marker-size) + 8px));
+  padding: 2px;
+  border: 2px solid var(--color-paper, #fffaf5);
+  border-radius: var(--radius-md);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 3px 12px rgb(39 29 21 / 22%);
+  cursor: pointer;
+  touch-action: manipulation;
+  transform: translate(-50%, -50%);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.mapMarker:focus-visible,
+.mapMarker[data-active='true'] {
+  z-index: 2;
+  transform: translate(-50%, calc(-50% - 2px)) scale(1.06);
+  box-shadow: 0 7px 18px rgb(39 29 21 / 30%);
+}
+
+.mapMarker:focus-visible {
+  outline: 3px solid var(--color-accent, #ef6b6b);
+  outline-offset: 3px;
+}
+
+.markerImage {
+  display: block;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.markerTooltip {
+  position: absolute;
+  bottom: calc(100% + max(6px, calc(var(--marker-size) * .12)));
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 5px 15px rgb(39 29 21 / 16%);
+  color: var(--color-ink, #171716);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.mapMarker:focus-visible .markerTooltip,
+.mapMarker[data-active='true'] .markerTooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mapMarker:hover {
+    z-index: 2;
+    transform: translate(-50%, calc(-50% - 2px)) scale(1.06);
+    box-shadow: 0 7px 18px rgb(39 29 21 / 30%);
+  }
+
+  .mapMarker:hover .markerTooltip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapMarker,
+  .markerTooltip {
+    transition: none;
+  }
+}

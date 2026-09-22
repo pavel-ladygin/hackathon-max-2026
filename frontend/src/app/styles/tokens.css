@@ -17,6 +17,16 @@
   --color-success: #54735c;
   --color-danger: #b42318;
   --color-warning: #a15c08;
+  --color-hover: #f7eee8;
+  --color-hover-warm: #f7eee8;
+  --color-hover-strong: #f1e3dc;
+  --color-hover-border: #d8c8ba;
+  --color-favorite-soft: #fff0f2;
+  --color-favorite-selected: #ffe1e6;
+  --color-favorite: #d9405a;
+  --color-favorite-border: #f3cbd2;
+  --shadow-control: 0 3px 12px rgb(67 38 28 / 10%);
+  --shadow-control-soft: 0 2px 8px rgb(67 38 28 / 7%);
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 19px;

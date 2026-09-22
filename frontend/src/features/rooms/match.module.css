@@ -5,7 +5,7 @@
 .avatars span { display: grid; width: 76px; height: 76px; place-items: center; border: 5px solid var(--color-canvas); border-radius: 50%; background: #e7d9ca; color: #544536; font-size: 22px; font-weight: 800; }
 .avatars span:last-child { margin-left: -12px; background: #ded7ef; }
 .avatars b { z-index: 1; display: grid; width: 34px; height: 34px; place-items: center; margin: 0 -9px; border-radius: 50%; background: #fff; color: var(--color-accent); }
-.card { overflow: hidden; border: 1px solid var(--color-border); border-radius: 22px; background: #fff; box-shadow: var(--shadow-float); text-align: left; }
+.card { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: #fff; box-shadow: var(--shadow-float); text-align: left; }
 .card img { width: 100%; height: min(38vh, 310px); object-fit: cover; }
 .card div { padding: 17px; }
 .card small { color: var(--color-muted); }
