@@ -238,13 +238,8 @@ func TestReplaceIntentConcurrentParticipants(t *testing.T) {
 		}
 		transitioned = transitioned || result.transitioned
 	}
-	// Under REPEATABLE READ, concurrent first submissions can both commit
-	// their readiness snapshots before either transaction observes the other's
-	// row. A deterministic retry by one participant completes the B6 build.
 	if !transitioned {
-		if _, retried, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || !retried {
-			t.Fatalf("deterministic build retry transitioned=%v err=%v", retried, err)
-		}
+		t.Fatal("concurrent submissions left both participants ready without building the pool")
 	}
 	var state string
 	var version, pools, intents, ready int

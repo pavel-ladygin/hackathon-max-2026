@@ -17,8 +17,8 @@ DELETE FROM room_invites
 WHERE expires_at <= $1
 `
 
-// DeleteInviteSecretsExpiredBefore removes expired invite rows, including the
-// token hash and encrypted token material retained by each row.
+// Removing the row removes both the token hash and ciphertext after the
+// retention period, including for rooms whose memberships were retired earlier.
 func (q *Queries) DeleteInviteSecretsExpiredBefore(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteInviteSecretsExpiredBefore, expiresAt)
 	if err != nil {

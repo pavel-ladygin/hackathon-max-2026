@@ -332,9 +332,9 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 const markRoomExhausted = `-- name: MarkRoomExhausted :one
 WITH exhausted_room AS (
   UPDATE rooms
-  SET state = 'exhausted', version = version + 1
-  WHERE id = $1 AND state = 'voting'
-  RETURNING id, active_pool_version, round_no
+  SET state = 'exhausted', version = rooms.version + 1
+  WHERE rooms.id = $1 AND rooms.state = 'voting'
+  RETURNING rooms.id, rooms.active_pool_version, rooms.round_no
 ), exhausted_pool AS (
   UPDATE room_pools AS p
   SET state = 'exhausted'
@@ -348,6 +348,8 @@ SELECT count(*) FROM exhausted_room
 `
 
 // Exhaustion is only valid from voting; callers must verify both users finished.
+// The active pool and room transition are one statement, so a committed
+// exhausted room never points at a ready active pool.
 func (q *Queries) MarkRoomExhausted(ctx context.Context, id uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, markRoomExhausted, id)
 	var count int64
