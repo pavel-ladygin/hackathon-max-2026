@@ -65,14 +65,16 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 		if RoomState(room.State) == RoomStateMatched {
 			return ErrAlreadyMatched
 		}
+		// Final-round exhaustion retires memberships, but a known participant
+		// must still receive the stable terminal outcome on a restart attempt.
+		if RoomState(room.State) == RoomStateExhausted && room.RoundNo >= 3 {
+			return ErrRoundLimitReached
+		}
 		if !membership.IsActive {
 			return ErrRoomNotFound
 		}
 		switch RoomState(room.State) {
 		case RoomStateExhausted:
-			if room.RoundNo >= 3 {
-				return ErrRoundLimitReached
-			}
 			previousRound := room.RoundNo
 			room, err = repo.Queries.RestartExhaustedRoomRound(ctx, room.ID)
 			if err != nil {

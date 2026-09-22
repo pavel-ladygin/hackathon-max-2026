@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -28,19 +29,18 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	cityID := uuid.MustParse(catalogseed.MoscowCityID)
 
-	var imported, distinct, demos, missingPrice, unavailableTickets, categoryRows, imageRows int
+	var imported, distinct, missingPrice, unavailableTickets, categoryRows, imageRows int
 	if err := db.QueryRow(ctx, `SELECT
 		count(*), count(DISTINCT external_id),
-		(SELECT count(*) FROM events WHERE source='demo' AND is_demo),
 		count(*) FILTER (WHERE price_from_minor IS NULL),
 		count(*) FILTER (WHERE NOT ticket_available OR ticket_url IS NULL),
 		(SELECT count(*) FROM event_categories ec JOIN events ce ON ce.id=ec.event_id WHERE ce.source='kudago'),
 		(SELECT count(*) FROM event_images ei JOIN events ie ON ie.id=ei.event_id WHERE ie.source='kudago')
-		FROM events WHERE source='kudago'`).Scan(&imported, &distinct, &demos, &missingPrice, &unavailableTickets, &categoryRows, &imageRows); err != nil {
+		FROM events WHERE source='kudago'`).Scan(&imported, &distinct, &missingPrice, &unavailableTickets, &categoryRows, &imageRows); err != nil {
 		t.Fatal(err)
 	}
-	if imported == 0 || imported != distinct || demos != 44 || missingPrice == 0 || categoryRows == 0 || imageRows == 0 {
-		t.Fatalf("catalog invariants imported=%d distinct=%d demos=%d missing_price=%d unavailable_ticket=%d categories=%d images=%d", imported, distinct, demos, missingPrice, unavailableTickets, categoryRows, imageRows)
+	if imported == 0 || imported != distinct || missingPrice == 0 || categoryRows == 0 || imageRows == 0 {
+		t.Fatalf("catalog invariants imported=%d distinct=%d missing_price=%d unavailable_ticket=%d categories=%d images=%d", imported, distinct, missingPrice, unavailableTickets, categoryRows, imageRows)
 	}
 
 	var probeID uuid.UUID
@@ -82,6 +82,7 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		t.Fatalf("production PoolBuilder candidates=%d error=%v", len(result.Candidates), err)
 	}
 	var realCandidate uuid.UUID
+	var realCandidateSnapshot contracts.Candidate
 	for _, candidate := range result.Candidates {
 		var source string
 		if err := db.QueryRow(ctx, "SELECT source FROM events WHERE id=$1", candidate.EventID).Scan(&source); err != nil {
@@ -89,6 +90,7 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		}
 		if source == "kudago" {
 			realCandidate = candidate.EventID
+			realCandidateSnapshot = candidate
 			if candidate.Score.GroupScore <= 0 || len(candidate.Explanation) == 0 {
 				t.Fatalf("real candidate has no score/explanation: %+v", candidate)
 			}
@@ -151,6 +153,25 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		t.Fatal("outside-radius real event remained in PoolBuilder candidates")
 	}
 
+	// Add a deterministic demo twin to the persisted pool so source parity does
+	// not depend on whichever demo seed happens to match today's live KudaGo
+	// date/category/location window.
+	demoEvent := uuid.New()
+	if _, err := db.Exec(ctx, `INSERT INTO events
+		(id,source,external_id,is_demo,title,subtitle,description,venue_id,starts_at,ends_at,timezone,
+		 price_from_minor,price_to_minor,currency,ticket_url,ticket_available,status,age_rating,indoor,loudness_level,published_at)
+		SELECT $1,'demo',$2,true,title,subtitle,description,venue_id,starts_at,ends_at,timezone,
+		       price_from_minor,price_to_minor,currency,'https://tickets.example/s6-demo',true,'published',age_rating,indoor,loudness_level,published_at
+		FROM events WHERE id=$3`, demoEvent, "s6-parity-"+demoEvent.String(), realCandidate); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO event_categories(event_id,category_slug,weight,is_primary)
+		SELECT $1,category_slug,weight,is_primary FROM event_categories WHERE event_id=$2`, demoEvent, realCandidate); err != nil {
+		t.Fatal(err)
+	}
+	demoCandidateSnapshot := realCandidateSnapshot
+	demoCandidateSnapshot.EventID = demoEvent
+
 	for _, user := range []uuid.UUID{firstUser, secondUser} {
 		if _, err := db.Exec(ctx, "INSERT INTO users(id,max_user_id,display_name,city_id) VALUES($1,$2,$3,$4)", user, atomic.AddInt64(&testMaxUserID, 1), "g6-real-"+user.String(), cityID); err != nil {
 			t.Fatal(err)
@@ -167,9 +188,10 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		}
 		_, _ = db.Exec(cleanupCtx, "DELETE FROM behavior_events WHERE user_id=ANY($1)", []uuid.UUID{firstUser, secondUser})
 		_, _ = db.Exec(cleanupCtx, "DELETE FROM users WHERE id=ANY($1)", []uuid.UUID{firstUser, secondUser})
+		_, _ = db.Exec(cleanupCtx, "DELETE FROM events WHERE id=$1", demoEvent)
 	})
 
-	svc := newCreateServiceWithBuilder(t, db, behavior.Recorder{}, builder)
+	svc := newCreateServiceWithBuilder(t, db, behavior.Recorder{}, poolBuilderWithCandidate{base: builder, candidate: demoCandidateSnapshot})
 	codec, err := rooms.NewRoomEventsCursorCodec([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {
 		t.Fatal(err)
@@ -210,10 +232,78 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		AND (e.status<>'published' OR NOT e.ticket_available OR e.ticket_url IS NULL OR e.price_from_minor IS NULL)`, roomID).Scan(&invalidPoolRows); err != nil || invalidPoolRows != 0 {
 		t.Fatalf("invalid hard-filter rows=%d error=%v", invalidPoolRows, err)
 	}
-	var before string
-	if err := db.QueryRow(ctx, "SELECT row_to_json(x)::text FROM (SELECT * FROM room_pool_events WHERE pool_id=(SELECT id FROM room_pools WHERE room_id=$1) ORDER BY position) x LIMIT 1", roomID).Scan(&before); err != nil {
-		t.Fatal(err)
+
+	// Availability is live even though ranking is an immutable snapshot. Verify
+	// the same post-build behavior for an imported KudaGo card and a demo card.
+	targets := map[string]uuid.UUID{"kudago": matchedEvent, "demo": demoEvent}
+
+	for source, target := range targets {
+		var originalPriceFrom, originalPriceTo *int32
+		var originalTicketURL *string
+		var originalTicketAvailable bool
+		var originalStatus string
+		if err := db.QueryRow(ctx, `SELECT price_from_minor,price_to_minor,ticket_url,ticket_available,status FROM events WHERE id=$1`, target).
+			Scan(&originalPriceFrom, &originalPriceTo, &originalTicketURL, &originalTicketAvailable, &originalStatus); err != nil {
+			t.Fatal(err)
+		}
+		restore := func() {
+			if _, err := db.Exec(ctx, `UPDATE events SET price_from_minor=$2,price_to_minor=$3,ticket_url=$4,ticket_available=$5,status=$6 WHERE id=$1`,
+				target, originalPriceFrom, originalPriceTo, originalTicketURL, originalTicketAvailable, originalStatus); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var snapshot string
+		if err := db.QueryRow(ctx, `SELECT row_to_json(rpe)::text FROM room_pool_events rpe
+			JOIN room_pools rp ON rp.id=rpe.pool_id WHERE rp.room_id=$1 AND rpe.event_id=$2`, roomID, target).Scan(&snapshot); err != nil {
+			t.Fatal(err)
+		}
+		mutations := []struct {
+			name string
+			sql  string
+		}{
+			{name: "cancelled", sql: `UPDATE events SET status='cancelled' WHERE id=$1`},
+			{name: "sold out", sql: `UPDATE events SET status='sold_out' WHERE id=$1`},
+			{name: "ticket unavailable", sql: `UPDATE events SET ticket_available=false WHERE id=$1`},
+			{name: "new price above budget", sql: `UPDATE events SET price_from_minor=1000001 WHERE id=$1`},
+		}
+		for _, mutation := range mutations {
+			if _, err := db.Exec(ctx, mutation.sql, target); err != nil {
+				t.Fatal(err)
+			}
+			page, err := svc.GetEvents(ctx, contracts.Principal{UserID: firstUser}, roomID, rooms.RoomEventsInput{Limit: 50})
+			if err != nil {
+				t.Fatalf("%s %s GetEvents: %v", source, mutation.name, err)
+			}
+			for _, item := range page.Items {
+				if item.Event.Id == target {
+					t.Fatalf("%s %s event remained visible after pool creation", source, mutation.name)
+				}
+			}
+			if _, err := svc.Vote(ctx, contracts.Principal{UserID: firstUser}, roomID, target, api.VoteRequest{PoolVersion: 1, Vote: api.Like}); !errors.Is(err, rooms.ErrEventUnavailable) {
+				t.Fatalf("%s %s vote error=%v, want EVENT_UNAVAILABLE", source, mutation.name, err)
+			}
+			var votes, matches int
+			if err := db.QueryRow(ctx, `SELECT count(*) FROM room_votes WHERE room_id=$1 AND event_id=$2`, roomID, target).Scan(&votes); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(ctx, `SELECT count(*) FROM room_matches WHERE room_id=$1`, roomID).Scan(&matches); err != nil {
+				t.Fatal(err)
+			}
+			if votes != 0 || matches != 0 {
+				t.Fatalf("%s %s persisted votes=%d matches=%d", source, mutation.name, votes, matches)
+			}
+			var afterMutation string
+			if err := db.QueryRow(ctx, `SELECT row_to_json(rpe)::text FROM room_pool_events rpe
+				JOIN room_pools rp ON rp.id=rpe.pool_id WHERE rp.room_id=$1 AND rpe.event_id=$2`, roomID, target).Scan(&afterMutation); err != nil {
+				t.Fatal(err)
+			}
+			if afterMutation != snapshot {
+				t.Fatalf("%s %s changed immutable pool snapshot", source, mutation.name)
+			}
+			restore()
+		}
 	}
+
 	vote := api.VoteRequest{PoolVersion: 1, Vote: api.Like}
 	if _, err := svc.Vote(ctx, contracts.Principal{UserID: firstUser}, roomID, matchedEvent, vote); err != nil {
 		t.Fatal(err)
@@ -226,11 +316,6 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 	if err != nil || match.Event.Id != matchedEvent {
 		t.Fatalf("match=%+v error=%v", match, err)
 	}
-	var after string
-	if err := db.QueryRow(ctx, "SELECT row_to_json(x)::text FROM (SELECT * FROM room_pool_events WHERE pool_id=(SELECT id FROM room_pools WHERE room_id=$1) ORDER BY position) x LIMIT 1", roomID).Scan(&after); err != nil || after != before {
-		t.Fatalf("immutable pool changed=%v error=%v", after != before, err)
-	}
-
 	ticketService, err := tickets.NewService(db, behavior.Recorder{}, []string{"kudago.com", "*.kudago.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -239,4 +324,24 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 	if err != nil || url == "" {
 		t.Fatalf("KudaGo external action URL=%q error=%v", url, err)
 	}
+}
+
+type poolBuilderWithCandidate struct {
+	base      contracts.PoolBuilder
+	candidate contracts.Candidate
+}
+
+func (b poolBuilderWithCandidate) Build(ctx context.Context, input contracts.BuildInput) (contracts.BuildResult, error) {
+	result, err := b.base.Build(ctx, input)
+	if err != nil {
+		return contracts.BuildResult{}, err
+	}
+	for _, candidate := range result.Candidates {
+		if candidate.EventID == b.candidate.EventID {
+			return result, nil
+		}
+	}
+	result.Candidates = append(result.Candidates, b.candidate)
+	result.IsSmall = len(result.Candidates) <= 2
+	return result, nil
 }
