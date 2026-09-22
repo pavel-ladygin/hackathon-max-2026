@@ -141,7 +141,11 @@ func TestB9CompetingEventsProduceOneMatchAndStableReload(t *testing.T) {
 			}
 		}
 	}
-	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, matchedEvent, request); !errors.Is(err, rooms.ErrAlreadyMatched) {
+	newEvent := events[0]
+	if newEvent == matchedEvent {
+		newEvent = events[1]
+	}
+	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.member}, f.room, newEvent, request); !errors.Is(err, rooms.ErrAlreadyMatched) {
 		t.Fatalf("post-match member vote=%v; want ErrAlreadyMatched", err)
 	}
 	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.third}, f.room, matchedEvent, request); !errors.Is(err, rooms.ErrRoomNotFound) {
@@ -164,6 +168,14 @@ func TestB9MatchTerminalRetiresMembershipsAndClearsCoordinates(t *testing.T) {
 	match, err := response.Match.Get()
 	if err != nil || match.Event.Id != events[0] || len(match.Participants) != 2 {
 		t.Fatalf("vote match=%+v err=%v; want event and both public participants", match, err)
+	}
+	retried, err := svc.Vote(context.Background(), contracts.Principal{UserID: f.member}, f.room, events[0], request)
+	if err != nil {
+		t.Fatalf("retry terminal vote: %v", err)
+	}
+	retriedMatch, err := retried.Match.Get()
+	if err != nil || retriedMatch.Id != match.Id || retriedMatch.Event.Id != match.Event.Id {
+		t.Fatalf("retried match=%+v err=%v; want stable match %s", retriedMatch, err, match.Id)
 	}
 
 	ctx := context.Background()

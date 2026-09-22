@@ -33,9 +33,9 @@ WHERE id = $1 AND state = 'voting' AND matched_event_id IS NULL;
 -- exhausted room never points at a ready active pool.
 WITH exhausted_room AS (
   UPDATE rooms
-  SET state = 'exhausted', version = version + 1
-  WHERE id = $1 AND state = 'voting'
-  RETURNING id, active_pool_version, round_no
+  SET state = 'exhausted', version = rooms.version + 1
+  WHERE rooms.id = $1 AND rooms.state = 'voting'
+  RETURNING rooms.id, rooms.active_pool_version, rooms.round_no
 ), exhausted_pool AS (
   UPDATE room_pools AS p
   SET state = 'exhausted'

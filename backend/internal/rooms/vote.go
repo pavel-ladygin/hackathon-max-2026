@@ -52,7 +52,28 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 			return err
 		}
 		if room.State == string(RoomStateMatched) {
-			return ErrAlreadyMatched
+			// An exact retry of a vote that participated in the terminal match is
+			// idempotent: rebuild the already committed result. Any new vote stays
+			// forbidden once the room is matched.
+			pool, poolErr := repo.Queries.GetActivePool(ctx, room.ID)
+			if errors.Is(poolErr, pgx.ErrNoRows) {
+				return ErrAlreadyMatched
+			}
+			if poolErr != nil {
+				return poolErr
+			}
+			response.PoolVersion = int(pool.Version)
+			if int(pool.Version) != request.PoolVersion {
+				return ErrAlreadyMatched
+			}
+			existing, voteErr := repo.Queries.GetRoomVote(ctx, roomsql.GetRoomVoteParams{PoolID: pool.ID, EventID: eventID, UserID: principal.UserID})
+			if errors.Is(voteErr, pgx.ErrNoRows) || voteErr == nil && existing.Vote != string(request.Vote) {
+				return ErrAlreadyMatched
+			}
+			if voteErr != nil {
+				return voteErr
+			}
+			return s.currentVoteResponse(ctx, repo, room, pool, principal.UserID, &response)
 		}
 		// Final-round cleanup retires memberships, but existing members must be
 		// able to safely retry an already accepted terminal request. Rebuild the
