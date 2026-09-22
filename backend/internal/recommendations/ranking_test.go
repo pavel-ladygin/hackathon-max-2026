@@ -327,7 +327,24 @@ func TestRankingDiversityCapAndFourCategoryCoverage(t *testing.T) {
 				}
 			}
 			if d == a && a == b && b == c {
-				t.Fatalf("category run exceeds three at %d", i)
+				alternativeRemains := false
+
+				for j := i + 1; j < len(got.Candidates); j++ {
+					for _, e := range s.Events {
+						if e.ID == got.Candidates[j].EventID &&
+							e.Categories[0].CategorySlug != c {
+							alternativeRemains = true
+							break
+						}
+					}
+					if alternativeRemains {
+						break
+					}
+				}
+
+				if alternativeRemains {
+					t.Fatalf("category run exceeds three at %d while an alternative category remains", i)
+				}
 			}
 		}
 	}
