@@ -36,6 +36,7 @@ func TestDemoCatalogSeedAndRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load seeded city: %v", err)
 	}
+	first = demoCatalogSnapshot(first)
 	assertCatalogSnapshot(t, first, base)
 
 	if got, err := catalogseed.Apply(ctx, db, base); err != nil {
@@ -47,6 +48,7 @@ func TestDemoCatalogSeedAndRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load repeated seed: %v", err)
 	}
+	repeated = demoCatalogSnapshot(repeated)
 	if !reflect.DeepEqual(first, repeated) {
 		t.Fatal("seeding the same base date changed the catalog snapshot")
 	}
@@ -59,6 +61,7 @@ func TestDemoCatalogSeedAndRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load shifted seed: %v", err)
 	}
+	shifted = demoCatalogSnapshot(shifted)
 	assertCatalogSnapshot(t, shifted, shiftedBase)
 	if len(first.Events) != len(shifted.Events) {
 		t.Fatalf("shifted event count = %d, want %d", len(shifted.Events), len(first.Events))
@@ -129,6 +132,26 @@ func TestDemoCatalogSeedAndRepository(t *testing.T) {
 	if _, err := repo.LoadCity(ctx, uuid.New()); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("missing city error = %v, want pgx.ErrNoRows", err)
 	}
+}
+
+func demoCatalogSnapshot(snapshot catalog.Snapshot) catalog.Snapshot {
+	demoVenues := make(map[uuid.UUID]bool)
+	events := snapshot.Events[:0]
+	for _, event := range snapshot.Events {
+		if event.Source == "demo" && event.IsDemo {
+			events = append(events, event)
+			demoVenues[event.VenueID] = true
+		}
+	}
+	venues := snapshot.Venues[:0]
+	for _, venue := range snapshot.Venues {
+		if demoVenues[venue.ID] {
+			venues = append(venues, venue)
+		}
+	}
+	snapshot.Events = events
+	snapshot.Venues = venues
+	return snapshot
 }
 
 func assertCatalogSnapshot(t *testing.T, snapshot catalog.Snapshot, base time.Time) {
@@ -218,14 +241,15 @@ func cleanupDemoCatalog(t *testing.T, db interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }) {
 	t.Helper()
-	// Kept city-scoped so an integration run cannot remove unrelated catalog data.
+	// Provider events may share Moscow with the demo catalog. Remove only demo
+	// events and rows that become orphaned as a result.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	queries := []string{
 		"DELETE FROM events WHERE source = 'demo' AND is_demo AND venue_id IN (SELECT id FROM venues WHERE city_id = $1)",
-		"DELETE FROM venues WHERE city_id = $1",
-		"DELETE FROM metro_stations WHERE city_id = $1",
-		"DELETE FROM cities WHERE id = $1",
+		"DELETE FROM venues v WHERE city_id = $1 AND NOT EXISTS (SELECT 1 FROM events e WHERE e.venue_id=v.id)",
+		"DELETE FROM metro_stations m WHERE city_id = $1 AND NOT EXISTS (SELECT 1 FROM events e JOIN venues v ON v.id=e.venue_id WHERE v.city_id=m.city_id)",
+		"DELETE FROM cities c WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.city_id=c.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.city_id=c.id) AND NOT EXISTS (SELECT 1 FROM rooms r WHERE r.city_id=c.id)",
 	}
 	for _, query := range queries {
 		if _, err := db.Exec(ctx, query, catalogseed.MoscowCityID); err != nil {

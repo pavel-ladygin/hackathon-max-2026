@@ -62,6 +62,23 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		FirstIntent:  contracts.ParticipantIntent{UserID: f.creator, Version: 1, Dates: dates, BudgetMaxMinor: 250000, CategorySlugs: []string{"concerts"}},
 		SecondIntent: contracts.ParticipantIntent{UserID: f.member, Version: 1, Dates: slices.Clone(dates), BudgetMaxMinor: 250000, CategorySlugs: []string{"theatre"}},
 	}
+	rows, err := db.Query(ctx, `SELECT e.id FROM events e JOIN venues v ON v.id=e.venue_id WHERE v.city_id=$1 AND NOT (e.source='demo' AND e.is_demo)`, cityID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		input.PreviousEventIDs = append(input.PreviousEventIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
 	repo := catalog.NewRepository(db)
 	builder, err := recommendations.NewPoolBuilder(repo, []byte("a4-postgres-integration-key-32-bytes"))
 	if err != nil {
@@ -103,6 +120,7 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapshot = demoCatalogSnapshot(snapshot)
 	events := make(map[uuid.UUID]catalog.Event, len(snapshot.Events))
 	for _, event := range snapshot.Events {
 		events[event.ID] = event
