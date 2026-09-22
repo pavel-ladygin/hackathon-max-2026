@@ -26,6 +26,7 @@ const (
 
 type participantFeatures struct {
 	categoryAffinity, currentIntentCategoryFit float64
+	behavioralAffinity                         float64
 	timeQuality, budgetHeadroom                float64
 	distanceQuality, novelty, popularity       float64
 }
@@ -106,6 +107,7 @@ func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedInt
 	return participantFeatures{
 		categoryAffinity:         .5 * categoryFit(event, intent.profile.categories),
 		currentIntentCategoryFit: categoryFit(event, intent.categories),
+		behavioralAffinity:       behavioralCategoryFit(event, intent.behavior.categories),
 		timeQuality:              timeQuality,
 		budgetHeadroom:           headroom,
 		distanceQuality:          distance,
@@ -128,7 +130,16 @@ func profileTimeFit(event catalog.Event, profile normalizedProfile) bool {
 
 func userScore(f participantFeatures) float64 {
 	return .30*f.categoryAffinity + .20*f.currentIntentCategoryFit + .15*f.timeQuality +
-		.15*f.budgetHeadroom + .10*f.distanceQuality + .05*f.novelty + .05*f.popularity
+		.15*f.budgetHeadroom + .10*f.distanceQuality + .05*f.novelty + .05*f.popularity +
+		.06*f.behavioralAffinity
+}
+
+func behavioralCategoryFit(event catalog.Event, categories map[string]float64) float64 {
+	if len(categories) == 0 {
+		return 0
+	}
+	primary := primaryCategory(event)
+	return categories[primary]
 }
 
 func categoryFit(event catalog.Event, categories map[string]bool) float64 {
