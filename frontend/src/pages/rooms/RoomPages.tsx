@@ -18,6 +18,7 @@ import type { CategorySlug, RoomIntentRequestDto, RoomSnapshot, VoteValue } from
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, Loading, PageContent, PageShell, PrivacyNote, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
+import intentStyles from './intent.module.css'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
@@ -152,19 +153,19 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
     },
   })
   return (
-    <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={styles.title}>Мои предпочтения</h1><p className={styles.subtitle}>Укажите, что подходит именно сейчас. Другой участник не увидит ответы.</p><PrivacyNote />
-      <form className={styles.formStack} onSubmit={form.handleSubmit((values) => save.mutate(values))}>
+    <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${intentStyles.intentPage}`}>
+      <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>Мои предпочтения</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>Укажите, что подходит именно сейчас. Другой участник не увидит ответы.</p><PrivacyNote />
+      <form className={`${styles.formStack} ${intentStyles.intentForm}`} onSubmit={form.handleSubmit((values) => save.mutate(values))}>
         <ChoiceField title="Когда удобно" error={form.formState.errors.dates?.message} options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} />
         <ChoiceField title="Тип дня (необязательно)" error={form.formState.errors.day_types?.message} options={[['weekday', 'Будни'], ['weekend', 'Выходные']]} selected={dayTypes} onToggle={(value) => form.setValue('day_types', toggleValue(dayTypes, value as IntentForm['day_types'][number]), { shouldValidate: true })} />
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
         <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
-        <label className={styles.fieldLabel} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={styles.error} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
-        <label className={styles.fieldLabel} htmlFor="room-radius">Радиус · до {(radius / 1000).toFixed(0)} км<input id="room-radius" className={styles.range} type="range" min="100" max="50000" step="500" aria-invalid={Boolean(form.formState.errors.radius)} {...form.register('radius')} />{form.formState.errors.radius ? <span className={styles.error} role="alert">{form.formState.errors.radius.message}</span> : null}</label>
-        <label className={styles.fieldLabel} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={styles.error} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
-        {Object.keys(form.formState.errors).length ? <p className={styles.error} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}
-        {save.isError ? <p className={styles.error} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
-        <div className={styles.footer}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button></div>
+        <label className={intentStyles.rangeField} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
+        <label className={intentStyles.rangeField} htmlFor="room-radius">Радиус · до {(radius / 1000).toFixed(0)} км<input id="room-radius" className={styles.range} type="range" min="100" max="50000" step="500" aria-invalid={Boolean(form.formState.errors.radius)} {...form.register('radius')} />{form.formState.errors.radius ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.radius.message}</span> : null}</label>
+        <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
+        {Object.keys(form.formState.errors).length ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}
+        {save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
+        <div className={`${styles.footer} ${intentStyles.intentFooter}`}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button></div>
       </form>
     </PageContent></PageShell>
   )
@@ -283,7 +284,7 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
 }
 
 function ChoiceField<T extends string>({ title, options, selected, onToggle, error }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void; error?: string }) {
-  return <fieldset className={styles.fieldLabel} aria-invalid={Boolean(error)}><legend>{title}</legend><ChipGroup>{options.map(([value, label]) => <Chip key={value} selected={selected.includes(value)} onClick={() => onToggle(value)}>{label}</Chip>)}</ChipGroup>{error ? <span className={styles.error} role="alert">{error}</span> : null}</fieldset>
+  return <fieldset className={intentStyles.choiceField} aria-invalid={Boolean(error)}><legend>{title}</legend><ChipGroup className={intentStyles.choiceOptions}>{options.map(([value, label]) => <Chip key={value} selected={selected.includes(value)} onClick={() => onToggle(value)}>{label}</Chip>)}</ChipGroup>{error ? <span className={intentStyles.fieldError} role="alert">{error}</span> : null}</fieldset>
 }
 
 function expectedScreen(room: RoomSnapshot) {

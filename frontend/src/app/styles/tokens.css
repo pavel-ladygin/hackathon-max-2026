@@ -51,6 +51,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
 html, body, #root { min-height: 100%; margin: 0; }
 body { min-width: 320px; background: var(--color-canvas); }
 button, input, textarea, select { font: inherit; }
