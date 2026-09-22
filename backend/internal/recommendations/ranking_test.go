@@ -20,6 +20,24 @@ import (
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
+type rankingProfileLoader struct {
+	values map[uuid.UUID]contracts.RankingPreferences
+}
+
+func (l *rankingProfileLoader) LoadRankingPreferences(_ context.Context, userID uuid.UUID) (contracts.RankingPreferences, bool, error) {
+	value, found := l.values[userID]
+	return value, found, nil
+}
+
+func profileBuilder(t *testing.T, snapshot catalog.Snapshot, loader contracts.RankingPreferencesLoader) *recommendations.PoolBuilder {
+	t.Helper()
+	builder, err := recommendations.NewPoolBuilder(&fakeCatalog{snapshot: snapshot}, testPoolKey, loader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return builder
+}
+
 func TestRankingComponentsAndWeightedGroupScore(t *testing.T) {
 	city, venue := uuid.New(), uuid.New()
 	eid := uuid.MustParse("00000000-0000-0000-0000-000000000001")
@@ -119,6 +137,147 @@ func TestRankingCategoryPreferenceChangesOrderButDoesNotFilter(t *testing.T) {
 	if err != nil || len(b.Candidates) != 2 {
 		t.Fatalf("unmatched categories must remain eligible: %+v err=%v", b.Candidates, err)
 	}
+}
+
+func TestPermanentPreferencesFeedPersonalAndGroupRanking(t *testing.T) {
+	city, venue := uuid.New(), uuid.New()
+	standupID, theatreID := uuid.UUID{15: 1}, uuid.UUID{15: 2}
+	snapshot := catalog.Snapshot{
+		City:   platform.City{ID: city, Timezone: "UTC"},
+		Venues: []platform.Venue{{ID: venue, CityID: city}},
+		Events: []catalog.Event{
+			event(standupID, venue, "2026-09-20T13:00:00Z", 0, true, "published"),
+			event(theatreID, venue, "2026-09-20T14:00:00Z", 0, true, "published"),
+		},
+	}
+	snapshot.Events[0].Categories = []platform.EventCategory{{EventID: standupID, CategorySlug: "standup", Weight: 1, IsPrimary: true}}
+	snapshot.Events[1].Categories = []platform.EventCategory{{EventID: theatreID, CategorySlug: "theatre", Weight: 1, IsPrimary: true}}
+	input := validInput(city)
+	input.FirstIntent.UserID, input.SecondIntent.UserID = uuid.New(), uuid.New()
+	loader := &rankingProfileLoader{values: map[uuid.UUID]contracts.RankingPreferences{
+		input.FirstIntent.UserID: {CityID: city, InterestSlugs: []string{"standup"}, BudgetMaxMinor: 1000, UsualDayTypes: []string{"weekend"}, UsualTimeSlots: []string{"day"}, Version: 1},
+	}}
+	builder := profileBuilder(t, snapshot, loader)
+
+	preferred, err := builder.Build(context.Background(), input)
+	if err != nil || preferred.Candidates[0].EventID != standupID || preferred.Candidates[0].FeatureSnapshot["category_affinity"] <= 0 {
+		t.Fatalf("standup profile did not uplift standup: candidates=%+v err=%v", preferred.Candidates, err)
+	}
+	if !hasExplanation(preferred.Candidates[0], "profile_affinity") || hasExplanation(preferred.Candidates[1], "profile_affinity") {
+		t.Fatalf("profile explanation is not evidence-based: %+v", preferred.Candidates)
+	}
+
+	current := input
+	current.FirstIntent.CategorySlugs = []string{"theatre"}
+	current.SecondIntent.CategorySlugs = []string{"theatre"}
+	withCurrent, err := builder.Build(context.Background(), current)
+	if err != nil || withCurrent.Candidates[0].EventID != theatreID {
+		t.Fatalf("current theatre intent did not outrank old standup preference: candidates=%+v err=%v", withCurrent.Candidates, err)
+	}
+
+	loader.values[input.SecondIntent.UserID] = contracts.RankingPreferences{
+		CityID: city, InterestSlugs: []string{"theatre"}, BudgetMaxMinor: 1000, Version: 1,
+	}
+	split, err := builder.Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standup := candidateByID(t, split.Candidates, standupID)
+	if standup.Score.ParticipantScoreMin >= standup.Score.ParticipantScoreMean {
+		t.Fatalf("separate participant profiles were not preserved in group score: %+v", standup.Score)
+	}
+
+	repeated, err := builder.Build(context.Background(), input)
+	if err != nil || !reflect.DeepEqual(split, repeated) {
+		t.Fatalf("profile ranking is not deterministic: err=%v", err)
+	}
+	beforeFingerprint := split.InputFingerprint
+	changed := loader.values[input.FirstIntent.UserID]
+	changed.InterestSlugs = []string{"walks"}
+	changed.Version++
+	loader.values[input.FirstIntent.UserID] = changed
+	afterPreferenceChange, err := builder.Build(context.Background(), input)
+	if err != nil || afterPreferenceChange.InputFingerprint == beforeFingerprint {
+		t.Fatalf("relevant preference change did not change fingerprint: err=%v", err)
+	}
+}
+
+func TestMissingPermanentPreferencesPreserveBehavior(t *testing.T) {
+	city, venue := uuid.New(), uuid.New()
+	id := uuid.UUID{15: 1}
+	snapshot := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venue, CityID: city}}, Events: []catalog.Event{event(id, venue, "2026-09-20T13:00:00Z", 0, true, "published")}}
+	input := validInput(city)
+	input.FirstIntent.UserID, input.SecondIntent.UserID = uuid.New(), uuid.New()
+	withoutLoader, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingLoader, err := profileBuilder(t, snapshot, &rankingProfileLoader{values: map[uuid.UUID]contracts.RankingPreferences{}}).Build(context.Background(), input)
+	if err != nil || !reflect.DeepEqual(withoutLoader, missingLoader) {
+		t.Fatalf("missing profiles changed safe behavior: err=%v without=%+v with=%+v", err, withoutLoader, missingLoader)
+	}
+}
+
+func TestPermanentProfileFallbackUsesAllStoredFields(t *testing.T) {
+	city, venue, eventID := uuid.New(), uuid.New(), uuid.UUID{15: 1}
+	e := event(eventID, venue, "2026-09-20T13:00:00Z", 800, true, "published")
+	e.Categories = []platform.EventCategory{{EventID: eventID, CategorySlug: "standup", Weight: 1, IsPrimary: true}}
+	snapshot := catalog.Snapshot{City: platform.City{ID: city, Timezone: "UTC"}, Venues: []platform.Venue{{ID: venue, CityID: city}}, Events: []catalog.Event{e}}
+	input := validInput(city)
+	input.FirstIntent.UserID, input.SecondIntent.UserID = uuid.New(), uuid.New()
+	input.FirstIntent.TimeSlots, input.SecondIntent.TimeSlots = nil, nil
+	profile := contracts.RankingPreferences{
+		CityID: city, InterestSlugs: []string{"standup"}, BudgetMaxMinor: 2000,
+		UsualDayTypes: []string{"weekend"}, UsualTimeSlots: []string{"day"}, Version: 3,
+	}
+	loader := &rankingProfileLoader{values: map[uuid.UUID]contracts.RankingPreferences{
+		input.FirstIntent.UserID: profile, input.SecondIntent.UserID: profile,
+	}}
+	withProfile, err := profileBuilder(t, snapshot, loader).Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	features := withProfile.Candidates[0].FeatureSnapshot
+	for key, want := range map[string]float64{"category_affinity": .5, "time_quality": .5, "budget_headroom": .3} {
+		if math.Abs(features[key]-want) > 1e-6 {
+			t.Errorf("feature %s=%v, want %v", key, features[key], want)
+		}
+	}
+
+	wrongCity := profile
+	wrongCity.CityID = uuid.New()
+	loader.values[input.FirstIntent.UserID], loader.values[input.SecondIntent.UserID] = wrongCity, wrongCity
+	ignored, err := profileBuilder(t, snapshot, loader).Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignoredFeatures := ignored.Candidates[0].FeatureSnapshot
+	if ignoredFeatures["category_affinity"] != 0 || ignoredFeatures["time_quality"] != 0 || math.Abs(ignoredFeatures["budget_headroom"]-.2) > 1e-6 {
+		t.Fatalf("preferences from another city affected ranking: %+v", ignoredFeatures)
+	}
+	if ignored.InputFingerprint == withProfile.InputFingerprint {
+		t.Fatal("removing city-relevant preferences did not change fingerprint")
+	}
+}
+
+func hasExplanation(candidate contracts.Candidate, code string) bool {
+	for _, explanation := range candidate.Explanation {
+		if explanation.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func candidateByID(t *testing.T, candidates []contracts.Candidate, id uuid.UUID) contracts.Candidate {
+	t.Helper()
+	for _, candidate := range candidates {
+		if candidate.EventID == id {
+			return candidate
+		}
+	}
+	t.Fatalf("candidate %s not found", id)
+	return contracts.Candidate{}
 }
 
 func TestRankingDiversityCapAndFourCategoryCoverage(t *testing.T) {

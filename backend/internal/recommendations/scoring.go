@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
@@ -83,6 +84,10 @@ func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedInt
 	} else if budget > 0 {
 		headroom = clamp01(1 - price/budget)
 	}
+	if intent.profile.present && intent.profile.budget > 0 && price <= float64(intent.profile.budget) {
+		profileHeadroom := .5 * clamp01(1-price/float64(intent.profile.budget))
+		headroom = math.Max(headroom, profileHeadroom)
+	}
 	distance := 0.0
 	if intent.radius.enabled {
 		d := catalog.HaversineMeters(intent.radius.lat, intent.radius.lng, venue.Latitude, venue.Longitude)
@@ -94,13 +99,31 @@ func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedInt
 			distance = clamp01(1 - d/float64(intent.radius.meters))
 		}
 	}
+	timeQuality := boolFloat(len(intent.days) > 0 || len(intent.slots) > 0)
+	if timeQuality == 0 && profileTimeFit(event, intent.profile) {
+		timeQuality = .5
+	}
 	return participantFeatures{
+		categoryAffinity:         .5 * categoryFit(event, intent.profile.categories),
 		currentIntentCategoryFit: categoryFit(event, intent.categories),
-		timeQuality:              boolFloat(len(intent.days) > 0 || len(intent.slots) > 0),
+		timeQuality:              timeQuality,
 		budgetHeadroom:           headroom,
 		distanceQuality:          distance,
 		novelty:                  1,
 	}
+}
+
+func profileTimeFit(event catalog.Event, profile normalizedProfile) bool {
+	if !profile.present || (len(profile.days) == 0 && len(profile.slots) == 0) || !event.StartsAt.Valid {
+		return false
+	}
+	location, err := time.LoadLocation(event.Timezone)
+	if err != nil {
+		location = time.UTC
+	}
+	local := event.StartsAt.Time.In(location)
+	return (len(profile.days) == 0 || profile.days[dayType(local.Weekday())]) &&
+		(len(profile.slots) == 0 || profile.slots[timeSlot(local.Hour())])
 }
 
 func userScore(f participantFeatures) float64 {
@@ -145,6 +168,9 @@ func explanations(event catalog.Event, first, second normalizedIntent, a, b part
 	result := make([]contracts.Explanation, 0, 3)
 	if hasCategory(event, first.categories) && hasCategory(event, second.categories) {
 		result = append(result, contracts.Explanation{Code: "shared_category", Text: "Подходит по интересам"})
+	}
+	if (a.categoryAffinity+b.categoryAffinity)/2 > 0 && len(result) < 3 {
+		result = append(result, contracts.Explanation{Code: "profile_affinity", Text: "Учитывает постоянные предпочтения"})
 	}
 	if a.timeQuality > 0 && b.timeQuality > 0 {
 		result = append(result, contracts.Explanation{Code: "time_fit", Text: "Подходит по времени"})

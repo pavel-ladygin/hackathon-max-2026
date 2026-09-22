@@ -6,6 +6,21 @@ import (
 	"github.com/google/uuid"
 )
 
+// RankingPreferences is the provider-neutral permanent profile projection
+// consumed by Backend A ranking. It is never exposed in room responses.
+type RankingPreferences struct {
+	CityID         uuid.UUID
+	InterestSlugs  []string
+	BudgetMaxMinor int32
+	UsualDayTypes  []string
+	UsualTimeSlots []string
+	Version        int32
+}
+
+type RankingPreferencesLoader interface {
+	LoadRankingPreferences(context.Context, uuid.UUID) (RankingPreferences, bool, error)
+}
+
 // PoolBuilder is a pure, deterministic at-least-once operation: Backend B may
 // invoke it again with identical input after its surrounding transaction rolls
 // back or retries. It reads catalog/profile data and returns a snapshot, but

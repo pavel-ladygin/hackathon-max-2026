@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v1"
+	rankerVersion = "scoring-diversity-v2-profile"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
@@ -39,14 +40,22 @@ type Catalog interface {
 type PoolBuilder struct {
 	catalog        Catalog
 	tieBreakSecret []byte
+	profiles       contracts.RankingPreferencesLoader
 }
 
 // NewPoolBuilder returns a contracts.PoolBuilder backed by catalog.
-func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte) (*PoolBuilder, error) {
+func NewPoolBuilder(catalog Catalog, tieBreakSecret []byte, profiles ...contracts.RankingPreferencesLoader) (*PoolBuilder, error) {
 	if len(tieBreakSecret) < 32 {
 		return nil, errors.New("pool builder tie-break secret must be at least 32 bytes")
 	}
-	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...)}, nil
+	if len(profiles) > 1 {
+		return nil, errors.New("pool builder accepts at most one preferences loader")
+	}
+	var profileLoader contracts.RankingPreferencesLoader
+	if len(profiles) == 1 {
+		profileLoader = profiles[0]
+	}
+	return &PoolBuilder{catalog: catalog, tieBreakSecret: append([]byte(nil), tieBreakSecret...), profiles: profileLoader}, nil
 }
 
 var _ contracts.PoolBuilder = (*PoolBuilder)(nil)
@@ -72,6 +81,14 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	second, err := normalizeIntent(input.SecondIntent)
 	if err != nil {
 		return contracts.BuildResult{}, fmt.Errorf("invalid second intent: %w", err)
+	}
+	first.profile, err = b.loadProfile(ctx, input.CityID, input.FirstIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load first participant preferences: %w", err)
+	}
+	second.profile, err = b.loadProfile(ctx, input.CityID, input.SecondIntent.UserID)
+	if err != nil {
+		return contracts.BuildResult{}, fmt.Errorf("load second participant preferences: %w", err)
 	}
 	zone, err := time.LoadLocation(snapshot.City.Timezone)
 	if err != nil {
@@ -134,7 +151,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 	result := contracts.BuildResult{
 		Candidates:       candidates,
 		RankerVersion:    rankerVersion,
-		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first.radius, second.radius),
+		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first, second),
 	}
 	switch len(candidates) {
 	case 0:
@@ -151,6 +168,14 @@ type normalizedIntent struct {
 	categories              map[string]bool
 	budget                  int32
 	radius                  radiusConstraint
+	profile                 normalizedProfile
+}
+type normalizedProfile struct {
+	present                 bool
+	categories, days, slots map[string]bool
+	budget                  int32
+	version                 int32
+	digest                  string
 }
 type radiusConstraint struct {
 	enabled, hasLocation bool
@@ -203,6 +228,47 @@ func normalizeIntent(in contracts.ParticipantIntent) (normalizedIntent, error) {
 		}
 	}
 	return normalizedIntent{dates: dates, days: days, slots: slots, categories: normalizeCategories(in.CategorySlugs), exclusions: exclusions, budget: in.BudgetMaxMinor, radius: r}, nil
+}
+
+func (b *PoolBuilder) loadProfile(ctx context.Context, cityID, userID uuid.UUID) (normalizedProfile, error) {
+	if b.profiles == nil || userID == uuid.Nil {
+		return normalizedProfile{}, nil
+	}
+	value, found, err := b.profiles.LoadRankingPreferences(ctx, userID)
+	if err != nil {
+		return normalizedProfile{}, err
+	}
+	if !found || value.CityID != cityID {
+		return normalizedProfile{}, nil
+	}
+	categories := normalizeCategories(value.InterestSlugs)
+	days := normalizedSet(value.UsualDayTypes)
+	slots := normalizedSet(value.UsualTimeSlots)
+	type digestPayload struct {
+		City, Categories, Days, Slots string
+		Budget, Version               int32
+	}
+	payload := digestPayload{
+		City: value.CityID.String(), Categories: strings.Join(sortedKeys(categories), ","),
+		Days: strings.Join(sortedKeys(days), ","), Slots: strings.Join(sortedKeys(slots), ","),
+		Budget: value.BudgetMaxMinor, Version: value.Version,
+	}
+	encoded, _ := json.Marshal(payload)
+	digest := sha256.Sum256(encoded)
+	return normalizedProfile{
+		present: true, categories: categories, days: days, slots: slots,
+		budget: value.BudgetMaxMinor, version: value.Version, digest: hex.EncodeToString(digest[:]),
+	}, nil
+}
+
+func normalizedSet(values []string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		if normalized := strings.ToLower(strings.TrimSpace(value)); normalized != "" {
+			result[normalized] = true
+		}
+	}
+	return result
 }
 
 func enumSet(values []string, valid map[string]bool) (map[string]bool, error) {
@@ -350,7 +416,7 @@ func uuidSet(values []uuid.UUID) map[uuid.UUID]bool {
 	return r
 }
 
-func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, tieBreakSecret []byte, radii ...radiusConstraint) string {
+func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string, tieBreakSecret []byte, first, second normalizedIntent) string {
 	type radiusFingerprint struct {
 		Meters    int32   `json:"m"`
 		Latitude  float64 `json:"a"`
@@ -369,6 +435,8 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		Dates, Days, Slots, Exclusions, Previous    []string
 		Budget                                      int32
 		Radii                                       []radiusFingerprint
+		FirstProfileVersion, SecondProfileVersion   int32
+		FirstProfileDigest, SecondProfileDigest     string
 	}
 	previous := make([]string, 0, len(input.PreviousEventIDs))
 	for id := range uuidSet(input.PreviousEventIDs) {
@@ -390,8 +458,10 @@ func fingerprint(input contracts.BuildInput, c hardConstraints, timezone string,
 		SecondTimeConstrained: len(input.SecondIntent.DayTypes) > 0 || len(input.SecondIntent.TimeSlots) > 0,
 		Dates:                 sortedKeys(c.dates), Days: sortedKeys(c.days), Slots: sortedKeys(c.slots),
 		Exclusions: sortedKeys(c.exclusions), Previous: previous, Budget: c.budget,
+		FirstProfileVersion: first.profile.version, SecondProfileVersion: second.profile.version,
+		FirstProfileDigest: first.profile.digest, SecondProfileDigest: second.profile.digest,
 	}
-	for _, r := range radii {
+	for _, r := range []radiusConstraint{first.radius, second.radius} {
 		if r.enabled {
 			p.Radii = append(p.Radii, radiusFingerprint{r.meters, r.lat, r.lng})
 		}
