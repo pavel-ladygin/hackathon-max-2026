@@ -4,8 +4,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
 import { eventCategoryLabel, eventImage } from '../../shared/lib/events'
+import { withMinimumDuration } from '../../shared/lib/async'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { Button, Empty, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
+import { Button, Empty, FavoriteButton, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
 export function EventPage() {
@@ -15,7 +16,7 @@ export function EventPage() {
   const save = useSetSavedEvent()
   const behaviorId = useRef(crypto.randomUUID())
   const ticket = useMutation({
-    mutationFn: () => apiClient.recordTicketClick(eventId!, { source: 'event_detail' }),
+    mutationFn: () => withMinimumDuration(apiClient.recordTicketClick(eventId!, { source: 'event_detail' }), 140),
     onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url),
   })
 
@@ -30,8 +31,8 @@ export function EventPage() {
   const item = event.data
   return (
     <PageShell>
-      <TopBar title="Событие" onBack={() => navigate(-1)} right={event.data ? <button type="button" className={styles.detailSaveButton} aria-label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} aria-pressed={event.data.saved} disabled={save.isPending} onClick={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })}>{event.data.saved ? '♥' : '♡'}</button> : null} />
-      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} />
+      <TopBar prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} />
+      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
         <h1 className={styles.title}>{item.title}</h1>
@@ -46,7 +47,7 @@ export function EventPage() {
         <section className={styles.section}><h2 className={styles.sectionTitle}>О событии</h2><p className={styles.bodyCopy}>{item.description}</p></section>
         <div className={styles.explain}><strong>Почему вам подходит</strong>{item.reasons.map((reason) => <span key={reason.code}>✓ {reason.text}</span>)}</div>
         {ticket.isError ? <InlineNotice tone="danger">Не удалось открыть билетный сервис. Можно повторить попытку.</InlineNotice> : null}
-        <div className={styles.footer}><p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" disabled={!item.ticketAvailable || item.status !== 'published' || ticket.isPending} onClick={() => ticket.mutate()}>{ticket.isPending ? 'Открываем…' : item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button></div>
+        <div className={styles.footer}><p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" disabled={!item.ticketAvailable || item.status !== 'published'} onClick={() => ticket.mutate()}>{item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button></div>
       </PageContent>
     </PageShell>
   )

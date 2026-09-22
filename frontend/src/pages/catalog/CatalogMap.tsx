@@ -4,10 +4,15 @@ import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../shared/api/client'
 import type { EventCard } from '../../shared/api/types'
 import { Empty, Loading } from '../../shared/ui'
-import styles from '../pages.module.css'
-import { loadYandexMaps, type YandexMap } from './yandexMaps'
+import styles from './catalogMap.module.css'
+import { createEventMarkerElement } from './eventMarker'
+import { loadYandexMaps, markerSizeForZoom, type YandexMap, type YandexMapUpdateEvent } from './yandexMaps'
 
 const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
+
+function readZoom(event: YandexMapUpdateEvent) {
+  return event.location?.zoom ?? event.camera?.zoom
+}
 
 export function CatalogMap({ events }: { events: EventCard[] }) {
   const navigate = useNavigate()
@@ -28,27 +33,44 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
     void loadYandexMaps(apiKey).then((ymaps3) => {
       if (cancelled || !mapNode.current) return
 
-      const { YMap, YMapDefaultFeaturesLayer, YMapDefaultSchemeLayer, YMapMarker } = ymaps3
+      const { YMap, YMapDefaultFeaturesLayer, YMapDefaultSchemeLayer, YMapListener, YMapMarker } = ymaps3
       const nextMap = new YMap(mapNode.current, { location: { center: MOSCOW_CENTER, zoom: 11 } })
       nextMap.addChild(new YMapDefaultSchemeLayer())
       nextMap.addChild(new YMapDefaultFeaturesLayer())
 
-      for (const event of points) {
+      const markers: HTMLElement[] = []
+
+      for (const [index, event] of points.entries()) {
         const { latitude, longitude } = event.venue
+        if (latitude == null || longitude == null) continue
 
-        if (latitude == null || longitude == null) {
-          continue
-        }
+        const marker = createEventMarkerElement(event, () => {
+          for (const item of markers) item.dataset.active = 'false'
+          marker.dataset.active = 'true'
+          navigate(`/events/${event.id}`)
+        }, Math.min(index * 20, 120))
 
-        const marker = document.createElement('button')
-        marker.type = 'button'
-        marker.className = styles.mapMarker
-        marker.title = event.title
-        marker.setAttribute('aria-label', `Открыть событие «${event.title}»`)
-        marker.textContent = '•'
-        marker.addEventListener('click', () => navigate(`/events/${event.id}`))
-        nextMap.addChild(new YMapMarker({ coordinates: [longitude, latitude] }, marker))
+        markers.push(marker)
+        nextMap.addChild(
+          new YMapMarker({ coordinates: [longitude, latitude] }, marker),
+        )
       }
+
+      const updateMarkers = (update: YandexMapUpdateEvent) => {
+        const zoom = readZoom(update)
+        if (zoom === undefined || Number.isNaN(zoom)) return
+        const size = markerSizeForZoom(zoom)
+        for (const marker of markers) {
+          marker.style.setProperty('--marker-size', `${size}px`)
+          const image = marker.querySelector('img')
+          if (image) {
+            image.width = size
+            image.height = size
+          }
+        }
+      }
+      nextMap.addChild(new YMapListener({ onUpdate: updateMarkers }))
+      updateMarkers({ location: { zoom: 11 } })
 
       map.current = nextMap
     }).catch(() => {
@@ -74,6 +96,6 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
   }
 
   return <div className={styles.mapWrap} aria-label="Карта событий">
-    <div ref={mapNode} className={styles.map} role="application" aria-label="Яндекс Карта событий" />
+    <div ref={mapNode} className={styles.map} role="region" aria-label="Яндекс Карта событий" />
   </div>
 }
