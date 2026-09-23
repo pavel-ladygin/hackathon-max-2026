@@ -24,6 +24,7 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		return providers.NormalizedEvent{}, false
 	}
 	registrationURL := ticketURL(event.URL)
+	status, providerActive := normalizeLifecycle(event)
 	venueName := strings.TrimSpace(event.Location.Address)
 	if venueName == "" {
 		venueName = strings.TrimSpace(event.Organization.Name)
@@ -33,9 +34,12 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 	}
 
 	normalized := providers.NormalizedEvent{
-		Source:      timepadSource,
-		ExternalID:  strconv.FormatInt(event.ID, 10),
-		Title:       title,
+		Source:     timepadSource,
+		ExternalID: strconv.FormatInt(event.ID, 10),
+		Title:      title,
+		// Timepad's description_short is currently the only requested text
+		// source. Subtitle and Description are therefore aliases, not independent
+		// provider fields.
 		Subtitle:    optionalString(event.DescriptionShort),
 		Description: strings.TrimSpace(event.DescriptionShort),
 		Venue: providers.NormalizedVenue{
@@ -49,7 +53,8 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		Currency:        "RUB",
 		TicketURL:       registrationURL,
 		TicketAvailable: registrationURL != nil && event.RegistrationData.IsRegistrationOpen,
-		Status:          normalizeStatus(event),
+		Status:          status,
+		ProviderActive:  providerActive,
 		AgeRating:       ageRating(event.AgeLimit),
 		Categories:      normalizeCategories(event.Categories.Values),
 		Images:          normalizeImages(event.PosterImage),
@@ -68,16 +73,17 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 	return normalized, true
 }
 
-func normalizeStatus(event eventDTO) string {
+func normalizeLifecycle(event eventDTO) (status string, providerActive bool) {
 	accessStatus := strings.ToLower(strings.TrimSpace(event.AccessStatus))
 	moderationStatus := strings.ToLower(strings.TrimSpace(event.ModerationStatus))
-	if (accessStatus != "" && accessStatus != "public") || moderationStatus == "hidden" {
-		return providers.EventStatusCancelled
-	}
-	if !event.RegistrationData.IsRegistrationOpen {
-		return providers.EventStatusSoldOut
-	}
-	return providers.EventStatusPublished
+
+	// Neither a closed registration nor a non-public visibility state proves
+	// that the event was sold out or cancelled. Timepad does not expose an
+	// unambiguous lifecycle signal in these fields, so the lifecycle remains
+	// published while visibility controls current product eligibility.
+	accessActive := accessStatus == "" || accessStatus == "public"
+	moderationActive := moderationStatus == "" || moderationStatus == "shown" || moderationStatus == "featured"
+	return providers.EventStatusPublished, accessActive && moderationActive
 }
 
 func parseTime(raw string) (time.Time, error) {

@@ -37,13 +37,20 @@ type NormalizedEvent struct {
 	// TicketAvailable means the provider CTA is currently usable according to
 	// facts exposed by that provider; it is not a universal inventory guarantee.
 	TicketAvailable bool
-	Status          string
-	AgeRating       *string
-	Indoor          *bool
-	LoudnessLevel   *string
-	PublishedAt     *time.Time
-	Categories      []NormalizedCategory
-	Images          []NormalizedImage
+	// Status contains only a provider-confirmed event lifecycle state. Access
+	// restrictions and registration availability must not be encoded as a
+	// cancellation or sold-out lifecycle state.
+	Status string
+	// ProviderActive controls whether the provider record is eligible for the
+	// current product flow. Persistence and read-side enforcement are added with
+	// provider reconciliation; keeping it distinct here prevents lifecycle lies.
+	ProviderActive bool
+	AgeRating      *string
+	Indoor         *bool
+	LoudnessLevel  *string
+	PublishedAt    *time.Time
+	Categories     []NormalizedCategory
+	Images         []NormalizedImage
 }
 
 type NormalizedVenue struct {

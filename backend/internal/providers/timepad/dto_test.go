@@ -54,38 +54,78 @@ func TestRequestedOptionalFieldsNormalizeIntoProviderEvent(t *testing.T) {
 	if len(normalized.Images) != 1 || len(normalized.Categories) != 1 || !normalized.Categories[0].IsPrimary {
 		t.Fatalf("images/categories = %+v / %+v", normalized.Images, normalized.Categories)
 	}
-	if normalized.Status != providers.EventStatusPublished || !normalized.TicketAvailable {
-		t.Fatalf("availability = status %q, ticket_available %t", normalized.Status, normalized.TicketAvailable)
+	if normalized.Status != providers.EventStatusPublished || !normalized.TicketAvailable || !normalized.ProviderActive {
+		t.Fatalf("availability = status %q, ticket_available %t, provider_active %t", normalized.Status, normalized.TicketAvailable, normalized.ProviderActive)
 	}
 }
 
-func TestNormalizeProviderLifecycleStatus(t *testing.T) {
+func TestNormalizeProviderLifecycle(t *testing.T) {
 	tests := []struct {
 		name         string
 		access       string
 		moderation   string
 		registration bool
-		want         string
+		wantActive   bool
+		wantTickets  bool
 	}{
-		{name: "public open", access: "public", moderation: "featured", registration: true, want: providers.EventStatusPublished},
-		{name: "legacy missing statuses", registration: true, want: providers.EventStatusPublished},
-		{name: "registration closed", access: "public", moderation: "shown", want: providers.EventStatusSoldOut},
-		{name: "draft", access: "draft", registration: true, want: providers.EventStatusCancelled},
-		{name: "private", access: "private", registration: true, want: providers.EventStatusCancelled},
-		{name: "link only", access: "link_only", registration: true, want: providers.EventStatusCancelled},
-		{name: "hidden moderation", access: "public", moderation: "hidden", registration: true, want: providers.EventStatusCancelled},
-		{name: "unknown access fails closed", access: "future_status", registration: true, want: providers.EventStatusCancelled},
+		{name: "public open", access: "public", moderation: "featured", registration: true, wantActive: true, wantTickets: true},
+		{name: "public registration closed", access: "public", moderation: "shown", wantActive: true},
+		{name: "legacy missing statuses open", registration: true, wantActive: true, wantTickets: true},
+		{name: "legacy missing statuses closed", wantActive: true},
+		{name: "private", access: "private", registration: true, wantTickets: true},
+		{name: "link only", access: "link_only", registration: true, wantTickets: true},
+		{name: "hidden access", access: "hidden", registration: true, wantTickets: true},
+		{name: "hidden moderation", access: "public", moderation: "hidden", registration: true, wantTickets: true},
+		{name: "unknown access fails closed", access: "future_status", registration: true, wantTickets: true},
+		{name: "unknown moderation fails closed", access: "public", moderation: "future_status", registration: true, wantTickets: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			event := eventDTO{
+				ID: 42, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00", URL: "https://timepad.ru/event/42",
 				AccessStatus: test.access, ModerationStatus: test.moderation,
 				RegistrationData: registrationDataDTO{IsRegistrationOpen: test.registration},
 			}
-			if got := normalizeStatus(event); got != test.want {
-				t.Fatalf("status = %q, want %q", got, test.want)
+			normalized, ok := normalizeEvent(event)
+			if !ok {
+				t.Fatal("valid lifecycle fixture was rejected")
+			}
+			if normalized.Status != providers.EventStatusPublished {
+				t.Fatalf("status = %q, want published", normalized.Status)
+			}
+			if normalized.ProviderActive != test.wantActive || normalized.TicketAvailable != test.wantTickets {
+				t.Fatalf("provider_active/ticket_available = %t/%t, want %t/%t", normalized.ProviderActive, normalized.TicketAvailable, test.wantActive, test.wantTickets)
 			}
 		})
+	}
+}
+
+func TestNormalizeInvalidCTAIsUnavailable(t *testing.T) {
+	event := eventDTO{
+		ID: 42, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00", URL: "https://attacker.example/event/42",
+		AccessStatus: "public", ModerationStatus: "shown",
+		RegistrationData: registrationDataDTO{IsRegistrationOpen: true},
+	}
+	normalized, ok := normalizeEvent(event)
+	if !ok {
+		t.Fatal("event with invalid CTA was rejected")
+	}
+	if normalized.TicketURL != nil || normalized.TicketAvailable || !normalized.ProviderActive || normalized.Status != providers.EventStatusPublished {
+		t.Fatalf("unexpected lifecycle/CTA: %+v", normalized)
+	}
+}
+
+func TestNormalizeVenuePrefersAddressOverOrganization(t *testing.T) {
+	event := eventDTO{
+		ID: 42, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00",
+		Location: locationDTO{Address: "Venue address"}, Organization: organizationDTO{Name: "Organizer"},
+	}
+	normalized, ok := normalizeEvent(event)
+	if !ok {
+		t.Fatal("valid venue fixture was rejected")
+	}
+	if normalized.Venue.Name != "Venue address" || normalized.Venue.Address != "Venue address" {
+		t.Fatalf("venue = %+v", normalized.Venue)
 	}
 }
 

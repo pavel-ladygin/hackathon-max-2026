@@ -64,7 +64,7 @@ func TestNormalizePaidEvent(t *testing.T) {
 	if event.Venue.ExternalID != "7" || event.Venue.Name != "Venue" || event.Venue.Address != "Street 1" || event.Venue.Metro == nil || *event.Venue.Metro != "Metro" {
 		t.Fatalf("unexpected venue: %+v", event.Venue)
 	}
-	if event.EndsAt == nil || event.PublishedAt == nil || event.Status != "published" || event.Timezone != "Europe/Moscow" {
+	if event.EndsAt == nil || event.PublishedAt == nil || event.Status != "published" || !event.ProviderActive || event.Timezone != "Europe/Moscow" {
 		t.Fatalf("unexpected dates/status: %+v", event)
 	}
 }

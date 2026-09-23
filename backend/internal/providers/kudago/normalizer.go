@@ -81,20 +81,21 @@ func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []provid
 	}
 
 	base := providers.NormalizedEvent{
-		Source:      kudagoSource,
-		IsDemo:      false,
-		Title:       title,
-		Subtitle:    subtitle(event),
-		Description: description(event),
-		Venue:       normalizeVenue(*event.Place),
-		Timezone:    moscowZone,
-		Currency:    "RUB",
-		TicketURL:   providerPageURL(event.SiteURL),
-		Status:      defaultStatus,
-		AgeRating:   ageRating(string(event.AgeRestriction)),
-		PublishedAt: unixPointer(event.PublicationDate),
-		Categories:  normalizeCategories(event.Categories),
-		Images:      normalizeImages(event.Images),
+		Source:         kudagoSource,
+		IsDemo:         false,
+		Title:          title,
+		Subtitle:       subtitle(event),
+		Description:    description(event),
+		Venue:          normalizeVenue(*event.Place),
+		Timezone:       moscowZone,
+		Currency:       "RUB",
+		TicketURL:      providerPageURL(event.SiteURL),
+		Status:         defaultStatus,
+		ProviderActive: true,
+		AgeRating:      ageRating(string(event.AgeRestriction)),
+		PublishedAt:    unixPointer(event.PublicationDate),
+		Categories:     normalizeCategories(event.Categories),
+		Images:         normalizeImages(event.Images),
 	}
 	// KudaGo exposes only site_url for its event page, with no ticket inventory
 	// or registration-open field. For this provider availability therefore means
