@@ -77,17 +77,22 @@ func scoreEvent(event catalog.Event, venue platform.Venue, first, second normali
 }
 
 func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedIntent) participantFeatures {
-	price := float64(event.PriceFromMinor.Int32)
 	budget := float64(intent.budget)
 	headroom := 0.0
-	if budget == 0 && price == 0 {
-		headroom = 1
-	} else if budget > 0 {
-		headroom = clamp01(1 - price/budget)
-	}
-	if intent.profile.present && intent.profile.budget > 0 && price <= float64(intent.profile.budget) {
-		profileHeadroom := .5 * clamp01(1-price/float64(intent.profile.budget))
-		headroom = math.Max(headroom, profileHeadroom)
+
+	if event.PriceFromMinor.Valid {
+		price := float64(event.PriceFromMinor.Int32)
+
+		if budget == 0 && price == 0 {
+			headroom = 1
+		} else if budget > 0 {
+			headroom = clamp01(1 - price/budget)
+		}
+
+		if intent.profile.present && intent.profile.budget > 0 && price <= float64(intent.profile.budget) {
+			profileHeadroom := .5 * clamp01(1-price/float64(intent.profile.budget))
+			headroom = math.Max(headroom, profileHeadroom)
+		}
 	}
 	distance := 0.0
 	if intent.radius.enabled {

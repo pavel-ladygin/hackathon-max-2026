@@ -85,7 +85,7 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 			t.Fatalf("candidate %s lacks ranking output: %+v", candidate.EventID, candidate)
 		}
 	}
-	if result.RankerVersion != "scoring-diversity-v4-series-dedupe" {
+	if result.RankerVersion != "scoring-diversity-v5-unknown-price" {
 		t.Fatalf("ranker version = %q", result.RankerVersion)
 	}
 	slices.Reverse(fake.snapshot.Events)
@@ -194,8 +194,8 @@ func TestPoolBuilderExclusionsUnionAndBudgetSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Candidates) != 1 || got.Candidates[0].EventID != free.ID {
-		t.Fatalf("eligible free event was not retained: %+v", got.Candidates)
+	if len(got.Candidates) != 2 || !contains(candidateIDs(got.Candidates), free.ID) || !contains(candidateIDs(got.Candidates), nullPrice.ID) {
+		t.Fatalf("eligible free and unknown-price events were not retained: %+v", got.Candidates)
 	}
 }
 
@@ -473,7 +473,7 @@ func TestPoolBuilderIndividualConstraints(t *testing.T) {
 		}, 1},
 		{"second budget is binding", func(f *fixture) { f.input.FirstIntent.BudgetMaxMinor = 2000; f.input.SecondIntent.BudgetMaxMinor = 999 }, 0},
 		{"free at zero budget", func(f *fixture) { f.data.Events[0].PriceFromMinor.Int32 = 0; f.input.SecondIntent.BudgetMaxMinor = 0 }, 1},
-		{"unknown price", func(f *fixture) { f.data.Events[0].PriceFromMinor.Valid = false }, 0},
+		{"unknown price", func(f *fixture) { f.data.Events[0].PriceFromMinor.Valid = false }, 1},
 		{"sold out", func(f *fixture) { f.data.Events[0].Status = "sold_out" }, 0},
 		{"cancelled", func(f *fixture) { f.data.Events[0].Status = "cancelled" }, 0},
 		{"draft", func(f *fixture) { f.data.Events[0].Status = "draft" }, 0},

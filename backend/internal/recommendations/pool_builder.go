@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v4-series-dedupe"
+	rankerVersion = "scoring-diversity-v5-unknown-price"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
@@ -449,8 +449,10 @@ func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations
 	if !event.StartsAt.Time.After(referenceTime) {
 		return false
 	}
-	if !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
-		return false
+	if event.PriceFromMinor.Valid {
+		if event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
+			return false
+		}
 	}
 	local := event.StartsAt.Time.In(zone)
 	if !c.dates[local.Format(time.DateOnly)] || !c.days[dayType(local.Weekday())] || !c.slots[timeSlot(local.Hour())] {

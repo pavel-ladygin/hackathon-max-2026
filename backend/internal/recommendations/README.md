@@ -7,11 +7,12 @@ frozen `contracts.BuildInput`, owns pool persistence and room lifecycle, while t
 package reads one coherent catalog snapshot and Backend A personalization data.
 
 Both participants' A3 hard constraints apply before ranking. Event start time uses
-the city timezone. Eligibility requires a published event, an available ticket,
-and a known price within the joint budget. Requested metro proximity with no city
+the city timezone. Eligibility requires a published event and an available ticket.
+Known prices must be within the joint budget; events with unknown prices remain
+eligible but receive no budget-fit score. Requested metro proximity with no city
 metro data fails closed. Earlier pool events are excluded before ranking.
 
-A4 ranks all eligible events as `scoring-diversity-v3-behavior`. The group score combines
+A4 ranks all eligible events as `scoring-diversity-v5-unknown-price`. The group score combines
 the lower participant score (65%) and their mean (35%). Participant scores use
 category affinity, current category fit, time quality, budget headroom, distance
 quality, novelty, popularity, and a small behavioral category adjustment. Permanent
