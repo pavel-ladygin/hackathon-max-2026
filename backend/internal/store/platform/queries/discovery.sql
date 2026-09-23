@@ -4,7 +4,7 @@
 -- name: SearchDiscoveryEventCards :many
 WITH base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at, e.timezone, e.price_from_minor,
-           e.currency, v.name AS venue_name,
+           e.currency, v.name AS venue_name, v.latitude, v.longitude,
            e.starts_at AT TIME ZONE e.timezone AS local_starts_at,
            CASE WHEN sqlc.narg('latitude')::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL
                 ELSE 6371000.0 * 2 * asin(sqrt(least(1.0,
@@ -34,7 +34,7 @@ WITH base AS (
 )
 SELECT f.id, f.title, f.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = f.id AND ec.is_primary) AS category_slug,
-       f.starts_at, f.timezone, f.venue_name, f.distance_m, f.price_from_minor, f.currency,
+       f.starts_at, f.timezone, f.venue_name, f.latitude, f.longitude, f.distance_m, f.price_from_minor, f.currency,
        coalesce(image.url, '') AS image_url,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = f.id) AS saved
 FROM filtered f

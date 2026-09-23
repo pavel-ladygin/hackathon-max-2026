@@ -820,22 +820,24 @@ type ErrorResponse_Error_Details struct {
 
 // EventCard defines model for EventCard.
 type EventCard struct {
-	CategorySlug   CategorySlug              `json:"category_slug"`
-	Currency       EventCardCurrency         `json:"currency"`
-	DateLabel      string                    `json:"date_label"`
-	DistanceLabel  nullable.Nullable[string] `json:"distance_label,omitempty"`
-	DistanceM      nullable.Nullable[int]    `json:"distance_m,omitempty"`
-	Id             openapi_types.UUID        `json:"id"`
-	ImageUrl       nullable.Nullable[string] `json:"image_url"`
-	PriceFromMinor nullable.Nullable[int]    `json:"price_from_minor"`
-	PriceLabel     string                    `json:"price_label"`
-	Reasons        []RecommendationReason    `json:"reasons"`
-	Saved          bool                      `json:"saved"`
-	StartsAt       time.Time                 `json:"starts_at"`
-	Subtitle       nullable.Nullable[string] `json:"subtitle,omitempty"`
-	Timezone       string                    `json:"timezone"`
-	Title          string                    `json:"title"`
-	VenueName      string                    `json:"venue_name"`
+	CategorySlug   CategorySlug               `json:"category_slug"`
+	Currency       EventCardCurrency          `json:"currency"`
+	DateLabel      string                     `json:"date_label"`
+	DistanceLabel  nullable.Nullable[string]  `json:"distance_label,omitempty"`
+	DistanceM      nullable.Nullable[int]     `json:"distance_m,omitempty"`
+	Id             openapi_types.UUID         `json:"id"`
+	ImageUrl       nullable.Nullable[string]  `json:"image_url"`
+	Latitude       nullable.Nullable[float64] `json:"latitude,omitempty"`
+	Longitude      nullable.Nullable[float64] `json:"longitude,omitempty"`
+	PriceFromMinor nullable.Nullable[int]     `json:"price_from_minor"`
+	PriceLabel     string                     `json:"price_label"`
+	Reasons        []RecommendationReason     `json:"reasons"`
+	Saved          bool                       `json:"saved"`
+	StartsAt       time.Time                  `json:"starts_at"`
+	Subtitle       nullable.Nullable[string]  `json:"subtitle,omitempty"`
+	Timezone       string                     `json:"timezone"`
+	Title          string                     `json:"title"`
+	VenueName      string                     `json:"venue_name"`
 }
 
 // EventCardCurrency defines model for EventCard.Currency.

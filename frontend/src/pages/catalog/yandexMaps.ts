@@ -7,6 +7,7 @@ export function markerSizeForZoom(zoom: number) {
 
 export interface YandexMap {
   addChild(child: unknown): YandexMap
+  removeChild(child: unknown): YandexMap
   destroy(): void
 }
 
@@ -19,8 +20,18 @@ interface YandexMarkerConstructor {
 }
 
 export interface YandexMapUpdateEvent {
-  location?: { zoom?: number }
-  camera?: { zoom?: number }
+  location?: { center?: YandexCoordinates; zoom?: number }
+  camera?: { center?: YandexCoordinates; zoom?: number }
+}
+
+export interface YandexCamera { center: YandexCoordinates; zoom: number }
+
+/** Approximate the visible viewport's half-diagonal and clamp to the search API's 50 km limit. */
+export function radiusForViewport(zoom: number, width: number, height: number) {
+  const safeZoom = Math.min(22, Math.max(0, zoom))
+  const halfDiagonalPixels = Math.hypot(Math.max(1, width), Math.max(1, height)) / 2
+  const metersPerPixel = 40_075_000 / (256 * 2 ** safeZoom)
+  return Math.round(Math.min(50_000, Math.max(1_000, halfDiagonalPixels * metersPerPixel)))
 }
 
 interface YandexMapListenerOptions {

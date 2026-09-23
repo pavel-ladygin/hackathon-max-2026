@@ -53,6 +53,8 @@ type Card struct {
 	Timezone       string
 	DateLabel      string
 	VenueName      string
+	Latitude       *float64
+	Longitude      *float64
 	DistanceMeters *int
 	DistanceLabel  *string
 	PriceFromMinor *int

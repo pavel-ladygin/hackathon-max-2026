@@ -24,6 +24,8 @@ vi.mock('../../features/discovery/queries', () => ({
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
+vi.mock('./CatalogMap', () => ({ CatalogMap: () => <div aria-label="map-placeholder" /> }))
+
 function renderCatalog() {
   return render(<MemoryRouter><CatalogPage /></MemoryRouter>)
 }
@@ -137,5 +139,19 @@ describe('CatalogPage search', () => {
     if (!card) throw new Error('Event card does not reserve space for its favorite control')
     expect(card.className).toContain('eventCardWithSave')
     expect(card.querySelector('strong')).toHaveTextContent('Jazz evening')
+  })
+
+  it('shows pagination only in list view', async () => {
+    resultState = { ...defaultResult, hasNextPage: true }
+    renderCatalog()
+
+    expect(screen.getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Карта' }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByLabelText('map-placeholder')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Показать ещё' })).not.toBeInTheDocument()
   })
 })

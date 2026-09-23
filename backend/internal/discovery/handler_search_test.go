@@ -87,9 +87,10 @@ func TestSearchInputRejectsInvalidParameters(t *testing.T) {
 func TestSearchHandlerReturnsPageAndMapsResponse(t *testing.T) {
 	user, city, eventID := uuid.New(), uuid.New(), uuid.New()
 	price, distance := 0, 700
+	latitude, longitude := 55.75, 37.61
 	next := Cursor{StartsAt: time.Date(2026, 9, 21, 18, 0, 0, 0, time.UTC), EventID: uuid.New(), FilterHash: "hash"}
 	provider := &fakeSearchProvider{encoded: "next-signed", page: Page{Total: 1, NextCursor: &next, Items: []Card{{
-		ID: eventID, Title: "Концерт", CategorySlug: "concerts", StartsAt: next.StartsAt, Timezone: "Europe/Moscow", DateLabel: "21 сентября", VenueName: "Клуб", PriceFromMinor: &price, Currency: "RUB", PriceLabel: "Бесплатно", DistanceMeters: &distance, Saved: true, Reasons: []Reason{{Code: "popular", Text: "Популярно"}},
+		ID: eventID, Title: "Концерт", CategorySlug: "concerts", StartsAt: next.StartsAt, Timezone: "Europe/Moscow", DateLabel: "21 сентября", VenueName: "Клуб", Latitude: &latitude, Longitude: &longitude, PriceFromMinor: &price, Currency: "RUB", PriceLabel: "Бесплатно", DistanceMeters: &distance, Saved: true, Reasons: []Reason{{Code: "popular", Text: "Популярно"}},
 	}}}}
 	res := serveSearch(provider, &fakeSearchCities{city: city}, &user, "/api/v1/events/search?free_only=true")
 	if res.Code != http.StatusOK {
@@ -103,6 +104,8 @@ func TestSearchHandlerReturnsPageAndMapsResponse(t *testing.T) {
 			ID             uuid.UUID `json:"id"`
 			PriceFromMinor *int      `json:"price_from_minor"`
 			DistanceM      *int      `json:"distance_m"`
+			Latitude       *float64  `json:"latitude"`
+			Longitude      *float64  `json:"longitude"`
 		} `json:"items"`
 		AppliedFilters map[string]interface{} `json:"applied_filters"`
 		TotalEstimate  int                    `json:"total_estimate"`
@@ -111,7 +114,7 @@ func TestSearchHandlerReturnsPageAndMapsResponse(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Items) != 1 || body.Items[0].ID != eventID || body.Items[0].PriceFromMinor == nil || *body.Items[0].PriceFromMinor != 0 || body.Items[0].DistanceM == nil || *body.Items[0].DistanceM != distance || body.TotalEstimate != 1 || body.NextCursor == nil || *body.NextCursor != "next-signed" || body.AppliedFilters["city_id"] != city.String() || body.AppliedFilters["free_only"] != true {
+	if len(body.Items) != 1 || body.Items[0].ID != eventID || body.Items[0].PriceFromMinor == nil || *body.Items[0].PriceFromMinor != 0 || body.Items[0].DistanceM == nil || *body.Items[0].DistanceM != distance || body.Items[0].Latitude == nil || *body.Items[0].Latitude != latitude || body.Items[0].Longitude == nil || *body.Items[0].Longitude != longitude || body.TotalEstimate != 1 || body.NextCursor == nil || *body.NextCursor != "next-signed" || body.AppliedFilters["city_id"] != city.String() || body.AppliedFilters["free_only"] != true {
 		t.Fatalf("response = %#v", body)
 	}
 }

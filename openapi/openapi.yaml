@@ -1070,6 +1070,16 @@ components:
           example: 19 сентября, 19:30
         venue_name:
           type: string
+        latitude:
+          type:
+          - number
+          - 'null'
+          format: double
+        longitude:
+          type:
+          - number
+          - 'null'
+          format: double
         distance_m:
           type:
           - integer
