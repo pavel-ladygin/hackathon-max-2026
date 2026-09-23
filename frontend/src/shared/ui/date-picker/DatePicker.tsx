@@ -159,12 +159,18 @@ export function DatePicker({ id, label, value = null, onChange, min, max, disabl
               <span className={styles.sheetEyebrow}>{label}</span>
               <strong>{draft ? dateLabel(draft) : "Выберите дату"}</strong>
             </div>
-            <button type="button" className={styles.close} aria-label="Закрыть календарь" onClick={close}>×</button>
+            <button type="button" className={styles.close} aria-label="Закрыть календарь" onClick={close}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </div>
           <div className={styles.monthNav}>
-            <button type="button" className={styles.navButton} aria-label="Предыдущий месяц" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+            <button type="button" className={styles.navButton} aria-label="Предыдущий месяц" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
             <strong>{MONTH_FORMATTER.format(month)}</strong>
-            <button type="button" className={styles.navButton} aria-label="Следующий месяц" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+            <button type="button" className={styles.navButton} aria-label="Следующий месяц" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
           </div>
           <div className={styles.weekdays} aria-hidden="true">{WEEKDAYS.map(day => <span key={day}>{day}</span>)}</div>
           <div className={styles.grid} role="grid" aria-label={MONTH_FORMATTER.format(month)}>

@@ -138,6 +138,13 @@
 .segmentedIndicator { position: absolute; inset: 0; border-radius: inherit; background: var(--color-paper); box-shadow: var(--shadow-control-soft); }
 .segmentedItem[aria-selected='true'] { color: var(--color-ink); }
 
+@media (max-width: 767px) {
+  .segmented {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .markerImage { transition: none; }
 }

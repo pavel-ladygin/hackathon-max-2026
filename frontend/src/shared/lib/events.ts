@@ -28,10 +28,14 @@ const categoryImages: Record<CategorySlug, string> = {
   other: '/events/jazz-comedy.png',
 }
 
+export function eventImageFallback(category: CategorySlug | string) {
+  return categoryImages[category as CategorySlug] ?? categoryImages.other
+}
+
 export function eventCategoryLabel(category: CategorySlug | string) {
   return categoryLabels[category as CategorySlug] ?? 'Событие'
 }
 
 export function eventImage(imageUrl: string | null | undefined, category: CategorySlug | string) {
-  return imageUrl || categoryImages[category as CategorySlug] || '/events/concert-singer.png'
+  return imageUrl || eventImageFallback(category)
 }

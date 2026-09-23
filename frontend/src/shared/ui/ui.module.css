@@ -32,7 +32,8 @@
 .chip:focus-visible { position: relative; z-index: 1; }
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--color-hover); box-shadow: var(--shadow-control-soft); } .chipSelected:hover { background: #30302f; } }
 .chipSelected { border-color: #242423; background: #242423; color: #fff; animation: chipSelect var(--motion-micro) var(--motion-ease-standard) both; }
-.eventImage { display: block; width: 100%; height: 100%; object-fit: cover; background: #d4c8bb; }
+.eventImage { display: block; width: 100%; height: 100%; object-fit: cover; background: #eee8e1; }
+.eventImageLoading { background: linear-gradient(100deg, #eee8e1 25%, #faf8f5 50%, #eee8e1 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; }
 .eventCard { display: flex; min-height: 96px; align-items: center; gap: 12px; width: 100%; margin: 0; padding: 9px; border: 1px solid #e2dcd5; border-radius: var(--radius-lg); background: var(--color-paper); color: var(--color-ink); text-align: left; box-shadow: 0 2px 8px rgb(32 26 22 / 3%); touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform var(--motion-fast), background-color var(--motion-fast), box-shadow var(--motion-fast); }
 .eventCard:active { transform: scale(.99); }
 @media (hover: hover) and (pointer: fine) { .eventCard:hover { background: var(--color-hover); box-shadow: var(--shadow-control); } }
@@ -65,16 +66,44 @@
 .demoBadge { position: fixed; z-index: 30; top: max(8px, env(safe-area-inset-top)); left: 50%; display: flex; align-items: center; gap: 5px; transform: translateX(-50%); border: 1px solid rgb(255 255 255 / 70%); border-radius: 999px; padding: 5px 10px; background: rgb(30 28 27 / 84%); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .04em; pointer-events: none; backdrop-filter: blur(12px); }
 .demoBadge span { color: #75df91; font-size: 7px; }
 .skeleton { display: block; min-height: 18px; overflow: hidden; border-radius: var(--radius-sm); background: linear-gradient(90deg, #ede9e4 25%, #f7f5f2 50%, #ede9e4 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; }
+.screenSkeleton { color: var(--color-ink); }
+.screenSkeletonPage { min-height: 100dvh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); background: var(--color-canvas); }
+.screenSkeletonPage.screenSkeletonWithNav { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.screenSkeletonContent { display: grid; gap: 18px; }
+.screenSkeletonInline { width: 100%; }
+.screenHeading { width: min(58%, 300px); height: 32px; min-height: 32px; border-radius: 10px; }
+.screenLine { width: 68%; height: 12px; min-height: 12px; }
+.screenLineWide { width: 92%; }
+.screenChips { display: flex; gap: 10px; overflow: hidden; }
+.screenChip { width: 104px; height: 40px; min-height: 40px; flex: none; border-radius: 999px; }
+.screenCards { display: grid; gap: 12px; }
+.screenCard { display: flex; min-height: 100px; align-items: center; gap: 12px; padding: 9px; border: 1px solid #e8e1da; border-radius: var(--radius-lg); background: var(--color-paper); }
+.screenImage { width: 82px; height: 82px; min-height: 82px; flex: none; border-radius: var(--radius-sm); }
+.screenCardCopy { display: grid; width: 100%; gap: 9px; }
+.screenCardCopy .screenLine { width: 55%; }
+.screenCardCopy .screenLineWide { width: 82%; }
+.screenHero { width: 100%; height: clamp(220px, 38vw, 420px); min-height: 220px; border-radius: var(--radius-lg); }
+.screenPanel { display: grid; gap: 12px; padding: 18px; border: 1px solid #e8e1da; border-radius: var(--radius-lg); background: var(--color-paper); }
+.screenButton { width: 100%; height: 50px; min-height: 50px; border-radius: var(--radius-md); }
+.screenField { display: grid; gap: 9px; }
+.screenInput { width: 100%; height: 54px; min-height: 54px; border: 1px solid #e8e1da; border-radius: var(--radius-md); }
+.screenActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.screenMap { width: 100%; height: min(52vh, 440px); min-height: 280px; border-radius: var(--radius-lg); }
+@media (min-width: 768px) { .screenSkeletonPage { max-width: 1200px; margin: 24px auto; border-radius: var(--radius-xl); box-shadow: 0 12px 40px rgb(39 29 21 / 8%); } .screenCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .spinner { width: 55px; height: 55px; margin: 40px auto 30px; border: 3px solid #e6e0d8; border-top-color: #242424; border-radius: 50%; animation: spin 1s linear infinite; }
-.bottomNav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; padding: 9px 4px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #ddd7d0; background: rgb(255 255 255 / 97%); box-shadow: 0 -8px 24px rgb(38 31 25 / 8%); backdrop-filter: blur(14px); }
+.bottomNav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 8px; padding: 9px 12px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #ddd7d0; background: rgb(255 255 255 / 97%); box-shadow: 0 -8px 24px rgb(38 31 25 / 8%); backdrop-filter: blur(14px); }
 .navItem { display: flex; min-width: 0; min-height: 48px; flex: 1 1 0; align-items: center; flex-direction: column; justify-content: center; gap: 4px; border: 0; border-radius: var(--radius-md); padding: 4px 8px; background: transparent; color: #77716a; font-size: 10px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast); }
 .navIcon { display: grid; width: 28px; height: 28px; place-items: center; }
+.navIcon svg { transform-origin: center; }
 .navItem svg { width: 24px; height: 24px; }
 .navItem:active { transform: scale(.96); }
 .navItem.active { background: var(--color-hover); color: var(--color-ink); font-weight: 800; animation: navActive var(--motion-micro) var(--motion-ease-standard) both; }
 .navItem.active .navIcon { transform: translateY(-1px); transition: transform var(--motion-fast) var(--motion-ease-standard); }
-@media (hover: hover) and (pointer: fine) { .navItem:hover { background: var(--color-hover); color: var(--color-ink); } }
-@media (prefers-reduced-motion: reduce) { .button, .iconButton, .chip, .eventCard, .navItem, .favoriteButton { transition: none; animation: none; } .buttonSpinner, .skeleton, .spinner { animation: none; } .status { animation: none; } }
+@media (hover: hover) and (pointer: fine) { .navItem:hover { background: var(--color-hover); color: var(--color-ink); } .navItem:hover .navIcon_home svg { animation: navHomeLift 420ms var(--motion-ease-standard) both; } .navItem:hover .navIcon_calendar svg { animation: navCalendarFlip 480ms var(--motion-ease-standard) both; } .navItem:hover .navIcon_saved svg { animation: navHeartPulse 520ms var(--motion-spring) both; } }
+.navItem.active .navIcon_home svg { animation: navHomeLift 420ms var(--motion-ease-standard) both; }
+.navItem.active .navIcon_calendar svg { animation: navCalendarFlip 480ms var(--motion-ease-standard) both; }
+.navItem.active .navIcon_saved svg { animation: navHeartPulse 520ms var(--motion-spring) both; }
+@media (prefers-reduced-motion: reduce) { .button, .iconButton, .chip, .eventCard, .navItem, .favoriteButton { transition: none; animation: none; } .navIcon svg { animation: none !important; transition: none; } .buttonSpinner, .skeleton, .eventImageLoading, .spinner { animation: none; } .status { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { to { background-position-x: -200%; } }
 @keyframes statusPop { from { transform: scale(.7); opacity: .4; } to { transform: scale(1); opacity: 1; } }
@@ -82,4 +111,7 @@
 @keyframes chipSelect { from { transform: scale(.97); } to { transform: scale(1); } }
 @keyframes statusEntrance { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes navActive { from { opacity: .72; transform: scale(.98); } to { opacity: 1; transform: scale(1); } }
+@keyframes navHomeLift { 0%, 100% { transform: translateY(0); } 48% { transform: translateY(-3px); } }
+@keyframes navCalendarFlip { 0%, 100% { transform: perspective(80px) rotateX(0); } 45% { transform: perspective(80px) rotateX(-18deg); } }
+@keyframes navHeartPulse { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.16); } 62% { transform: scale(.96); } }
 @media (min-width: 768px) { .pageShell { max-width: 1200px; min-height: 100dvh; margin: 24px auto; border-radius: var(--radius-xl); box-shadow: 0 12px 40px rgb(39 29 21 / 8%); } .pageContent { padding-right: 32px; padding-left: 32px; } .bottomNav { right: auto; bottom: 16px; left: 50%; width: min(520px, calc(100vw - 32px)); transform: translateX(-50%); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding-bottom: 9px; } .eventCard .eventImage { width: 92px; height: 92px; } }

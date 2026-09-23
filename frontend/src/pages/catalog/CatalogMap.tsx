@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../shared/api/client'
 import type { EventCard } from '../../shared/api/types'
-import { Empty, Loading } from '../../shared/ui'
+import { Empty, ScreenSkeleton } from '../../shared/ui'
 import styles from './catalogMap.module.css'
 import { createEventMarkerElement } from './eventMarker'
 import { loadYandexMaps, markerSizeForZoom, type YandexMap, type YandexMapUpdateEvent } from './yandexMaps'
@@ -84,7 +84,7 @@ export function CatalogMap({ events }: { events: EventCard[] }) {
     }
   }, [apiKey, details, navigate])
 
-  if (details.some((query) => query.isPending)) return <Loading label="Готовим карту…" />
+  if (details.some((query) => query.isPending)) return <ScreenSkeleton variant="map" inline label="Готовим карту…" />
   const points = details.flatMap((query) => query.data ? [query.data] : [])
   const hasMappablePoints = points.some(
     (event) =>
