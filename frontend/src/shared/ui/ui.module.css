@@ -48,6 +48,7 @@
 .pageShellWithNav { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .pageContent { width: 100%; max-width: 1120px; margin: 0 auto; padding: 8px 20px 32px; }
 .topBar { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 12px; font-size: 14px; font-weight: 800; }
+.topBarSpacious { height: 72px; }
 .topBarTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topBarSide { display: flex; width: 48px; align-items: center; }
 .topBarSide:last-child { justify-content: flex-end; }
@@ -97,12 +98,11 @@
 .navIcon svg { transform-origin: center; }
 .navItem svg { width: 24px; height: 24px; }
 .navItem:active { transform: scale(.96); }
-.navItem.active { background: var(--color-hover); color: var(--color-ink); font-weight: 800; animation: navActive var(--motion-micro) var(--motion-ease-standard) both; }
-.navItem.active .navIcon { transform: translateY(-1px); transition: transform var(--motion-fast) var(--motion-ease-standard); }
-@media (hover: hover) and (pointer: fine) { .navItem:hover { background: var(--color-hover); color: var(--color-ink); } .navItem:hover .navIcon_home svg { animation: navHomeLift 420ms var(--motion-ease-standard) both; } .navItem:hover .navIcon_calendar svg { animation: navCalendarFlip 480ms var(--motion-ease-standard) both; } .navItem:hover .navIcon_saved svg { animation: navHeartPulse 520ms var(--motion-spring) both; } }
-.navItem.active .navIcon_home svg { animation: navHomeLift 420ms var(--motion-ease-standard) both; }
-.navItem.active .navIcon_calendar svg { animation: navCalendarFlip 480ms var(--motion-ease-standard) both; }
-.navItem.active .navIcon_saved svg { animation: navHeartPulse 520ms var(--motion-spring) both; }
+.navItem.active { background: var(--color-hover); color: var(--color-ink); font-weight: 800; }
+@media (hover: hover) and (pointer: fine) { .navItem:hover { background: var(--color-hover); color: var(--color-ink); } }
+.navClick_home .navIcon svg { animation: navHomeLift 420ms var(--motion-ease-standard) both; }
+.navClick_calendar .navIcon svg { animation: navCalendarFlip 480ms var(--motion-ease-standard) both; }
+.navClick_saved .navIcon svg { animation: navHeartPulse 520ms var(--motion-spring) both; }
 @media (prefers-reduced-motion: reduce) { .button, .iconButton, .chip, .eventCard, .navItem, .favoriteButton { transition: none; animation: none; } .navIcon svg { animation: none !important; transition: none; } .buttonSpinner, .skeleton, .eventImageLoading, .spinner { animation: none; } .status { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { to { background-position-x: -200%; } }

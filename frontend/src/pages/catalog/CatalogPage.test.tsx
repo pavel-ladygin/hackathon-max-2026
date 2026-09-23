@@ -129,4 +129,13 @@ describe('CatalogPage search', () => {
     expect(screen.getByText('Обновляем результаты…')).toBeInTheDocument()
     expect(screen.getByText('Jazz evening')).toBeInTheDocument()
   })
+
+  it('reserves room for the favorite control inside each event card', () => {
+    renderCatalog()
+
+    const card = screen.getAllByRole('button', { name: /Jazz evening/ }).find((button) => button.className.includes('eventCardWithSave'))
+    if (!card) throw new Error('Event card does not reserve space for its favorite control')
+    expect(card.className).toContain('eventCardWithSave')
+    expect(card.querySelector('strong')).toHaveTextContent('Jazz evening')
+  })
 })

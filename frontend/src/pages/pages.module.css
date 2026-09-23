@@ -68,7 +68,9 @@
 .filterRow > * { min-width: 0; flex: 1; }
 .catalogChips { margin-bottom: 22px; }
 .catalogItem { position: relative; }
-.catalogItem .eventCard { padding-right: 58px; }
+.eventCardWithSave { padding-right: 58px; }
+.eventCardWithSave strong { overflow-wrap: anywhere; white-space: normal; }
+.showMore { margin-top: 8px; }
 .saveButton { position: absolute; top: 50%; right: 10px; display: grid; width: 40px; height: 40px; place-items: center; transform: translateY(-50%); border: 1px solid var(--color-favorite-border); border-radius: var(--radius-md); background: var(--color-favorite-soft); box-shadow: var(--shadow-control); color: var(--color-favorite); line-height: 1; touch-action: manipulation; transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .saveButton svg { width: 21px; height: 21px; }
 .saveButton[aria-pressed="true"] { background: var(--color-favorite-selected); }
@@ -108,8 +110,8 @@
 @media (hover: hover) and (pointer: fine) {
   .input:hover, .textarea:hover, .searchInput:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
   .roomNameInput:hover { border-color: #ad9b8d; background: var(--color-paper); }
-  .saveButton:hover { transform: translateY(-50%) translateY(-1px); opacity: .9; }
-  .profileButton:hover, .hero:hover { transform: translateY(-1px); opacity: .92; }
+  .saveButton:hover { opacity: .9; }
+  .profileButton:hover, .hero:hover { opacity: .92; }
   .suggestion:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
 }
 .roomNameInput:focus, .roomNameInput:focus:hover { border-color: #c9bee3; background: var(--color-paper); box-shadow: 0 0 0 2px rgb(171 153 207 / 24%); }

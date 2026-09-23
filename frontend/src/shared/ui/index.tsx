@@ -1,5 +1,10 @@
-import { useState, type ButtonHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
 import styles from "./ui.module.css";
+
+type NavClickToken = { id: string; sequence: number };
+let navClickSequence = 0;
+let pendingNavClick: NavClickToken | null = null;
+let consumedNavClickSequence = 0;
 
 type Tone = "primary" | "secondary" | "ghost";
 export type ButtonState = "idle" | "loading" | "success";
@@ -68,8 +73,8 @@ export function PageContent({ children, className = "" }: { children: ReactNode;
   return <div className={`${styles.pageContent} ${className}`}>{children}</div>;
 }
 
-export function TopBar({ title, onBack, right, prominentBack = false }: { title?: ReactNode; onBack?: () => void; right?: ReactNode; prominentBack?: boolean }) {
-  return <header className={styles.topBar}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" variant={prominentBack ? "surface" : "default"} className={prominentBack ? styles.prominentBack : ""} onClick={onBack}><ArrowLeftIcon /></IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
+export function TopBar({ title, onBack, right, prominentBack = false, spacious = false }: { title?: ReactNode; onBack?: () => void; right?: ReactNode; prominentBack?: boolean; spacious?: boolean }) {
+  return <header className={`${styles.topBar} ${spacious ? styles.topBarSpacious : ""}`}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" variant={prominentBack ? "surface" : "default"} className={prominentBack ? styles.prominentBack : ""} onClick={onBack}><ArrowLeftIcon /></IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
 }
 
 export function PrivacyNote({ title = "Ваши ответы видны только вам", children = "Мы показываем участникам только общие совпадения — никакой неловкости." }: { title?: string; children?: ReactNode }) {
@@ -129,5 +134,17 @@ function NavIcon({ name }: { name: NavIconName }) {
   return <HeartIcon />;
 }
 export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; activeId?: string; onChange?: (id: string) => void }) {
-  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onChange?.(item.id)}><span className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>;
+  const [lastClick, setLastClick] = useState<NavClickToken | null>(() => pendingNavClick && pendingNavClick.sequence > consumedNavClickSequence ? pendingNavClick : null);
+  useEffect(() => {
+    if (lastClick && pendingNavClick?.sequence === lastClick.sequence) consumedNavClickSequence = lastClick.sequence;
+  }, [lastClick]);
+  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => {
+    const clicked = lastClick?.id === item.id;
+    return <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""} ${clicked ? styles[`navClick_${item.icon}`] : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => {
+      const token = { id: item.id, sequence: ++navClickSequence };
+      pendingNavClick = token;
+      setLastClick(token);
+      onChange?.(item.id);
+    }}><span key={clicked ? lastClick?.sequence : 0} className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>;
+  })}</nav>;
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -189,7 +190,34 @@ func normalizeImages(image imageDTO) []providers.NormalizedImage {
 	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil {
 		return nil
 	}
+	value = repairMalformedPosterURL(parsed)
 	return []providers.NormalizedImage{{URL: value, Role: "card", Position: 0}}
+}
+
+var (
+	uploadcareUUIDPattern = regexp.MustCompile(`(?i)^/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/`)
+	posterFilenamePattern = regexp.MustCompile(`(?i)/poster_(?:org|event)_\d+\.jpe?g(?:/|$)`)
+)
+
+// repairMalformedPosterURL rebuilds Timepad's Uploadcare URL only when the
+// supplied path has the known duplicated-transformation/filename corruption.
+// Correctly formed URLs are preserved byte-for-byte.
+func repairMalformedPosterURL(parsed *url.URL) string {
+	if !strings.EqualFold(parsed.Hostname(), "ucare.timepad.ru") {
+		return parsed.String()
+	}
+
+	path := parsed.EscapedPath()
+	uuidMatch := uploadcareUUIDPattern.FindString(path)
+	if uuidMatch == "" || len(posterFilenamePattern.FindAllString(path, -1)) < 2 {
+		return parsed.String()
+	}
+	if strings.Count(path, "/-/preview/") < 2 && strings.Count(path, "/-/format/") < 2 {
+		return parsed.String()
+	}
+
+	uuid := strings.Trim(uuidMatch, "/")
+	return "https://ucare.timepad.ru/" + uuid + "/-/preview/1200x1200/"
 }
 
 func ageRating(raw string) *string {

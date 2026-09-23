@@ -31,7 +31,7 @@ export function EventPage() {
   const item = event.data
   return (
     <PageShell>
-      <div className={styles.eventTopBar}><TopBar prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
+      <div className={styles.eventTopBar}><TopBar spacious prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
       <EventImage className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} fallbackSrc={eventImageFallback(item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
