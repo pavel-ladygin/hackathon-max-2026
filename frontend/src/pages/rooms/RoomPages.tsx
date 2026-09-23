@@ -12,11 +12,12 @@ import { relaxedIntent } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import { withMinimumDuration } from '../../shared/lib/async'
+import { eventImage, eventImageFallback } from '../../shared/lib/events'
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, RoomIntentRequestDto, RoomSnapshot, VoteValue } from '../../shared/api/types'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { Button, Chip, ChipGroup, Empty, Loading, PageContent, PageShell, PrivacyNote, TopBar } from '../../shared/ui/index'
+import { Button, Chip, ChipGroup, Empty, EventImage, PageContent, PageShell, PrivacyNote, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 import intentStyles from './intent.module.css'
 
@@ -57,7 +58,7 @@ export function InvitePage() {
   const room = useRoom(roomId)
   const [shared, setShared] = useState(false)
   const [copied, setCopied] = useState(false)
-  if (room.isPending) return <Loading label="Готовим приглашение…" />
+  if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
   const rawUrl = room.data.invite?.url ?? ''
   const maxLink = room.data.invite?.max_deep_link ?? rawUrl
@@ -110,7 +111,7 @@ export function JoinPage() {
 export function RoomFlowPage() {
   const { roomId, roomScreen } = useParams()
   const room = useRoom(roomId)
-  if (room.isPending) return <Loading label="Восстанавливаем комнату…" />
+  if (room.isPending) return <ScreenSkeleton variant="room" label="Восстанавливаем комнату…" />
   if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
   if (roomScreen !== expected) return <Navigate to={`/rooms/${roomId}/${expected}`} replace />
@@ -212,7 +213,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
     },
     onError: async (error) => { setPendingVote(null); dragX.set(0); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
-  if (events.isPending) return <Loading label="Загружаем общий пул…" />
+  if (events.isPending) return <ScreenSkeleton variant="room" label="Загружаем общий пул…" />
   if (events.isError) {
     if (isRoomError(events.error, 'POOL_EXHAUSTED')) return <WaitingScreen room={room} />
     return <Empty title={isRoomError(events.error, 'POOL_NOT_READY') ? 'Пул пока не готов' : 'Не удалось загрузить подборку'} description={roomErrorMessage(events.error)} action={<Button onClick={() => void events.refetch()}>Повторить</Button>} />
@@ -229,7 +230,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
         <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, x: pendingVote === 'like' ? 560 : -560, rotate: pendingVote === 'like' ? 12 : -12 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
           <motion.span aria-hidden="true" style={{ opacity: likeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #e77888', borderRadius: 18, color: '#c74d63', padding: 12, fontWeight: 800 }}>ХОЧУ ПОЙТИ</motion.span>
           <motion.span aria-hidden="true" style={{ opacity: dislikeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #b8aaa0', borderRadius: 18, color: '#776a60', padding: 12, fontWeight: 800 }}>НЕ ПОДХОДИТ</motion.span>
-          <img className={styles.poolImage} src={item.event.imageUrl ?? '/events/concert-singer.png'} alt={item.event.title} />
+          <EventImage className={styles.poolImage} src={eventImage(item.event.imageUrl, item.event.category_slug)} fallbackSrc={eventImageFallback(item.event.category_slug)} alt={item.event.title} />
           <div className={styles.poolCopy}><p className={styles.eyebrow}>{item.event.category_slug}</p><h2>{item.event.title}</h2><p className={styles.subtitle}>{item.event.subtitle}</p><div className={styles.poolMeta}><span>◷ {item.event.date_label}</span><span>⌖ {item.event.venue_name}</span><strong>{item.event.price_label}</strong></div></div>
         </motion.article>
       </AnimatePresence>
@@ -245,11 +246,11 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const event = useEventDetail(room.match?.event_id)
   const ticket = useMutation({ mutationFn: () => withMinimumDuration(apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), 120), onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url) })
-  if (event.isPending) return <Loading label="Открываем ваш мэтч…" />
+  if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем ваш мэтч…" />
   if (event.isError) return <Empty title="Мэтч найден, но событие не загрузилось" />
   return (
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <Suspense fallback={<Loading label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
+      <Suspense fallback={<ScreenSkeleton variant="event" inline label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
       <div className={styles.footer}><Button onClick={() => navigate(`/events/${event.data.id}`)}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>К билетам</Button></div>
       {ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>

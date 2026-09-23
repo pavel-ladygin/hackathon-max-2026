@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ImgHTMLAttributes, ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
 import styles from "./ui.module.css";
 
 type Tone = "primary" | "secondary" | "ghost";
@@ -35,13 +35,28 @@ export function ChipGroup({ children, label, className = "" }: { children: React
   return <div className={`${styles.chipGroup} ${className}`} role={label ? "group" : undefined} aria-label={label}>{children}</div>;
 }
 
-export function EventImage({ alt, className = "", width = 400, height = 400, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
-  return <img alt={alt} className={`${styles.eventImage} ${className}`} width={width} height={height} loading="lazy" {...props} />;
+type EventImageProps = ImgHTMLAttributes<HTMLImageElement> & { fallbackSrc?: string };
+export function EventImage({ alt, className = "", width = 400, height = 400, fallbackSrc = "/events/concert-singer.png", onError, src, ...props }: EventImageProps) {
+  const [failure, setFailure] = useState<{ key: string; status: "fallback" | "placeholder" } | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const key = `${src ?? ""}\n${fallbackSrc}`;
+  const status = failure?.key === key ? failure.status : "original";
+  if (status === "placeholder") return <span className={`${styles.eventImage} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} />;
+  const activeSrc = status === "fallback" ? fallbackSrc : src;
+  const activeKey = `${key}\n${activeSrc ?? ""}`;
+  return <img alt={alt} className={`${styles.eventImage} ${loadedKey === activeKey ? "" : styles.eventImageLoading} ${className}`} width={width} height={height} loading="lazy" {...props} src={activeSrc} onLoad={(event) => {
+    props.onLoad?.(event);
+    setLoadedKey(activeKey);
+  }} onError={(event) => {
+    onError?.(event);
+    if (status === "fallback" || event.currentTarget.src === new URL(fallbackSrc, document.baseURI).href) setFailure({ key, status: "placeholder" });
+    else setFailure({ key, status: "fallback" });
+  }} />;
 }
 
-export type EventCardData = { id?: string; title: string; meta?: string; eyebrow?: string; image: string };
+export type EventCardData = { id?: string; title: string; meta?: string; eyebrow?: string; image: string; fallbackImage?: string };
 export function EventCard({ event, compact = false, onClick, className = "" }: { event: EventCardData; compact?: boolean; onClick?: () => void; className?: string }) {
-  const content = <><EventImage src={event.image} alt="" /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong>{event.title}</strong>{event.meta && <span>{event.meta}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
+  const content = <><EventImage src={event.image} fallbackSrc={event.fallbackImage} alt="" /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong>{event.title}</strong>{event.meta && <span>{event.meta}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
   return onClick ? <button type="button" className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`} onClick={onClick}>{content}</button> : <article className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`}>{content}</article>;
 }
 
@@ -84,6 +99,26 @@ export function FieldError({ id, children }: { id: string; children?: ReactNode 
 
 export function Skeleton({ className = "", label = "Загрузка" }: { className?: string; label?: string }) {
   return <span className={`${styles.skeleton} ${className}`} role="status" aria-label={label} />;
+}
+
+export type ScreenSkeletonVariant = "home" | "event" | "cards" | "form" | "room" | "map" | "generic";
+type ScreenSkeletonProps = { variant?: ScreenSkeletonVariant; inline?: boolean; label?: string };
+export function ScreenSkeleton({ variant = "generic", inline = false, label = "Загрузка содержимого" }: ScreenSkeletonProps) {
+  const heading = <span className={`${styles.skeleton} ${styles.screenHeading}`} />;
+  const line = (wide = false) => <span className={`${styles.skeleton} ${styles.screenLine} ${wide ? styles.screenLineWide : ""}`} />;
+  const image = (className = "") => <span className={`${styles.skeleton} ${styles.screenImage} ${className}`} />;
+  const card = (index: number) => <div className={styles.screenCard} key={index}>{image()}<div className={styles.screenCardCopy}>{line(true)}{line()}{line()}</div></div>;
+  let content: ReactNode;
+  switch (variant) {
+    case "home": content = <>{heading}{image(styles.screenHero)}<div className={styles.screenChips}>{[0, 1, 2].map(i => <span key={i} className={`${styles.skeleton} ${styles.screenChip}`} />)}</div><div className={styles.screenCards}>{[0, 1, 2].map(card)}</div></>; break;
+    case "event": content = <>{image(styles.screenHero)}{heading}{line(true)}<div className={styles.screenPanel}>{line(true)}{line()}{line()}</div><span className={`${styles.skeleton} ${styles.screenButton}`} /></>; break;
+    case "cards": content = <>{heading}<div className={styles.screenCards}>{[0, 1, 2, 3].map(card)}</div></>; break;
+    case "form": content = <>{heading}{[0, 1, 2].map(i => <div className={styles.screenField} key={i}>{line()}{image(styles.screenInput)}</div>)}<span className={`${styles.skeleton} ${styles.screenButton}`} /></>; break;
+    case "room": content = <>{heading}<div className={styles.screenPanel}>{line(true)}{line()}{line()}</div><div className={styles.screenActions}><span className={`${styles.skeleton} ${styles.screenButton}`} /><span className={`${styles.skeleton} ${styles.screenButton}`} /></div><div className={styles.screenCards}>{[0, 1].map(card)}</div></>; break;
+    case "map": content = <>{heading}{image(styles.screenMap)}<div className={styles.screenCards}>{[0, 1].map(card)}</div></>; break;
+    default: content = <>{heading}{line(true)}{line()}<div className={styles.screenPanel}>{line(true)}{line()}</div><div className={styles.screenCards}>{[0, 1].map(card)}</div></>;
+  }
+  return <div className={`${styles.screenSkeleton} ${inline ? styles.screenSkeletonInline : styles.screenSkeletonPage}`} role="status" aria-label={label} aria-busy="true"><div className={`${styles.screenSkeletonContent} ${inline ? "" : styles.pageContent}`}>{content}</div></div>;
 }
 
 export type NavIconName = "home" | "calendar" | "saved";

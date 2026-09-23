@@ -2,9 +2,10 @@ import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useBootstrap } from '../features/auth/useBootstrap'
 import { OpenInMaxPage } from '../pages/system/OpenInMaxPage'
-import { Button, ErrorState, Loading } from '../shared/ui/index'
+import { Button, ErrorState, ScreenSkeleton } from '../shared/ui/index'
 import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
+import { skeletonVariant } from './skeletonVariant'
 
 const HomePage = lazy(() => import('../pages/home/HomePage').then((m) => ({ default: m.HomePage })))
 const EventPage = lazy(() => import('../pages/event/EventPage').then((m) => ({ default: m.EventPage })))
@@ -34,7 +35,7 @@ function AppRoutes() {
   const inviteContext = bootstrap.data?.inviteContext
   const inviteToken = location.pathname.match(/^\/join\/([^/]+)$/)?.[1]
   if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={inviteToken ? decodeInviteToken(inviteToken) : null} />
-  if (bootstrap.isPending) return <Loading label="Знакомимся с вами…" />
+  if (bootstrap.isPending) return <ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
 
   const isOnboarding = location.pathname.startsWith('/onboarding')
@@ -49,7 +50,7 @@ function AppRoutes() {
   }
 
   return (
-    <Suspense fallback={<Loading label="Открываем экран…" />}>
+    <Suspense fallback={<ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Открываем экран…" />}>
     <Routes>
       <Route path="/open-in-max" element={<OpenInMaxPage />} />
       <Route path="/onboarding/:step" element={<OnboardingPage />} />

@@ -6,7 +6,7 @@
 .avatars span:last-child { margin-left: -12px; background: #ded7ef; }
 .avatars b { z-index: 1; display: grid; width: 34px; height: 34px; place-items: center; margin: 0 -9px; border-radius: 50%; background: #fff; color: var(--color-accent); }
 .card { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: #fff; box-shadow: var(--shadow-float); text-align: left; }
-.card img { width: 100%; height: min(38vh, 310px); object-fit: cover; }
+.cardImage { width: 100%; height: min(38vh, 310px); object-fit: cover; }
 .card div { padding: 17px; }
 .card small { color: var(--color-muted); }
 .card h2 { margin: 7px 0; font-size: 24px; letter-spacing: -.04em; }

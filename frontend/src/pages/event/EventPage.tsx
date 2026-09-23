@@ -3,10 +3,10 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
-import { eventCategoryLabel, eventImage } from '../../shared/lib/events'
+import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
 import { withMinimumDuration } from '../../shared/lib/async'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { Button, Empty, FavoriteButton, InlineNotice, Loading, PageContent, PageShell, TopBar } from '../../shared/ui/index'
+import { Button, Empty, EventImage, FavoriteButton, InlineNotice, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
 export function EventPage() {
@@ -25,14 +25,14 @@ export function EventPage() {
     void apiClient.recordBehavior([{ client_event_id: behaviorId.current, type: 'open', occurred_at: new Date().toISOString(), event_id: event.data.id, metadata: { surface: 'event_detail' } }])
   }, [event.data])
 
-  if (event.isPending) return <Loading label="Открываем событие…" />
+  if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем событие…" />
   if (event.isError) return <Empty title="Событие не найдено" action={<Button onClick={() => navigate('/')}>Вернуться в афишу</Button>} />
 
   const item = event.data
   return (
     <PageShell>
       <div className={styles.eventTopBar}><TopBar prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
-      <img className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
+      <EventImage className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} fallbackSrc={eventImageFallback(item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
         <h1 className={styles.title}>{item.title}</h1>

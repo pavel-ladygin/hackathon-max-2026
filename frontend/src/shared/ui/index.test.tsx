@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { BottomNav, Button, Empty, ErrorState, FavoriteButton, HeartIcon, IconButton, Loading } from './index'
+import { BottomNav, Button, Empty, ErrorState, EventImage, FavoriteButton, HeartIcon, IconButton, Loading, ScreenSkeleton } from './index'
 
 describe('shared status states', () => {
   it('supports embedded and full-page presentation without changing live semantics', () => {
@@ -44,6 +44,41 @@ describe('IconButton', () => {
 
     expect(button).toHaveAttribute('aria-pressed', 'true')
     expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
+describe('EventImage', () => {
+  it('shows a shimmer until the current image loads', () => {
+    render(<EventImage src="https://images.example/poster.jpg" alt="Poster" />)
+    const image = screen.getByRole('img', { name: 'Poster' })
+    expect(image.className).toContain('eventImageLoading')
+    fireEvent.load(image)
+    expect(image.className).not.toContain('eventImageLoading')
+  })
+
+  it('retries a failed image with its category fallback and stops if that also fails', () => {
+    render(<EventImage src="https://images.example/poster.jpg" fallbackSrc="/events/jazz-comedy.png" alt="Jazz concert poster" />)
+    const image = screen.getByRole('img', { name: 'Jazz concert poster' })
+
+    fireEvent.error(image)
+    expect(image).toHaveAttribute('src', '/events/jazz-comedy.png')
+
+    fireEvent.error(image)
+    expect(screen.getByRole('img', { name: 'Jazz concert poster' }).tagName).toBe('SPAN')
+    expect(document.querySelector('img')).not.toBeInTheDocument()
+  })
+})
+
+describe('ScreenSkeleton', () => {
+  it('renders a labelled full-page skeleton by default and supports inline variants', () => {
+    const { rerender } = render(<ScreenSkeleton variant="home" />)
+    const fullPage = screen.getByRole('status', { name: 'Загрузка содержимого' })
+    expect(fullPage).toHaveAttribute('aria-busy', 'true')
+    expect(fullPage.className).toContain('screenSkeletonPage')
+    expect(fullPage.querySelectorAll('span').length).toBeGreaterThan(5)
+
+    rerender(<ScreenSkeleton variant="map" inline label="Загрузка карты" />)
+    expect(screen.getByRole('status', { name: 'Загрузка карты' }).className).toContain('screenSkeletonInline')
   })
 })
 

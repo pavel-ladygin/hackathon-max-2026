@@ -117,8 +117,8 @@ describe('CatalogPage search', () => {
     resultState = { ...defaultResult, data: undefined, isPending: true }
     const { container } = renderCatalog()
 
-    expect(screen.getByLabelText('Загрузка событий')).toBeInTheDocument()
-    expect(container.querySelectorAll('[aria-label="Загрузка"]').length).toBe(3)
+    expect(screen.getByRole('status', { name: 'Загружаем события…' })).toHaveAttribute('aria-busy', 'true')
+    expect(container.querySelectorAll('[class*="screenCard_"]').length).toBe(4)
     expect(screen.queryByText('Jazz evening')).not.toBeInTheDocument()
   })
 
