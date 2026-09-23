@@ -19,7 +19,7 @@ type ImportStats = providers.ImportStats
 // Import fetches every KudaGo page and persists valid normalized occurrences.
 // A single invalid provider record or persistence error does not stop the run.
 // Fetch failures are fatal because the remaining page set is then unknown.
-func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore, reportError func(error)) (ImportStats, error) {
+func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error)) (stats ImportStats, importErr error) {
 	if c == nil {
 		return ImportStats{}, errors.New("kudago client is required")
 	}
@@ -37,6 +37,25 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 	seenCursors := make(map[string]struct{})
 	actualSince := c.now().UTC()
 	actualUntil := actualSince.Add(importHorizon)
+	runID, err := store.BeginSyncRun(ctx, providers.SyncRunStart{
+		Provider: kudagoSource, CityID: cityID, WindowStart: actualSince, WindowEnd: actualUntil,
+	})
+	if err != nil {
+		return ImportStats{}, fmt.Errorf("begin kudago sync run: %w", err)
+	}
+	defer func() {
+		stats.SyncRunID = runID
+		reconciled, finishErr := providers.FinalizeSyncRun(ctx, store, runID, stats, importErr)
+		stats.Reconciled = reconciled
+		if finishErr != nil {
+			finishErr = fmt.Errorf("finish kudago sync run: %w", finishErr)
+			if importErr != nil {
+				importErr = errors.Join(importErr, finishErr)
+			} else {
+				importErr = finishErr
+			}
+		}
+	}()
 	cursor := ""
 	for {
 		page, err := c.fetchPage(ctx, fetchOptions{Cursor: cursor, ActualSince: actualSince, ActualUntil: actualUntil})
@@ -47,12 +66,13 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 		ingestion.AddFetched(len(page.Results))
 		ingestion.AddMatched(len(page.Results))
 		for _, event := range page.Results {
-			occurrences := normalizeEvent(event)
+			occurrences := normalizeEvent(event, actualSince, actualUntil)
 			if len(occurrences) == 0 {
 				ingestion.AddSkipped(1)
 				continue
 			}
 			for _, occurrence := range occurrences {
+				occurrence.ProviderLastSeenRunID = &runID
 				if err := ingestion.Persist(ctx, occurrence); err != nil {
 					return ingestion.Stats(), err
 				}

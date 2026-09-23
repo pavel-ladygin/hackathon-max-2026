@@ -41,4 +41,12 @@ func TestImportSnapshotFilesSkipsMalformedEventsAndIsIdempotent(t *testing.T) {
 	if secondStats != wantSecond {
 		t.Fatalf("second stats = %+v, want %+v", secondStats, wantSecond)
 	}
+	if len(store.starts) != 0 || len(store.finishes) != 0 {
+		t.Fatalf("snapshot import unexpectedly created sync lifecycle: starts=%d finishes=%d", len(store.starts), len(store.finishes))
+	}
+	for index, marked := range store.marked {
+		if marked {
+			t.Fatalf("snapshot event %d unexpectedly has a live sync run marker", index)
+		}
+	}
 }

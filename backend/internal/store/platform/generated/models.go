@@ -18,29 +18,31 @@ type City struct {
 }
 
 type Event struct {
-	ID              uuid.UUID
-	Source          string
-	ExternalID      string
-	SourceUpdatedAt pgtype.Timestamptz
-	IsDemo          bool
-	Title           string
-	Subtitle        pgtype.Text
-	Description     string
-	VenueID         uuid.UUID
-	StartsAt        pgtype.Timestamptz
-	EndsAt          pgtype.Timestamptz
-	Timezone        string
-	PriceFromMinor  pgtype.Int4
-	PriceToMinor    pgtype.Int4
-	Currency        string
-	TicketUrl       pgtype.Text
-	TicketAvailable bool
-	Status          string
-	AgeRating       pgtype.Text
-	Indoor          pgtype.Bool
-	LoudnessLevel   pgtype.Text
-	PublishedAt     pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                    uuid.UUID
+	Source                string
+	ExternalID            string
+	SourceUpdatedAt       pgtype.Timestamptz
+	IsDemo                bool
+	Title                 string
+	Subtitle              pgtype.Text
+	Description           string
+	VenueID               uuid.UUID
+	StartsAt              pgtype.Timestamptz
+	EndsAt                pgtype.Timestamptz
+	Timezone              string
+	PriceFromMinor        pgtype.Int4
+	PriceToMinor          pgtype.Int4
+	Currency              string
+	TicketUrl             pgtype.Text
+	TicketAvailable       bool
+	Status                string
+	AgeRating             pgtype.Text
+	Indoor                pgtype.Bool
+	LoudnessLevel         pgtype.Text
+	PublishedAt           pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	ProviderActive        bool
+	ProviderLastSeenRunID pgtype.UUID
 }
 
 type EventCategory struct {
@@ -66,6 +68,27 @@ type MetroStation struct {
 	Name      string
 	Latitude  float64
 	Longitude float64
+}
+
+type ProviderSyncRun struct {
+	ID           uuid.UUID
+	Provider     string
+	CityID       uuid.UUID
+	WindowStart  pgtype.Timestamptz
+	WindowEnd    pgtype.Timestamptz
+	StartedAt    pgtype.Timestamptz
+	CompletedAt  pgtype.Timestamptz
+	State        string
+	PagesFetched int32
+	Fetched      int32
+	Matched      int32
+	Normalized   int32
+	Inserted     int32
+	Updated      int32
+	Skipped      int32
+	Errors       int32
+	Reconciled   int32
+	ErrorText    pgtype.Text
 }
 
 type User struct {

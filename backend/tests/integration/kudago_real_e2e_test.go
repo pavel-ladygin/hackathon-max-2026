@@ -112,13 +112,15 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 	var originalTicketURL *string
 	var originalTicketAvailable bool
 	var originalStatus string
-	if err := db.QueryRow(ctx, `SELECT price_from_minor,price_to_minor,ticket_url,ticket_available,status FROM events WHERE id=$1`, realCandidate).
-		Scan(&originalPriceFrom, &originalPriceTo, &originalTicketURL, &originalTicketAvailable, &originalStatus); err != nil {
+	var originalProviderActive, originalIsDemo bool
+	var originalStartsAt time.Time
+	if err := db.QueryRow(ctx, `SELECT price_from_minor,price_to_minor,ticket_url,ticket_available,status,provider_active,is_demo,starts_at FROM events WHERE id=$1`, realCandidate).
+		Scan(&originalPriceFrom, &originalPriceTo, &originalTicketURL, &originalTicketAvailable, &originalStatus, &originalProviderActive, &originalIsDemo, &originalStartsAt); err != nil {
 		t.Fatal(err)
 	}
 	restoreCandidate := func() {
-		_, _ = db.Exec(context.Background(), `UPDATE events SET price_from_minor=$2,price_to_minor=$3,ticket_url=$4,ticket_available=$5,status=$6 WHERE id=$1`,
-			realCandidate, originalPriceFrom, originalPriceTo, originalTicketURL, originalTicketAvailable, originalStatus)
+		_, _ = db.Exec(context.Background(), `UPDATE events SET price_from_minor=$2,price_to_minor=$3,ticket_url=$4,ticket_available=$5,status=$6,provider_active=$7,is_demo=$8,starts_at=$9 WHERE id=$1`,
+			realCandidate, originalPriceFrom, originalPriceTo, originalTicketURL, originalTicketAvailable, originalStatus, originalProviderActive, originalIsDemo, originalStartsAt)
 	}
 	t.Cleanup(restoreCandidate)
 	assertFiltered := func(name, update string) {
@@ -139,6 +141,9 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 	assertFiltered("unavailable ticket", `UPDATE events SET ticket_url=NULL,ticket_available=false WHERE id=$1`)
 	assertFiltered("cancelled", `UPDATE events SET status='cancelled' WHERE id=$1`)
 	assertFiltered("sold out", `UPDATE events SET status='sold_out' WHERE id=$1`)
+	assertFiltered("provider inactive", `UPDATE events SET provider_active=false WHERE id=$1`)
+	assertFiltered("expired", `UPDATE events SET starts_at=now()-interval '1 minute' WHERE id=$1`)
+	assertFiltered("demo", `UPDATE events SET is_demo=true WHERE id=$1`)
 	outside := buildInput
 	outside.RoomID = uuid.New()
 	outside.FirstIntent = participant(firstUser)

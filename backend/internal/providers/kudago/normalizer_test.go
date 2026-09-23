@@ -3,10 +3,26 @@ package kudago
 import (
 	"math"
 	"testing"
+	"time"
+
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 func float64Pointer(value float64) *float64 { return &value }
 func int64Pointer(value int64) *int64       { return &value }
+
+var (
+	testWindowStart = time.Unix(1_699_999_000, 0).UTC()
+	testWindowEnd   = time.Unix(1_700_100_000, 0).UTC()
+)
+
+func normalizeTestEvent(event eventDTO) []providers.NormalizedEvent {
+	return normalizeEvent(event, testWindowStart, testWindowEnd)
+}
+
+func normalizeTestEvents(events []eventDTO) []providers.NormalizedEvent {
+	return normalizeEvents(events, testWindowStart, testWindowEnd)
+}
 
 func validEvent() eventDTO {
 	return eventDTO{
@@ -31,7 +47,7 @@ func validEvent() eventDTO {
 }
 
 func TestNormalizePaidEvent(t *testing.T) {
-	got := normalizeEvent(validEvent())
+	got := normalizeTestEvent(validEvent())
 	if len(got) != 1 {
 		t.Fatalf("normalized occurrences=%d, want 1", len(got))
 	}
@@ -48,7 +64,7 @@ func TestNormalizePaidEvent(t *testing.T) {
 	if event.Venue.ExternalID != "7" || event.Venue.Name != "Venue" || event.Venue.Address != "Street 1" || event.Venue.Metro == nil || *event.Venue.Metro != "Metro" {
 		t.Fatalf("unexpected venue: %+v", event.Venue)
 	}
-	if event.EndsAt == nil || event.PublishedAt == nil || event.Status != "published" || event.Timezone != "Europe/Moscow" {
+	if event.EndsAt == nil || event.PublishedAt == nil || event.Status != "published" || !event.ProviderActive || event.Timezone != "Europe/Moscow" {
 		t.Fatalf("unexpected dates/status: %+v", event)
 	}
 }
@@ -57,7 +73,7 @@ func TestNormalizeFreeEvent(t *testing.T) {
 	event := validEvent()
 	event.IsFree = true
 	event.Price = "бесплатно"
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if got.PriceFromMinor == nil || got.PriceToMinor == nil || *got.PriceFromMinor != 0 || *got.PriceToMinor != 0 {
 		t.Fatalf("free price=%v..%v, want 0..0", got.PriceFromMinor, got.PriceToMinor)
 	}
@@ -66,7 +82,7 @@ func TestNormalizeFreeEvent(t *testing.T) {
 func TestNormalizeNumericAgeRestriction(t *testing.T) {
 	event := validEvent()
 	event.AgeRestriction = "18"
-	got := normalizeEvent(event)
+	got := normalizeTestEvent(event)
 	if len(got) != 1 || got[0].AgeRating == nil || *got[0].AgeRating != "18+" {
 		t.Fatalf("normalized age rating = %+v", got)
 	}
@@ -75,7 +91,7 @@ func TestNormalizeNumericAgeRestriction(t *testing.T) {
 func TestNormalizeUnknownPriceStaysNull(t *testing.T) {
 	event := validEvent()
 	event.Price = "цена уточняется"
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if got.PriceFromMinor != nil || got.PriceToMinor != nil {
 		t.Fatalf("unknown price was parsed: %+v", got)
 	}
@@ -92,7 +108,7 @@ func TestNormalizeSkipsMissingOrInvalidCoordinates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			event := validEvent()
 			mutate(&event)
-			if got := normalizeEvent(event); len(got) != 0 {
+			if got := normalizeTestEvent(event); len(got) != 0 {
 				t.Fatalf("normalized invalid coordinates: %+v", got)
 			}
 		})
@@ -102,13 +118,13 @@ func TestNormalizeSkipsMissingOrInvalidCoordinates(t *testing.T) {
 func TestNormalizeUnknownCategory(t *testing.T) {
 	event := validEvent()
 	event.Categories = []string{"brand-new-category"}
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if len(got.Categories) != 1 || got.Categories[0].Slug != "other" || !got.Categories[0].IsPrimary {
 		t.Fatalf("categories=%+v", got.Categories)
 	}
 }
 
-func TestNormalizeTicketURL(t *testing.T) {
+func TestNormalizeProviderPageCTA(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		raw       string
@@ -126,7 +142,7 @@ func TestNormalizeTicketURL(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			event := validEvent()
 			event.SiteURL = test.raw
-			got := normalizeEvent(event)[0]
+			got := normalizeTestEvent(event)[0]
 			if got.TicketAvailable != test.available || (got.TicketURL != nil) != test.available {
 				t.Fatalf("url=%q ticket=%v available=%t", test.raw, got.TicketURL, got.TicketAvailable)
 			}
@@ -141,21 +157,46 @@ func TestNormalizeMultipleAndDuplicateDates(t *testing.T) {
 		{Start: 1_700_000_000, End: int64Pointer(1_700_001_000)},
 		{Start: 1_700_086_400},
 	}
-	got := normalizeEvent(event)
+	got := normalizeTestEvent(event)
 	if len(got) != 2 || got[0].ExternalID != "42:1700000000" || got[1].ExternalID != "42:1700086400" {
 		t.Fatalf("occurrences=%+v", got)
 	}
 
-	all := normalizeEvents([]eventDTO{event, event})
+	all := normalizeTestEvents([]eventDTO{event, event})
 	if len(all) != 2 {
 		t.Fatalf("batch deduplication returned %d occurrences", len(all))
+	}
+}
+
+func TestNormalizeOccurrencesWithinImportWindow(t *testing.T) {
+	actualSince := time.Unix(1_700_000_000, 0).UTC()
+	actualUntil := time.Unix(1_700_086_400, 0).UTC()
+	event := validEvent()
+	event.Dates = []eventDate{
+		{Start: actualSince.Add(-time.Second).Unix()},
+		{Start: actualSince.Unix()},
+		{Start: actualSince.Add(12 * time.Hour).Unix()},
+		{Start: actualUntil.Unix()},
+		{Start: actualUntil.Unix()},
+		{Start: actualUntil.Add(time.Second).Unix()},
+	}
+
+	got := normalizeEvent(event, actualSince, actualUntil)
+	if len(got) != 3 {
+		t.Fatalf("normalized occurrences=%d, want 3: %+v", len(got), got)
+	}
+	wantExternalIDs := []string{"42:1700000000", "42:1700043200", "42:1700086400"}
+	for index, want := range wantExternalIDs {
+		if got[index].ExternalID != want {
+			t.Fatalf("occurrence %d external_id=%q, want %q", index, got[index].ExternalID, want)
+		}
 	}
 }
 
 func TestNormalizeSkipsInvalidStart(t *testing.T) {
 	event := validEvent()
 	event.Dates = []eventDate{{Start: 0}, {Start: -1}}
-	if got := normalizeEvent(event); len(got) != 0 {
+	if got := normalizeTestEvent(event); len(got) != 0 {
 		t.Fatalf("normalized invalid starts: %+v", got)
 	}
 }
@@ -169,7 +210,7 @@ func TestNormalizeImages(t *testing.T) {
 		{Image: "http://cdn.example/insecure.jpg"},
 		{Image: "https://cdn.example/gallery.jpg"},
 	}
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if len(got.Images) != 2 || got.Images[0].Role != "card" || got.Images[0].Position != 0 || got.Images[1].Role != "gallery" || got.Images[1].Position != 1 {
 		t.Fatalf("images=%+v", got.Images)
 	}
@@ -181,7 +222,7 @@ func TestNormalizeImages(t *testing.T) {
 func TestNormalizeMultipleCategories(t *testing.T) {
 	event := validEvent()
 	event.Categories = []string{"unknown", "concert", "show", "stand_up", "stand-up"}
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if len(got.Categories) != 3 {
 		t.Fatalf("categories=%+v", got.Categories)
 	}
@@ -200,7 +241,7 @@ func TestNormalizeSkipsMissingRequiredFields(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			event := validEvent()
 			mutate(&event)
-			if got := normalizeEvent(event); len(got) != 0 {
+			if got := normalizeTestEvent(event); len(got) != 0 {
 				t.Fatalf("normalized event without %s: %+v", name, got)
 			}
 		})
@@ -210,7 +251,7 @@ func TestNormalizeSkipsMissingRequiredFields(t *testing.T) {
 func TestNormalizeAllowsNoImages(t *testing.T) {
 	event := validEvent()
 	event.Images = nil
-	got := normalizeEvent(event)[0]
+	got := normalizeTestEvent(event)[0]
 	if len(got.Images) != 0 {
 		t.Fatalf("images=%+v", got.Images)
 	}

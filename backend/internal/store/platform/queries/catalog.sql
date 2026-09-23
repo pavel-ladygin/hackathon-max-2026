@@ -20,10 +20,12 @@ SELECT e.*
 FROM events AS e
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY e.starts_at, e.id;
 
 -- name: GetEventAvailability :one
-SELECT status, starts_at, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+SELECT status, starts_at, price_from_minor, price_to_minor, currency,
+       CASE WHEN provider_active THEN ticket_available ELSE false END AS ticket_available, ticket_url
 FROM events
 WHERE id = $1;
 
@@ -33,6 +35,7 @@ FROM event_categories AS ec
 JOIN events AS e ON e.id = ec.event_id
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY ec.event_id, ec.is_primary DESC, ec.category_slug;
 
 -- name: ListCatalogImages :many
@@ -41,4 +44,5 @@ FROM event_images AS ei
 JOIN events AS e ON e.id = ei.event_id
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY ei.event_id, ei.position, ei.id;

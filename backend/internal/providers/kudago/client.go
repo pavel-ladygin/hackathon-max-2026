@@ -57,9 +57,11 @@ func NewClient(options Options) (*Client, error) {
 		return nil, errors.New("kudago page size must be between 1 and 100")
 	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/"
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSHandshakeTimeout = options.Timeout
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: options.Timeout},
+		httpClient: &http.Client{Transport: transport, Timeout: options.Timeout},
 		location:   strings.TrimSpace(options.Location),
 		pageSize:   options.PageSize,
 		now:        time.Now,

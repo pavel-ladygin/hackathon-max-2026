@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -21,6 +22,7 @@ const (
 	maxRequestAttempts = 3
 	retryBaseDelay     = time.Second
 	moscowCity         = "Москва"
+	requestedFields    = "location,registration_data,ticket_types,description_short,ends_at,created_at,age_limit,organization,access_status,moderation_status"
 )
 
 type Options struct {
@@ -82,7 +84,7 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 	query.Set("sort", "+starts_at")
 	query.Set("starts_at_min", startsAtMin.Format(time.RFC3339))
 	query.Set("starts_at_max", startsAtMax.Format(time.RFC3339))
-	query.Set("fields", "location,registration_data,ticket_types")
+	query.Set("fields", requestedFields)
 	requestURL.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
@@ -123,23 +125,44 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 
 		var page eventsPage
 		decoder := json.NewDecoder(response.Body)
-		if err := decoder.Decode(&page); err != nil {
-			response.Body.Close()
-			return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
-		}
-		var extra any
-		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-			response.Body.Close()
-			if err == nil {
-				err = errors.New("multiple JSON values")
+		decodeErr := decoder.Decode(&page)
+		if decodeErr == nil {
+			var extra any
+			if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+				decodeErr = err
+				if decodeErr == nil {
+					decodeErr = errors.New("multiple JSON values")
+				}
 			}
-			return eventsPage{}, fmt.Errorf("decode timepad response: %w", err)
 		}
 		response.Body.Close()
+		if decodeErr != nil {
+			if ctx.Err() != nil {
+				return eventsPage{}, ctx.Err()
+			}
+			if retryableResponseReadError(decodeErr) && attempt < maxRequestAttempts {
+				if err := waitForRetry(ctx, retryBaseDelay*time.Duration(1<<(attempt-1))); err != nil {
+					return eventsPage{}, err
+				}
+				continue
+			}
+			if retryableResponseReadError(decodeErr) {
+				return eventsPage{}, fmt.Errorf("decode timepad response after %d attempts: %w", attempt, decodeErr)
+			}
+			return eventsPage{}, fmt.Errorf("decode timepad response: %w", decodeErr)
+		}
 		return page, nil
 	}
 
 	return eventsPage{}, errors.New("timepad request attempts exhausted")
+}
+
+func retryableResponseReadError(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var networkError net.Error
+	return errors.As(err, &networkError)
 }
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {

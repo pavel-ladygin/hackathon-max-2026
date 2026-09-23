@@ -79,6 +79,7 @@ func (r *Repository) UpsertWithResult(ctx context.Context, cityID uuid.UUID, eve
 			Currency: event.Currency, TicketUrl: optionalText(event.TicketURL), TicketAvailable: event.TicketAvailable,
 			Status: event.Status, AgeRating: optionalText(event.AgeRating), Indoor: optionalBool(event.Indoor),
 			LoudnessLevel: optionalText(event.LoudnessLevel), PublishedAt: optionalTime(event.PublishedAt),
+			ProviderActive: event.ProviderActive, ProviderLastSeenRunID: optionalUUID(event.ProviderLastSeenRunID),
 		})
 		if err != nil {
 			return fmt.Errorf("upsert provider event: %w", err)
@@ -114,6 +115,115 @@ func (r *Repository) UpsertWithResult(ctx context.Context, cityID uuid.UUID, eve
 		return UpsertResult{}, fmt.Errorf("persist normalized provider event: %w", err)
 	}
 	return result, nil
+}
+
+func (r *Repository) BeginSyncRun(ctx context.Context, start SyncRunStart) (uuid.UUID, error) {
+	if r == nil || r.db == nil {
+		return uuid.Nil, errors.New("provider repository database is required")
+	}
+	provider := strings.TrimSpace(start.Provider)
+	switch {
+	case provider == "" || provider == "demo":
+		return uuid.Nil, errors.New("sync run provider is invalid")
+	case start.CityID == uuid.Nil:
+		return uuid.Nil, errors.New("sync run city is required")
+	case start.WindowStart.IsZero() || start.WindowEnd.Before(start.WindowStart):
+		return uuid.Nil, errors.New("sync run window is invalid")
+	}
+	runID := uuid.New()
+	created, err := platform.New(r.db).CreateProviderSyncRun(ctx, platform.CreateProviderSyncRunParams{
+		ID: runID, Provider: provider, CityID: start.CityID,
+		WindowStart: requiredTime(start.WindowStart), WindowEnd: requiredTime(start.WindowEnd),
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("create provider sync run: %w", err)
+	}
+	return created, nil
+}
+
+func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (reconciled int, err error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("provider repository database is required")
+	}
+	if finish.RunID == uuid.Nil {
+		return 0, errors.New("sync run ID is required")
+	}
+	if finish.State != SyncRunSucceeded && finish.State != SyncRunFailed && finish.State != SyncRunCancelled {
+		return 0, errors.New("sync run final state is invalid")
+	}
+	if err := validateImportStats(finish.Stats); err != nil {
+		return 0, err
+	}
+	if finish.State == SyncRunSucceeded && finish.Stats.Errors > 0 {
+		finish.State = SyncRunFailed
+		finish.ErrorText = "provider records failed to persist"
+	}
+
+	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := platform.New(tx)
+		run, err := queries.GetProviderSyncRunForUpdate(ctx, finish.RunID)
+		if err != nil {
+			return fmt.Errorf("lock provider sync run: %w", err)
+		}
+		if run.State != "running" {
+			reconciled = int(run.Reconciled)
+			return nil
+		}
+
+		if finish.State == SyncRunSucceeded {
+			newer, err := queries.HasNewerProviderSyncRun(ctx, platform.HasNewerProviderSyncRunParams{
+				Provider: run.Provider, CityID: run.CityID, StartedAt: run.StartedAt,
+			})
+			if err != nil {
+				return fmt.Errorf("check newer provider sync run: %w", err)
+			}
+			if !newer {
+				count, err := queries.ReconcileProviderSyncRun(ctx, finish.RunID)
+				if err != nil {
+					return fmt.Errorf("reconcile provider sync run: %w", err)
+				}
+				reconciled = int(count)
+			}
+		}
+
+		stats := finish.Stats
+		if err := queries.CompleteProviderSyncRun(ctx, platform.CompleteProviderSyncRunParams{
+			ID: finish.RunID, State: string(finish.State),
+			PagesFetched: int32(stats.PagesFetched), Fetched: int32(stats.Fetched), Matched: int32(stats.Matched),
+			Normalized: int32(stats.Normalized), Inserted: int32(stats.Inserted), Updated: int32(stats.Updated),
+			Skipped: int32(stats.Skipped), Errors: int32(stats.Errors), Reconciled: int32(reconciled),
+			ErrorText: optionalTextValue(safeSyncErrorText(finish.ErrorText)),
+		}); err != nil {
+			return fmt.Errorf("complete provider sync run: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return reconciled, nil
+}
+
+func validateImportStats(stats ImportStats) error {
+	values := []int{stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors}
+	for _, value := range values {
+		if value < 0 || int64(value) > int64(^uint32(0)>>1) {
+			return errors.New("sync run stats are invalid")
+		}
+	}
+	return nil
+}
+
+func safeSyncErrorText(value string) string {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "", "provider import cancelled", "provider import failed", "provider records failed to persist":
+		return value
+	default:
+		// Sync audit rows intentionally retain only a coarse error class. Raw
+		// provider responses and errors may contain tokens or private payloads.
+		return "provider sync failed"
+	}
 }
 
 func validatePersistenceInput(cityID uuid.UUID, event NormalizedEvent) error {
@@ -177,6 +287,20 @@ func optionalBool(value *bool) pgtype.Bool {
 		return pgtype.Bool{}
 	}
 	return pgtype.Bool{Bool: *value, Valid: true}
+}
+
+func optionalUUID(value *uuid.UUID) pgtype.UUID {
+	if value == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *value, Valid: true}
+}
+
+func optionalTextValue(value string) pgtype.Text {
+	if value == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: value, Valid: true}
 }
 
 func optionalFloat64(value *float64) pgtype.Float8 {
