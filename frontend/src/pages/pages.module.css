@@ -87,6 +87,10 @@
   .homeAction > .button, .homeAction > button { width: min(280px, 36vw); }
   .hero { min-height: 0; aspect-ratio: 16 / 7; max-height: 440px; }
   .detailHero { height: min(38vh, 360px); }
+  .eventGrid .catalogItem { min-width: 0; }
+  .eventGrid .eventCardWithSave, .eventGrid .feedCard { height: 100%; min-height: 144px; align-items: flex-start; }
+  .eventGrid .eventCardWithSave strong, .eventGrid .feedCard strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+  .eventGrid .eventCardWithSave > span:last-child, .eventGrid .feedCard > span:last-child { align-self: center; }
 }
 
 @media (max-width: 520px) {

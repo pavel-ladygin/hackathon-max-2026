@@ -37,7 +37,7 @@ export function HomePage() {
         ) : null}
         <div className={styles.sectionHead}><h2>Для вас</h2><span className={styles.eyebrow}>{allEvents.length} событий</span></div>
         <div className={styles.eventGrid}>
-          {allEvents.slice(1).map((event) => <EventCard key={event.id} event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} />)}
+          {allEvents.slice(1).map((event) => <EventCard key={event.id} className={styles.feedCard} event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} />)}
         </div>
         <BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'catalog', label: 'Афиша', icon: 'calendar' }, { id: 'saved', label: 'Моё', icon: 'saved' }]} onChange={(id) => id === 'catalog' ? navigate('/events') : id === 'saved' ? navigate('/saved') : navigate('/')} />
       </PageContent>
