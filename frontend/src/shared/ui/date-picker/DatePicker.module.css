@@ -11,10 +11,12 @@
 .sheetHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .sheetHeader strong { display: block; margin-top: 3px; font-size: 20px; line-height: 1.2; }
 .sheetEyebrow { color: #8b8178; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.close, .navButton { display: inline-grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 12px; background: var(--color-soft, #f3f0ec); color: var(--color-ink, #242423); font: inherit; font-size: 25px; line-height: 1; }
-.monthNav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; gap: 8px; margin-bottom: 15px; text-align: center; }
+.close, .navButton { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 12px; background: var(--color-soft, #f3f0ec); color: var(--color-ink, #242423); }
+.close svg { width: 22px; height: 22px; }
+.navButton svg { width: 24px; height: 24px; }
+.close svg, .navButton svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+.monthNav { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 8px; margin-bottom: 15px; text-align: center; }
 .monthNav strong { font-size: 16px; text-transform: capitalize; }
-.navButton { font-size: 30px; }
 .weekdays, .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .weekdays { margin-bottom: 7px; color: #8b8178; font-size: 11px; font-weight: 700; text-align: center; }
 .day { display: grid; min-height: 42px; place-items: center; border: 0; border-radius: 13px; background: transparent; color: var(--color-ink, #242423); font: inherit; font-size: 13px; font-weight: 700; }

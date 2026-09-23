@@ -41,7 +41,7 @@ export function NewRoomPage() {
     <PageShell><TopBar title="Новая комната" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ ВЫБРАТЬ</p><h1 className={styles.title}>Создать комнату</h1><p className={styles.subtitle}>Пригласите друга. Каждый отдельно укажет пожелания, а система найдёт честное пересечение.</p>
       <form className={styles.formStack} onSubmit={form.handleSubmit((values) => create.mutate(values))}>
-        <label className={styles.fieldLabel} htmlFor="room-name">Название комнаты<input id="room-name" className={styles.input} aria-invalid={Boolean(form.formState.errors.name)} {...form.register('name')} />{form.formState.errors.name ? <span className={styles.error} role="alert">{form.formState.errors.name.message}</span> : null}</label>
+        <label className={styles.fieldLabel} htmlFor="room-name">Название комнаты<input id="room-name" className={`${styles.input} ${styles.roomNameInput}`} aria-invalid={Boolean(form.formState.errors.name)} {...form.register('name')} />{form.formState.errors.name ? <span className={styles.error} role="alert">{form.formState.errors.name.message}</span> : null}</label>
         <div className={styles.avatars} aria-label="Комната для двух участников"><span className={styles.avatar}>И</span><span className={styles.avatar}>+</span></div>
         <PrivacyNote>Сначала вы пригласите друга, затем каждый приватно заполнит свои условия.</PrivacyNote>
         {create.isError ? <p className={styles.error} role="alert">{roomErrorMessage(create.error, 'Не удалось создать комнату.')}</p> : null}

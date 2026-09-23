@@ -75,6 +75,7 @@
 .saveButton:active { transform: translateY(-50%) scale(.96); }
 .saveButton:disabled { opacity: .55; }
 .detailSaveButton { width: 48px; height: 48px; }
+.eventTopBar { padding: 0 12px; background: #fff; }
 .tabs { display: flex; gap: 8px; margin: 6px 0 22px; }
 .matchNote { display: block; margin: -3px 12px 10px; color: #8e806f; font-size: 11px; }
 .fieldError { margin: -3px 0 0; color: #b42318; font-size: 11px; }
@@ -108,7 +109,10 @@
 .skeletonCard { min-height: 104px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 @media (hover: hover) and (pointer: fine) {
   .input:hover, .textarea:hover, .searchInput:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
+  .roomNameInput:hover { border-color: #ad9b8d; background: var(--color-paper); }
   .saveButton:hover { transform: translateY(-50%) translateY(-1px); opacity: .9; }
   .profileButton:hover, .hero:hover { transform: translateY(-1px); opacity: .92; }
   .suggestion:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
 }
+.roomNameInput:focus, .roomNameInput:focus:hover { border-color: #c9bee3; background: var(--color-paper); box-shadow: 0 0 0 2px rgb(171 153 207 / 24%); }
+.roomNameInput:focus-visible { outline: 2px solid #aa98ce; outline-offset: 2px; }

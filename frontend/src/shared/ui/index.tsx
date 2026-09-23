@@ -94,5 +94,5 @@ function NavIcon({ name }: { name: NavIconName }) {
   return <HeartIcon />;
 }
 export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; activeId?: string; onChange?: (id: string) => void }) {
-  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onChange?.(item.id)}><span className={styles.navIcon}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>;
+  return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onChange?.(item.id)}><span className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>;
 }
