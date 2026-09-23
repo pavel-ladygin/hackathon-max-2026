@@ -150,7 +150,7 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		if event.Status != "published" || !event.TicketAvailable || !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 > 250000 {
 			t.Fatalf("ineligible seeded event %s returned", candidate.EventID)
 		}
-		if candidate.Score.GroupScore < 0 || candidate.Score.GroupScore > 1 || len(candidate.FeatureSnapshot) != 7 || len(candidate.Explanation) > 3 {
+		if candidate.Score.GroupScore < 0 || candidate.Score.GroupScore > 1 || len(candidate.FeatureSnapshot) != 8 || len(candidate.Explanation) > 3 {
 			t.Fatalf("invalid ranking snapshot for %s: %+v", candidate.EventID, candidate)
 		}
 		for _, reason := range candidate.Explanation {
@@ -224,11 +224,19 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	}
 
 	// A subsequent build must see current catalog availability, status and price.
-	for i, assignment := range []string{"ticket_available=false", "status='sold_out'", "price_from_minor=NULL"} {
-		if _, err := db.Exec(ctx, "UPDATE events SET "+assignment+" WHERE id=$1", free.Candidates[i].EventID); err != nil {
+	assignments := []struct {
+		sql       string
+		wantCount int
+	}{
+		{sql: "ticket_available=false", wantCount: 10},
+		{sql: "status='sold_out'", wantCount: 9},
+		{sql: "price_from_minor=NULL", wantCount: 9},
+	}
+	for i, assignment := range assignments {
+		if _, err := db.Exec(ctx, "UPDATE events SET "+assignment.sql+" WHERE id=$1", free.Candidates[i].EventID); err != nil {
 			t.Fatal(err)
 		}
-		build(freeInput, 10-i)
+		build(freeInput, assignment.wantCount)
 	}
 }
 

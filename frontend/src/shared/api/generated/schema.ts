@@ -390,6 +390,11 @@ export interface components {
             category_slug: components["schemas"]["CategorySlug"];
             /** Format: date-time */
             starts_at: string;
+            /**
+             * @description Количество других подходящих будущих сеансов этого же мероприятия.
+             * @example 3
+             */
+            other_occurrences_count?: number;
             /** @example Europe/Moscow */
             timezone: string;
             /** @example 19 сентября, 19:30 */

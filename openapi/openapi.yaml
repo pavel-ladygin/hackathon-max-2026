@@ -1062,6 +1062,11 @@ components:
         starts_at:
           type: string
           format: date-time
+        other_occurrences_count:
+          type: integer
+          minimum: 0
+          description: Количество других подходящих будущих сеансов этого же мероприятия.
+          example: 3
         timezone:
           type: string
           example: Europe/Moscow
