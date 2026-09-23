@@ -8,7 +8,7 @@ import { useBootstrap } from '../../features/auth/useBootstrap'
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, DayType, TimeSlot } from '../../shared/api/types'
-import { Button, Chip, ChipGroup, ErrorState, FieldError, Loading, PageContent, PageShell, TopBar } from '../../shared/ui'
+import { Button, Chip, ChipGroup, ErrorState, FieldError, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui'
 import styles from '../pages.module.css'
 
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
@@ -40,7 +40,7 @@ export function PreferencesPage() {
       if (error.fieldErrors.usual_time_slots) form.setError('times', { message: error.fieldErrors.usual_time_slots })
     },
   })
-  if (bootstrap.isPending) return <Loading />
+  if (bootstrap.isPending) return <ScreenSkeleton variant="form" label="Загружаем предпочтения…" />
   if (bootstrap.isError || !bootstrap.data) return <ErrorState title="Настройки не загрузились" action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
   const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>

@@ -820,13 +820,15 @@ type ErrorResponse_Error_Details struct {
 
 // EventCard defines model for EventCard.
 type EventCard struct {
-	CategorySlug  CategorySlug              `json:"category_slug"`
-	Currency      EventCardCurrency         `json:"currency"`
-	DateLabel     string                    `json:"date_label"`
-	DistanceLabel nullable.Nullable[string] `json:"distance_label,omitempty"`
-	DistanceM     nullable.Nullable[int]    `json:"distance_m,omitempty"`
-	Id            openapi_types.UUID        `json:"id"`
-	ImageUrl      nullable.Nullable[string] `json:"image_url"`
+	CategorySlug  CategorySlug               `json:"category_slug"`
+	Currency      EventCardCurrency          `json:"currency"`
+	DateLabel     string                     `json:"date_label"`
+	DistanceLabel nullable.Nullable[string]  `json:"distance_label,omitempty"`
+	DistanceM     nullable.Nullable[int]     `json:"distance_m,omitempty"`
+	Id            openapi_types.UUID         `json:"id"`
+	ImageUrl      nullable.Nullable[string]  `json:"image_url"`
+	Latitude      nullable.Nullable[float64] `json:"latitude,omitempty"`
+	Longitude     nullable.Nullable[float64] `json:"longitude,omitempty"`
 
 	// OtherOccurrencesCount Количество других подходящих будущих сеансов этого же мероприятия.
 	OtherOccurrencesCount *int                      `json:"other_occurrences_count,omitempty"`
@@ -858,6 +860,8 @@ type EventDetail struct {
 	Id             openapi_types.UUID                      `json:"id"`
 	ImageUrl       nullable.Nullable[string]               `json:"image_url"`
 	Images         []EventImage                            `json:"images"`
+	Latitude       nullable.Nullable[float64]              `json:"latitude,omitempty"`
+	Longitude      nullable.Nullable[float64]              `json:"longitude,omitempty"`
 
 	// OtherOccurrencesCount Количество других подходящих будущих сеансов этого же мероприятия.
 	OtherOccurrencesCount *int                      `json:"other_occurrences_count,omitempty"`

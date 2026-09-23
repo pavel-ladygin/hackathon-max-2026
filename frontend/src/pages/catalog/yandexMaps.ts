@@ -1,7 +1,13 @@
 export type YandexCoordinates = [number, number]
 
+/** Keep event thumbnails within a usable range while following map zoom. */
+export function markerSizeForZoom(zoom: number) {
+  return Math.min(64, Math.max(36, 48 + (zoom - 11) * 4))
+}
+
 export interface YandexMap {
   addChild(child: unknown): YandexMap
+  removeChild(child: unknown): YandexMap
   destroy(): void
 }
 
@@ -13,12 +19,36 @@ interface YandexMarkerConstructor {
   new (options: { coordinates: YandexCoordinates }, element: HTMLElement): unknown
 }
 
+export interface YandexMapUpdateEvent {
+  location?: { center?: YandexCoordinates; zoom?: number }
+  camera?: { center?: YandexCoordinates; zoom?: number }
+}
+
+export interface YandexCamera { center: YandexCoordinates; zoom: number }
+
+/** Approximate the visible viewport's half-diagonal and clamp to the search API's 50 km limit. */
+export function radiusForViewport(zoom: number, width: number, height: number) {
+  const safeZoom = Math.min(22, Math.max(0, zoom))
+  const halfDiagonalPixels = Math.hypot(Math.max(1, width), Math.max(1, height)) / 2
+  const metersPerPixel = 40_075_000 / (256 * 2 ** safeZoom)
+  return Math.round(Math.min(50_000, Math.max(1_000, halfDiagonalPixels * metersPerPixel)))
+}
+
+interface YandexMapListenerOptions {
+  onUpdate?: (event: YandexMapUpdateEvent) => void
+}
+
+interface YandexMapListenerConstructor {
+  new (options: YandexMapListenerOptions): unknown
+}
+
 export interface YandexMapsApi {
   ready: Promise<void>
   YMap: YandexMapConstructor
   YMapDefaultSchemeLayer: new () => unknown
   YMapDefaultFeaturesLayer: new () => unknown
   YMapMarker: YandexMarkerConstructor
+  YMapListener: YandexMapListenerConstructor
 }
 
 declare global {

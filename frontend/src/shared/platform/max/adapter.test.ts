@@ -9,6 +9,8 @@ const bridge = (overrides: Partial<MaxWebApp> = {}): MaxWebApp => ({
 
 afterEach(() => {
   delete window.WebApp;
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
@@ -40,6 +42,12 @@ describe("isAllowedTicketUrl", () => {
 });
 
 describe("MaxBridgeAdapterImpl navigation", () => {
+  it("does not report clipboard copying as successful invite sharing", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token", text: "Join" })).resolves.toBe(false);
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
   it("opens an allowed ticket URL through the MAX bridge", async () => {
     vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "*.ru");
     const openLink = vi.fn().mockResolvedValue(undefined);
@@ -89,5 +97,32 @@ describe("MaxBridgeAdapterImpl navigation", () => {
 
     await expect(new MaxBridgeAdapterImpl().openMaxLink("https://max.ru/startapp/token")).resolves.toBe(true);
     expect(open).toHaveBeenCalledWith("https://max.ru/startapp/token", "_blank", "noopener,noreferrer");
+  });
+});
+
+describe("MaxBridgeAdapterImpl location", () => {
+  const setGeolocation = (getCurrentPosition: PositionCallback | ((success: PositionCallback, error?: PositionErrorCallback | null, options?: PositionOptions) => void)) => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition } });
+  };
+
+  it.each([[1, "permission_denied"], [2, "position_unavailable"], [3, "timeout"]] as const)(
+    "preserves the browser location error code %s",
+    async (code, reason) => {
+      setGeolocation((_success, error) => error?.({ code, message: "location unavailable", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }));
+      await expect(new MaxBridgeAdapterImpl().requestLocation()).resolves.toEqual({ ok: false, reason });
+    },
+  );
+
+  it("returns coordinates on success without logging them", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback, ...rest: [PositionErrorCallback | null | undefined, PositionOptions | undefined]) => {
+      void rest;
+      success({
+        coords: { latitude: 55.75, longitude: 37.61, accuracy: 50, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}) },
+        timestamp: Date.now(), toJSON: () => ({}),
+      });
+    });
+    setGeolocation(getCurrentPosition);
+    await expect(new MaxBridgeAdapterImpl().requestLocation()).resolves.toEqual({ ok: true, position: { lat: 55.75, lng: 37.61, accuracyM: 50 } });
+    expect(getCurrentPosition.mock.calls[0]?.[2]).toMatchObject({ timeout: 15_000, maximumAge: 300_000 });
   });
 });

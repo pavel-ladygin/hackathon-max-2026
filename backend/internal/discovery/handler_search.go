@@ -303,6 +303,10 @@ func searchResponse(page Page, filter SearchFilter, service SearchProvider) (api
 	response := api.EventSearchResponse{Items: make([]api.EventCard, len(page.Items)), AppliedFilters: appliedFilters(filter), TotalEstimate: page.Total, NextCursor: nullable.NewNullNullable[string]()}
 	for index, card := range page.Items {
 		response.Items[index] = homeCard(card)
+		if card.Latitude != nil && card.Longitude != nil {
+			response.Items[index].Latitude = nullable.NewNullableWithValue(*card.Latitude)
+			response.Items[index].Longitude = nullable.NewNullableWithValue(*card.Longitude)
+		}
 	}
 	if page.NextCursor != nil {
 		encoded, err := service.EncodeNextCursor(*page.NextCursor)

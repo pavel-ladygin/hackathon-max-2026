@@ -1,0 +1,238 @@
+.mapWrap {
+  position: relative;
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+}
+
+.map {
+  width: 100%;
+  height: min(62vh, 620px);
+  min-height: 430px;
+}
+
+.mapMessage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: transparent;
+}
+
+.mapMessagePassive {
+  pointer-events: none;
+}
+
+.mapMessageInteractive {
+  pointer-events: auto;
+}
+
+.mapLoading {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-paper);
+  color: var(--color-muted);
+  font-size: .85rem;
+}
+
+.preview {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(88px, 24%) minmax(0, 1fr);
+  gap: 14px;
+  max-height: min(220px, 42%);
+  padding: 12px 48px 12px 12px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 8px 28px rgb(39 29 21 / 20%);
+}
+
+.previewImage {
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  max-height: 190px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.previewContent { min-width: 0; align-self: center; }
+.previewTitle { margin: 0 0 6px; font-size: 1rem; line-height: 1.25; }
+.previewMeta, .previewPrice { margin: 3px 0; color: var(--color-muted); font-size: .875rem; line-height: 1.3; }
+.previewPrice { margin-bottom: 10px; color: var(--color-ink); font-weight: 700; }
+.previewClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-paper, #fffaf5);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.previewClose:focus-visible { outline: 3px solid var(--color-accent, #ef6b6b); outline-offset: 2px; }
+
+.mapMarker {
+  --marker-size: 48px;
+  --marker-delay: 0ms;
+  position: relative;
+  display: grid;
+  width: max(44px, calc(var(--marker-size) + 8px));
+  height: max(44px, calc(var(--marker-size) + 8px));
+  padding: 2px;
+  border: 2px solid var(--color-paper, #fffaf5);
+  border-radius: var(--radius-md);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 3px 12px rgb(39 29 21 / 22%);
+  cursor: pointer;
+  touch-action: manipulation;
+  transform: translate(-50%, -50%);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  animation: markerEntrance 220ms ease-out both;
+  animation-delay: var(--marker-delay);
+}
+
+.mapMarker:focus-visible,
+.mapMarker[data-active='true'] {
+  z-index: 2;
+  box-shadow: 0 7px 18px rgb(39 29 21 / 30%);
+}
+
+.mapMarker[data-active='true'] {
+  border-color: var(--color-accent, #ef6b6b);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.mapMarker:focus-visible {
+  outline: 3px solid var(--color-accent, #ef6b6b);
+  outline-offset: 3px;
+}
+
+.markerImage {
+  display: block;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  transition: width 180ms ease, height 180ms ease;
+}
+
+.markerTooltip {
+  position: absolute;
+  bottom: calc(100% + max(6px, calc(var(--marker-size) * .12)));
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 5px 15px rgb(39 29 21 / 16%);
+  color: var(--color-ink, #171716);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.mapMarker:focus-visible .markerTooltip,
+.mapMarker[data-active='true'] .markerTooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mapMarker:hover {
+    z-index: 2;
+    box-shadow: 0 7px 18px rgb(39 29 21 / 30%);
+  }
+
+  .mapMarker:hover .markerTooltip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapMarker,
+  .markerTooltip {
+    transition: none;
+    animation: none;
+  }
+}
+
+@keyframes markerEntrance {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 260px);
+  margin: 14px 0;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-soft);
+}
+
+.segmentedItem {
+  position: relative;
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  touch-action: manipulation;
+}
+
+.segmentedItem:focus-visible { z-index: 1; outline: 3px solid var(--color-accent, #ef6b6b); outline-offset: 2px; }
+.segmentedLabel { position: relative; z-index: 1; }
+.segmentedIndicator { position: absolute; inset: 0; border-radius: inherit; background: var(--color-paper); box-shadow: var(--shadow-control-soft); }
+.segmentedItem[aria-selected='true'] { color: var(--color-ink); }
+
+@media (max-width: 767px) {
+  .preview { right: 8px; bottom: 8px; left: 8px; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; max-height: 42%; padding: 10px 42px 10px 10px; }
+  .previewImage { min-height: 88px; max-height: 120px; }
+  .previewTitle { font-size: .94rem; }
+  .previewMeta, .previewPrice { font-size: .8rem; }
+  .segmented {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markerImage { transition: none; }
+}

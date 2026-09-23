@@ -400,6 +400,10 @@ export interface components {
             /** @example 19 сентября, 19:30 */
             date_label: string;
             venue_name: string;
+            /** Format: double */
+            latitude?: number | null;
+            /** Format: double */
+            longitude?: number | null;
             distance_m?: number | null;
             distance_label?: string | null;
             price_from_minor: number | null;

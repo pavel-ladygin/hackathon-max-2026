@@ -145,7 +145,12 @@ func locationValues(location *Location) (pgtype.Float8, pgtype.Float8) {
 }
 
 func cardFromGenerated(row platform.SearchDiscoveryEventCardsRow) Card {
-	return cardFromFields(row.ID, row.Title, row.Subtitle, row.CategorySlug, row.StartsAt, row.Timezone, row.VenueName, optionalDistance(row.DistanceM), row.PriceFromMinor, row.Currency, row.ImageUrl, row.Saved)
+	card := cardFromFields(row.ID, row.Title, row.Subtitle, row.CategorySlug, row.StartsAt, row.Timezone, row.VenueName, optionalDistance(row.DistanceM), row.PriceFromMinor, row.Currency, row.ImageUrl, row.Saved)
+	if row.Latitude.Valid && row.Longitude.Valid {
+		card.Latitude = &row.Latitude.Float64
+		card.Longitude = &row.Longitude.Float64
+	}
+	return card
 }
 func detailFromGenerated(row platform.GetDiscoveryEventDetailRow) Detail {
 	card := cardFromFields(row.ID, row.Title, row.Subtitle, row.CategorySlug, row.StartsAt, row.Timezone, row.Name, optionalDistance(row.Column8), row.PriceFromMinor, row.Currency, row.ImageUrl, row.Exists)
