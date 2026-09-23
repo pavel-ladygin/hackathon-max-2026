@@ -17,7 +17,7 @@ type stubImporter struct {
 	calls int
 }
 
-func (s *stubImporter) Import(context.Context, uuid.UUID, providers.EventStore, func(error)) (providers.ImportStats, error) {
+func (s *stubImporter) Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error) {
 	s.calls++
 	return s.stats, s.err
 }

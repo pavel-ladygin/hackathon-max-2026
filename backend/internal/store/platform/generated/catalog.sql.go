@@ -32,7 +32,8 @@ func (q *Queries) GetCatalogCity(ctx context.Context, id uuid.UUID) (City, error
 }
 
 const getEventAvailability = `-- name: GetEventAvailability :one
-SELECT status, starts_at, price_from_minor, price_to_minor, currency, ticket_available, ticket_url
+SELECT status, starts_at, price_from_minor, price_to_minor, currency,
+       CASE WHEN provider_active THEN ticket_available ELSE false END AS ticket_available, ticket_url
 FROM events
 WHERE id = $1
 `
@@ -68,6 +69,7 @@ FROM event_categories AS ec
 JOIN events AS e ON e.id = ec.event_id
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY ec.event_id, ec.is_primary DESC, ec.category_slug
 `
 
@@ -97,10 +99,11 @@ func (q *Queries) ListCatalogCategories(ctx context.Context, cityID uuid.UUID) (
 }
 
 const listCatalogEvents = `-- name: ListCatalogEvents :many
-SELECT e.id, e.source, e.external_id, e.source_updated_at, e.is_demo, e.title, e.subtitle, e.description, e.venue_id, e.starts_at, e.ends_at, e.timezone, e.price_from_minor, e.price_to_minor, e.currency, e.ticket_url, e.ticket_available, e.status, e.age_rating, e.indoor, e.loudness_level, e.published_at, e.updated_at
+SELECT e.id, e.source, e.external_id, e.source_updated_at, e.is_demo, e.title, e.subtitle, e.description, e.venue_id, e.starts_at, e.ends_at, e.timezone, e.price_from_minor, e.price_to_minor, e.currency, e.ticket_url, e.ticket_available, e.status, e.age_rating, e.indoor, e.loudness_level, e.published_at, e.updated_at, e.provider_active, e.provider_last_seen_run_id
 FROM events AS e
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY e.starts_at, e.id
 `
 
@@ -137,6 +140,8 @@ func (q *Queries) ListCatalogEvents(ctx context.Context, cityID uuid.UUID) ([]Ev
 			&i.LoudnessLevel,
 			&i.PublishedAt,
 			&i.UpdatedAt,
+			&i.ProviderActive,
+			&i.ProviderLastSeenRunID,
 		); err != nil {
 			return nil, err
 		}
@@ -154,6 +159,7 @@ FROM event_images AS ei
 JOIN events AS e ON e.id = ei.event_id
 JOIN venues AS v ON v.id = e.venue_id
 WHERE v.city_id = $1
+  AND e.provider_active = true
 ORDER BY ei.event_id, ei.position, ei.id
 `
 

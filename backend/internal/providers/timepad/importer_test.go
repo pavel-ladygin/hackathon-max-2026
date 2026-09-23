@@ -16,13 +16,27 @@ import (
 type memoryEventStore struct {
 	seen      map[string]struct{}
 	persisted []string
+	marked    []bool
+	starts    []providers.SyncRunStart
+	finishes  []providers.SyncRunFinish
 }
 
 func (s *memoryEventStore) UpsertWithResult(_ context.Context, _ uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
+	s.marked = append(s.marked, event.ProviderLastSeenRunID != nil)
 	_, exists := s.seen[event.ExternalID]
 	s.seen[event.ExternalID] = struct{}{}
 	s.persisted = append(s.persisted, event.ExternalID)
 	return providers.UpsertResult{EventID: uuid.New(), Inserted: !exists}, nil
+}
+
+func (s *memoryEventStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {
+	s.starts = append(s.starts, start)
+	return uuid.New(), nil
+}
+
+func (s *memoryEventStore) FinishSyncRun(_ context.Context, finish providers.SyncRunFinish) (int, error) {
+	s.finishes = append(s.finishes, finish)
+	return 0, nil
 }
 
 func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
@@ -75,6 +89,14 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
 		t.Fatalf("rerun skip sequence = %s, want %s", got, want)
+	}
+	if len(store.starts) != 2 || len(store.finishes) != 2 || store.finishes[0].State != providers.SyncRunSucceeded || store.finishes[1].State != providers.SyncRunSucceeded {
+		t.Fatalf("sync lifecycle starts=%+v finishes=%+v", store.starts, store.finishes)
+	}
+	for index, marked := range store.marked {
+		if !marked {
+			t.Fatalf("persisted event %d has no sync run marker", index)
+		}
 	}
 }
 
@@ -147,12 +169,16 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 		<-waitCtx.Done()
 		return waitCtx.Err()
 	}
-	stats, err := client.Import(ctx, uuid.New(), &memoryEventStore{seen: make(map[string]struct{})}, nil)
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(ctx, uuid.New(), store, nil)
 	if err != context.Canceled {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 	if stats.PagesFetched != 1 || stats.Fetched != 2 || stats.Inserted != 2 {
 		t.Fatalf("stats before cancellation = %+v", stats)
+	}
+	if len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunCancelled {
+		t.Fatalf("finish = %+v, want cancelled", store.finishes)
 	}
 }
 

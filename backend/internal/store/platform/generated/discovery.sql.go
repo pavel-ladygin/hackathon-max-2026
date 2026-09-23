@@ -18,7 +18,7 @@ WITH base AS (
            CASE WHEN $10::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $10::double precision) / 2), 2) + cos(radians($10::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $11::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
     WHERE v.city_id = $12 AND e.status = 'published'
-      AND e.is_demo = false AND e.starts_at > now()
+      AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 )
 SELECT count(*)::integer FROM base b
 WHERE ($1::text IS NULL OR
@@ -82,7 +82,7 @@ LEFT JOIN LATERAL (
     SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
-WHERE e.id = $4 AND e.is_demo = false AND e.starts_at > now()
+WHERE e.id = $4 AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary)
 `
 
@@ -222,7 +222,7 @@ WITH base AS (
                 ))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
     WHERE v.city_id = $7 AND e.status = 'published'
-      AND e.is_demo = false AND e.starts_at > now()
+      AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 ), filtered AS (
     SELECT b.id, b.title, b.subtitle, b.description, b.starts_at, b.timezone, b.price_from_minor, b.currency, b.venue_name, b.local_starts_at, b.distance_m FROM base b
     WHERE ($8::text IS NULL OR

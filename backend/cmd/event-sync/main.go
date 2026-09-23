@@ -27,7 +27,7 @@ const (
 )
 
 type eventImporter interface {
-	Import(context.Context, uuid.UUID, providers.EventStore, func(error)) (providers.ImportStats, error)
+	Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error)
 }
 
 type syncProvider struct {
@@ -118,7 +118,7 @@ func run() error {
 	}
 }
 
-func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.EventStore, provider syncProvider, logger *slog.Logger) error {
+func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, provider syncProvider, logger *slog.Logger) error {
 	startedAt := time.Now()
 	stats, syncErr := provider.importer.Import(ctx, cityID, repository, func(err error) {
 		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", err)

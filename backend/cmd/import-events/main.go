@@ -91,7 +91,7 @@ func run(args []string) error {
 }
 
 type eventImporter interface {
-	Import(context.Context, uuid.UUID, providers.EventStore, func(error)) (providers.ImportStats, error)
+	Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error)
 }
 
 func newImporter(providerName string, cfg config.Config) (eventImporter, error) {

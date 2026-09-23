@@ -18,9 +18,14 @@ type memoryEventStore struct {
 	seen      map[string]struct{}
 	fail      map[string]error
 	persisted []string
+	starts    []providers.SyncRunStart
+	finishes  []providers.SyncRunFinish
 }
 
 func (s *memoryEventStore) UpsertWithResult(_ context.Context, _ uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
+	if event.ProviderLastSeenRunID == nil {
+		return providers.UpsertResult{}, errors.New("missing sync run marker")
+	}
 	if err := s.fail[event.ExternalID]; err != nil {
 		return providers.UpsertResult{}, err
 	}
@@ -28,6 +33,16 @@ func (s *memoryEventStore) UpsertWithResult(_ context.Context, _ uuid.UUID, even
 	s.seen[event.ExternalID] = struct{}{}
 	s.persisted = append(s.persisted, event.ExternalID)
 	return providers.UpsertResult{EventID: uuid.New(), Inserted: !exists}, nil
+}
+
+func (s *memoryEventStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {
+	s.starts = append(s.starts, start)
+	return uuid.New(), nil
+}
+
+func (s *memoryEventStore) FinishSyncRun(_ context.Context, finish providers.SyncRunFinish) (int, error) {
+	s.finishes = append(s.finishes, finish)
+	return 0, nil
 }
 
 func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
@@ -76,6 +91,9 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if nowCalls != 2 {
 		t.Fatalf("clock calls=%d, want one per import", nowCalls)
 	}
+	if len(store.starts) != 2 || len(store.finishes) != 2 || store.finishes[0].State != providers.SyncRunSucceeded || store.finishes[1].State != providers.SyncRunSucceeded {
+		t.Fatalf("sync lifecycle starts=%+v finishes=%+v", store.starts, store.finishes)
+	}
 }
 
 func TestImportContinuesAfterPersistenceError(t *testing.T) {
@@ -97,6 +115,9 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 	}
 	if stats != (ImportStats{PagesFetched: 1, Fetched: 2, Matched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
 		t.Fatalf("stats=%+v reported=%d persisted=%v", stats, reported, store.persisted)
+	}
+	if len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunFailed {
+		t.Fatalf("finish = %+v, want failed", store.finishes)
 	}
 }
 
