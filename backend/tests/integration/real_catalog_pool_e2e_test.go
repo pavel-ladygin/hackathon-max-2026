@@ -35,6 +35,20 @@ func TestRealCatalogProductionPoolBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load Moscow timezone %q: %v", cityTimezone, err)
 	}
+	var eligibleKudaGo, eligibleTimepad int
+	if err := db.QueryRow(ctx, `SELECT
+		count(*) FILTER (WHERE e.source='kudago'),
+		count(*) FILTER (WHERE e.source='timepad')
+		FROM events e JOIN venues v ON v.id=e.venue_id
+		WHERE v.city_id=$1 AND e.is_demo=false AND e.provider_active=true
+		  AND e.status='published' AND e.starts_at>$2
+		  AND e.ticket_available=true AND nullif(trim(e.ticket_url),'') IS NOT NULL`, cityID, referenceTime).
+		Scan(&eligibleKudaGo, &eligibleTimepad); err != nil {
+		t.Fatal(err)
+	}
+	if eligibleKudaGo == 0 || eligibleTimepad == 0 {
+		t.Fatalf("provider-neutral eligible catalog kudago=%d timepad=%d", eligibleKudaGo, eligibleTimepad)
+	}
 
 	var eventDate time.Time
 	if err := db.QueryRow(ctx, `
@@ -96,17 +110,20 @@ func TestRealCatalogProductionPoolBuilder(t *testing.T) {
 	for i, candidate := range result.Candidates {
 		var source string
 		var isDemo bool
+		var providerActive, ticketAvailable bool
 		var ticketURL string
 		var startsAt time.Time
 		var status string
 
 		if err := db.QueryRow(ctx, `
-			SELECT source, is_demo, ticket_url, starts_at, status
+			SELECT source, is_demo, provider_active, ticket_available, ticket_url, starts_at, status
 			FROM events
 			WHERE id = $1
 		`, candidate.EventID).Scan(
 			&source,
 			&isDemo,
+			&providerActive,
+			&ticketAvailable,
 			&ticketURL,
 			&startsAt,
 			&status,
@@ -119,6 +136,9 @@ func TestRealCatalogProductionPoolBuilder(t *testing.T) {
 		}
 		if source != "kudago" && source != "timepad" {
 			t.Fatalf("candidate %s has unexpected source %q", candidate.EventID, source)
+		}
+		if !providerActive || !ticketAvailable {
+			t.Fatalf("candidate %s active=%t ticket_available=%t", candidate.EventID, providerActive, ticketAvailable)
 		}
 		if status != "published" {
 			t.Fatalf("candidate %s status=%q", candidate.EventID, status)

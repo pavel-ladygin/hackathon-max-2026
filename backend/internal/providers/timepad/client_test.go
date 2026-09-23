@@ -50,7 +50,7 @@ func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
 			"sort":          "+starts_at",
 			"starts_at_min": startsAtMin.Format(time.RFC3339),
 			"starts_at_max": startsAtMax.Format(time.RFC3339),
-			"fields":        "location,registration_data,ticket_types",
+			"fields":        requestedFields,
 		} {
 			if got := query.Get(key); got != want {
 				t.Errorf("query %s = %q, want %q", key, got, want)

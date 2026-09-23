@@ -30,6 +30,129 @@ func (q *Queries) ClearProviderEventImages(ctx context.Context, eventID uuid.UUI
 	return err
 }
 
+const completeProviderSyncRun = `-- name: CompleteProviderSyncRun :exec
+UPDATE provider_sync_runs
+SET completed_at = clock_timestamp(), state = $1,
+    pages_fetched = $2, fetched = $3,
+    matched = $4, normalized = $5,
+    inserted = $6, updated = $7,
+    skipped = $8, errors = $9,
+    reconciled = $10, error_text = $11::text
+WHERE id = $12 AND state = 'running'
+`
+
+type CompleteProviderSyncRunParams struct {
+	State        string
+	PagesFetched int32
+	Fetched      int32
+	Matched      int32
+	Normalized   int32
+	Inserted     int32
+	Updated      int32
+	Skipped      int32
+	Errors       int32
+	Reconciled   int32
+	ErrorText    pgtype.Text
+	ID           uuid.UUID
+}
+
+func (q *Queries) CompleteProviderSyncRun(ctx context.Context, arg CompleteProviderSyncRunParams) error {
+	_, err := q.db.Exec(ctx, completeProviderSyncRun,
+		arg.State,
+		arg.PagesFetched,
+		arg.Fetched,
+		arg.Matched,
+		arg.Normalized,
+		arg.Inserted,
+		arg.Updated,
+		arg.Skipped,
+		arg.Errors,
+		arg.Reconciled,
+		arg.ErrorText,
+		arg.ID,
+	)
+	return err
+}
+
+const createProviderSyncRun = `-- name: CreateProviderSyncRun :one
+INSERT INTO provider_sync_runs (id, provider, city_id, window_start, window_end)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id
+`
+
+type CreateProviderSyncRunParams struct {
+	ID          uuid.UUID
+	Provider    string
+	CityID      uuid.UUID
+	WindowStart pgtype.Timestamptz
+	WindowEnd   pgtype.Timestamptz
+}
+
+func (q *Queries) CreateProviderSyncRun(ctx context.Context, arg CreateProviderSyncRunParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createProviderSyncRun,
+		arg.ID,
+		arg.Provider,
+		arg.CityID,
+		arg.WindowStart,
+		arg.WindowEnd,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getProviderSyncRunForUpdate = `-- name: GetProviderSyncRunForUpdate :one
+SELECT id, provider, city_id, window_start, window_end, started_at, completed_at, state, pages_fetched, fetched, matched, normalized, inserted, updated, skipped, errors, reconciled, error_text FROM provider_sync_runs WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetProviderSyncRunForUpdate(ctx context.Context, id uuid.UUID) (ProviderSyncRun, error) {
+	row := q.db.QueryRow(ctx, getProviderSyncRunForUpdate, id)
+	var i ProviderSyncRun
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.CityID,
+		&i.WindowStart,
+		&i.WindowEnd,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.State,
+		&i.PagesFetched,
+		&i.Fetched,
+		&i.Matched,
+		&i.Normalized,
+		&i.Inserted,
+		&i.Updated,
+		&i.Skipped,
+		&i.Errors,
+		&i.Reconciled,
+		&i.ErrorText,
+	)
+	return i, err
+}
+
+const hasNewerProviderSyncRun = `-- name: HasNewerProviderSyncRun :one
+SELECT EXISTS (
+    SELECT 1 FROM provider_sync_runs newer
+    WHERE newer.provider = $1
+      AND newer.city_id = $2
+      AND newer.started_at > $3
+)
+`
+
+type HasNewerProviderSyncRunParams struct {
+	Provider  string
+	CityID    uuid.UUID
+	StartedAt pgtype.Timestamptz
+}
+
+func (q *Queries) HasNewerProviderSyncRun(ctx context.Context, arg HasNewerProviderSyncRunParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasNewerProviderSyncRun, arg.Provider, arg.CityID, arg.StartedAt)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertProviderEventCategory = `-- name: InsertProviderEventCategory :exec
 INSERT INTO event_categories (event_id, category_slug, weight, is_primary)
 VALUES ($1, $2, $3, $4)
@@ -83,12 +206,45 @@ func (q *Queries) InsertProviderEventImage(ctx context.Context, arg InsertProvid
 	return err
 }
 
+const reconcileProviderSyncRun = `-- name: ReconcileProviderSyncRun :one
+WITH current_run AS (
+    SELECT id, provider, city_id, started_at
+    FROM provider_sync_runs
+    WHERE provider_sync_runs.id = $1
+), inactivated AS (
+    UPDATE events e
+    SET provider_active = false, updated_at = now()
+    FROM venues v, current_run run
+    WHERE e.venue_id = v.id
+      AND e.source = run.provider
+      AND v.city_id = run.city_id
+      AND e.is_demo = false
+      AND e.provider_active = true
+      AND e.provider_last_seen_run_id IS DISTINCT FROM run.id
+      AND NOT EXISTS (
+          SELECT 1
+          FROM provider_sync_runs seen_run
+          WHERE seen_run.id = e.provider_last_seen_run_id
+            AND seen_run.started_at > run.started_at
+      )
+    RETURNING e.id
+)
+SELECT count(*)::integer FROM inactivated
+`
+
+func (q *Queries) ReconcileProviderSyncRun(ctx context.Context, runID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, reconcileProviderSyncRun, runID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const upsertProviderEvent = `-- name: UpsertProviderEvent :one
 INSERT INTO events (
     id, source, external_id, source_updated_at, is_demo, title, subtitle, description,
     venue_id, starts_at, ends_at, timezone, price_from_minor, price_to_minor, currency,
     ticket_url, ticket_available, status, age_rating, indoor, loudness_level,
-    published_at, updated_at
+    published_at, provider_active, provider_last_seen_run_id, updated_at
 )
 VALUES (
     $1, $2, $3, $4::timestamptz,
@@ -98,7 +254,8 @@ VALUES (
     $13::integer, $14,
     $15::text, $16, $17,
     $18::text, $19::boolean,
-    $20::text, $21::timestamptz, now()
+    $20::text, $21::timestamptz,
+    $22, $23::uuid, now()
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     source_updated_at = EXCLUDED.source_updated_at,
@@ -120,32 +277,36 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     indoor = EXCLUDED.indoor,
     loudness_level = EXCLUDED.loudness_level,
     published_at = EXCLUDED.published_at,
+    provider_active = EXCLUDED.provider_active,
+    provider_last_seen_run_id = coalesce(EXCLUDED.provider_last_seen_run_id, events.provider_last_seen_run_id),
     updated_at = now()
 RETURNING id, (xmax = 0) AS inserted
 `
 
 type UpsertProviderEventParams struct {
-	ID              uuid.UUID
-	Source          string
-	ExternalID      string
-	SourceUpdatedAt pgtype.Timestamptz
-	Title           string
-	Subtitle        pgtype.Text
-	Description     string
-	VenueID         uuid.UUID
-	StartsAt        pgtype.Timestamptz
-	EndsAt          pgtype.Timestamptz
-	Timezone        string
-	PriceFromMinor  pgtype.Int4
-	PriceToMinor    pgtype.Int4
-	Currency        string
-	TicketUrl       pgtype.Text
-	TicketAvailable bool
-	Status          string
-	AgeRating       pgtype.Text
-	Indoor          pgtype.Bool
-	LoudnessLevel   pgtype.Text
-	PublishedAt     pgtype.Timestamptz
+	ID                    uuid.UUID
+	Source                string
+	ExternalID            string
+	SourceUpdatedAt       pgtype.Timestamptz
+	Title                 string
+	Subtitle              pgtype.Text
+	Description           string
+	VenueID               uuid.UUID
+	StartsAt              pgtype.Timestamptz
+	EndsAt                pgtype.Timestamptz
+	Timezone              string
+	PriceFromMinor        pgtype.Int4
+	PriceToMinor          pgtype.Int4
+	Currency              string
+	TicketUrl             pgtype.Text
+	TicketAvailable       bool
+	Status                string
+	AgeRating             pgtype.Text
+	Indoor                pgtype.Bool
+	LoudnessLevel         pgtype.Text
+	PublishedAt           pgtype.Timestamptz
+	ProviderActive        bool
+	ProviderLastSeenRunID pgtype.UUID
 }
 
 type UpsertProviderEventRow struct {
@@ -176,6 +337,8 @@ func (q *Queries) UpsertProviderEvent(ctx context.Context, arg UpsertProviderEve
 		arg.Indoor,
 		arg.LoudnessLevel,
 		arg.PublishedAt,
+		arg.ProviderActive,
+		arg.ProviderLastSeenRunID,
 	)
 	var i UpsertProviderEventRow
 	err := row.Scan(&i.ID, &i.Inserted)

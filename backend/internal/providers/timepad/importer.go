@@ -15,7 +15,7 @@ type ImportStats = providers.ImportStats
 
 // Import fetches every Timepad page in the configured horizon and persists
 // valid normalized events through the shared provider ingestion path.
-func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore, reportError func(error)) (ImportStats, error) {
+func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error)) (stats ImportStats, importErr error) {
 	if c == nil {
 		return ImportStats{}, errors.New("timepad client is required")
 	}
@@ -25,6 +25,25 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 	}
 	startsAtMin := c.now().UTC()
 	startsAtMax := startsAtMin.Add(importHorizon)
+	runID, err := store.BeginSyncRun(ctx, providers.SyncRunStart{
+		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax,
+	})
+	if err != nil {
+		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)
+	}
+	defer func() {
+		stats.SyncRunID = runID
+		reconciled, finishErr := providers.FinalizeSyncRun(ctx, store, runID, stats, importErr)
+		stats.Reconciled = reconciled
+		if finishErr != nil {
+			finishErr = fmt.Errorf("finish timepad sync run: %w", finishErr)
+			if importErr != nil {
+				importErr = errors.Join(importErr, finishErr)
+			} else {
+				importErr = finishErr
+			}
+		}
+	}()
 	skip := 0
 	firstPage := true
 	for {
@@ -51,6 +70,11 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 				ingestion.AddSkipped(1)
 				continue
 			}
+			if normalized.StartsAt.Before(startsAtMin) || normalized.StartsAt.After(startsAtMax) {
+				ingestion.AddSkipped(1)
+				continue
+			}
+			normalized.ProviderLastSeenRunID = &runID
 			if err := ingestion.Persist(ctx, normalized); err != nil {
 				return ingestion.Stats(), err
 			}

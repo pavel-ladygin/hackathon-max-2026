@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestDiscoveryQueriesExcludeDemoAndStartedEvents(t *testing.T) {
+func TestDiscoveryQueriesExcludeDemoInactiveAndStartedEvents(t *testing.T) {
 	queryPath := filepath.Join("..", "store", "platform", "queries", "discovery.sql")
 	query, err := os.ReadFile(queryPath)
 	if err != nil {
@@ -24,7 +24,7 @@ func TestDiscoveryQueriesExcludeDemoAndStartedEvents(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			section := discoveryQuerySection(t, string(query), name)
-			for _, predicate := range []string{"e.is_demo = false", "e.starts_at > now()"} {
+			for _, predicate := range []string{"e.is_demo = false", "e.provider_active = true", "e.starts_at > now()"} {
 				if !strings.Contains(section, predicate) {
 					t.Errorf("%s must contain %q to hide demo and already-started events", name, predicate)
 				}

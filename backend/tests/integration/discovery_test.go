@@ -2,10 +2,12 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 )
 
@@ -78,6 +80,17 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 	repeat, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 2})
 	if err != nil || len(repeat.Items) != 2 || repeat.Items[0].ID != first.Items[0].ID || repeat.Items[1].ID != first.Items[1].ID {
 		t.Fatalf("repeat = %+v, err=%v", repeat, err)
+	}
+
+	if _, err := db.Exec(ctx, `UPDATE events SET provider_active=false WHERE id=$1`, events[1]); err != nil {
+		t.Fatal(err)
+	}
+	activeOnly, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 5})
+	if err != nil || activeOnly.Total != 2 || len(activeOnly.Items) != 2 || activeOnly.Items[0].ID != events[0] || activeOnly.Items[1].ID != events[2] {
+		t.Fatalf("active-only discovery = %+v, err=%v", activeOnly, err)
+	}
+	if _, err := repository.Get(ctx, user, events[1], nil); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("inactive discovery detail error = %v, want pgx.ErrNoRows", err)
 	}
 }
 

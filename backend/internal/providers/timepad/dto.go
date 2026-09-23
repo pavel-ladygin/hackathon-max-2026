@@ -25,7 +25,9 @@ type eventDTO struct {
 	Organization     organizationDTO     `json:"organization"`
 	Categories       categoriesDTO       `json:"categories"`
 	TicketTypes      []ticketTypeDTO     `json:"ticket_types"`
-	AgeLimit         string              `json:"age_limit"`
+	AgeLimit         flexibleText        `json:"age_limit"`
+	AccessStatus     string              `json:"access_status"`
+	ModerationStatus string              `json:"moderation_status"`
 	RegistrationData registrationDataDTO `json:"registration_data"`
 }
 
@@ -117,6 +119,33 @@ type registrationDataDTO struct {
 	PriceMin           float64 `json:"price_min"`
 	PriceMax           float64 `json:"price_max"`
 	IsRegistrationOpen bool    `json:"is_registration_open"`
+}
+
+// flexibleText isolates Timepad's inconsistent optional scalar encoding. In
+// live responses age_limit is observed both as a JSON string ("18+") and as a
+// number (18). Unsupported optional shapes are treated as absent so one bad
+// provider record cannot make the entire page undecodable.
+type flexibleText string
+
+func (value *flexibleText) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*value = flexibleText(text)
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	switch decoded := decoded.(type) {
+	case json.Number:
+		*value = flexibleText(decoded.String())
+	default:
+		*value = ""
+	}
+	return nil
 }
 
 type flexibleInt int

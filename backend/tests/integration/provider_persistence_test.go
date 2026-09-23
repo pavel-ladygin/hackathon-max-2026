@@ -217,7 +217,7 @@ func providerEvent(source, externalID, venueExternalID string) providers.Normali
 			VenueType: "theatre",
 		}, StartsAt: start, EndsAt: &end, Timezone: "Europe/Moscow",
 		PriceFromMinor: &price, Currency: "RUB", TicketAvailable: true,
-		TicketURL: providerStringPtr("https://example.test/tickets"), Status: "published",
+		TicketURL: providerStringPtr("https://example.test/tickets"), Status: "published", ProviderActive: true,
 		AgeRating: &age, Indoor: &indoor,
 		Categories: []providers.NormalizedCategory{{Slug: "theatre", Weight: 1, IsPrimary: true}, {Slug: "walks", Weight: 0.5}},
 		Images:     []providers.NormalizedImage{{URL: "https://example.test/card.jpg", Role: "card", Position: 0}, {URL: "https://example.test/gallery.jpg", Role: "gallery", Position: 1}},
