@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { BottomNav, Button, Empty, ErrorState, EventImage, FavoriteButton, HeartIcon, IconButton, Loading, ScreenSkeleton } from './index'
 
@@ -34,6 +35,40 @@ describe('BottomNav', () => {
     render(<BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'saved', label: 'Моё', icon: 'saved' }]} />)
     expect(screen.getByRole('button', { name: /Главная/ })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('button', { name: /Главная/ }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('restarts the icon animation on every click, including repeated clicks on the active item', () => {
+    const onChange = vi.fn()
+    render(<BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: 'home' }]} onChange={onChange} />)
+    const button = screen.getByRole('button', { name: 'Главная' })
+    const firstIcon = button.querySelector('span')
+
+    fireEvent.click(button)
+    const secondIcon = button.querySelector('span')
+    expect(secondIcon).not.toBe(firstIcon)
+    expect(button.className).toContain('navClick_home')
+
+    fireEvent.click(button)
+    expect(button.querySelector('span')).not.toBe(secondIcon)
+    expect(onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('carries one click animation across a route remount without animating on initial render', () => {
+    const items = [{ id: 'home', label: 'Главная', icon: 'home' as const }, { id: 'catalog', label: 'Афиша', icon: 'calendar' as const }]
+    function RouteNav() {
+      const [activeId, setActiveId] = useState('home')
+      return <BottomNav key={activeId} activeId={activeId} items={items} onChange={setActiveId} />
+    }
+
+    render(<RouteNav />)
+    expect(screen.getByRole('button', { name: 'Главная' }).className).not.toContain('navClick_home')
+    fireEvent.click(screen.getByRole('button', { name: 'Афиша' }))
+
+    expect(screen.getByRole('button', { name: 'Афиша' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Афиша' }).className).toContain('navClick_calendar')
+    const firstDestinationIcon = screen.getByRole('button', { name: 'Афиша' }).querySelector('span')
+    fireEvent.click(screen.getByRole('button', { name: 'Афиша' }))
+    expect(screen.getByRole('button', { name: 'Афиша' }).querySelector('span')).not.toBe(firstDestinationIcon)
   })
 })
 

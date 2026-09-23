@@ -212,7 +212,7 @@ const searchDiscoveryEventCards = `-- name: SearchDiscoveryEventCards :many
 
 WITH base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at, e.timezone, e.price_from_minor,
-           e.currency, v.name AS venue_name,
+           e.currency, v.name AS venue_name, v.latitude, v.longitude,
            e.starts_at AT TIME ZONE e.timezone AS local_starts_at,
            CASE WHEN $5::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL
                 ELSE 6371000.0 * 2 * asin(sqrt(least(1.0,
@@ -224,7 +224,7 @@ WITH base AS (
     WHERE v.city_id = $7 AND e.status = 'published'
       AND e.is_demo = false AND e.starts_at > now()
 ), filtered AS (
-    SELECT b.id, b.title, b.subtitle, b.description, b.starts_at, b.timezone, b.price_from_minor, b.currency, b.venue_name, b.local_starts_at, b.distance_m FROM base b
+    SELECT b.id, b.title, b.subtitle, b.description, b.starts_at, b.timezone, b.price_from_minor, b.currency, b.venue_name, b.latitude, b.longitude, b.local_starts_at, b.distance_m FROM base b
     WHERE ($8::text IS NULL OR
            (setweight(to_tsvector('simple', b.title || ' ' || coalesce(b.subtitle, '') || ' ' || b.venue_name), 'A') ||
            setweight(to_tsvector('simple', b.description), 'C')) @@ websearch_to_tsquery('simple', $8::text) OR
@@ -242,7 +242,7 @@ WITH base AS (
 )
 SELECT f.id, f.title, f.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = f.id AND ec.is_primary) AS category_slug,
-       f.starts_at, f.timezone, f.venue_name, f.distance_m, f.price_from_minor, f.currency,
+       f.starts_at, f.timezone, f.venue_name, f.latitude, f.longitude, f.distance_m, f.price_from_minor, f.currency,
        coalesce(image.url, '') AS image_url,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = $1 AND se.event_id = f.id) AS saved
 FROM filtered f
@@ -282,6 +282,8 @@ type SearchDiscoveryEventCardsRow struct {
 	StartsAt       pgtype.Timestamptz
 	Timezone       string
 	VenueName      string
+	Latitude       pgtype.Float8
+	Longitude      pgtype.Float8
 	DistanceM      interface{}
 	PriceFromMinor pgtype.Int4
 	Currency       string
@@ -325,6 +327,8 @@ func (q *Queries) SearchDiscoveryEventCards(ctx context.Context, arg SearchDisco
 			&i.StartsAt,
 			&i.Timezone,
 			&i.VenueName,
+			&i.Latitude,
+			&i.Longitude,
 			&i.DistanceM,
 			&i.PriceFromMinor,
 			&i.Currency,

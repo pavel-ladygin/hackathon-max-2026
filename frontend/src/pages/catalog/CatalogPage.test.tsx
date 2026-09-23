@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPage } from './CatalogPage'
+import { maxPlatform } from '../../shared/platform/max/adapter'
 
 const searchCalls: Array<Record<string, unknown>> = []
 const defaultResult = {
@@ -23,6 +24,8 @@ vi.mock('../../features/discovery/queries', () => ({
   },
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
+
+vi.mock('./CatalogMap', () => ({ CatalogMap: () => <div aria-label="map-placeholder" /> }))
 
 function renderCatalog() {
   return render(<MemoryRouter><CatalogPage /></MemoryRouter>)
@@ -128,5 +131,54 @@ describe('CatalogPage search', () => {
 
     expect(screen.getByText('Обновляем результаты…')).toBeInTheDocument()
     expect(screen.getByText('Jazz evening')).toBeInTheDocument()
+  })
+
+  it('reserves room for the favorite control inside each event card', () => {
+    renderCatalog()
+
+    const card = screen.getAllByRole('button', { name: /Jazz evening/ }).find((button) => button.className.includes('eventCardWithSave'))
+    if (!card) throw new Error('Event card does not reserve space for its favorite control')
+    expect(card.className).toContain('eventCardWithSave')
+    expect(card.querySelector('strong')).toHaveTextContent('Jazz evening')
+  })
+
+  it('shows pagination only in list view', async () => {
+    resultState = { ...defaultResult, hasNextPage: true }
+    renderCatalog()
+
+    expect(screen.getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Карта' }))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByLabelText('map-placeholder')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Показать ещё' })).not.toBeInTheDocument()
+  })
+
+  it('explains a denied location permission without exposing coordinates', async () => {
+    vi.spyOn(maxPlatform, 'requestLocation').mockResolvedValue({ ok: false, reason: 'permission_denied' })
+    renderCatalog()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Доступ к геолокации запрещён')
+    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+    expect(searchCalls.at(-1)).toMatchObject({ lat: undefined, lng: undefined })
+  })
+
+  it('offers a retry for a timeout and clears the error when a later attempt succeeds', async () => {
+    const requestLocation = vi.spyOn(maxPlatform, 'requestLocation')
+      .mockResolvedValueOnce({ ok: false, reason: 'timeout' })
+      .mockResolvedValueOnce({ ok: true, position: { lat: 55.75, lng: 37.61, accuracyM: 30 } })
+    renderCatalog()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
+    expect(screen.getByRole('status')).toHaveTextContent('Попробуйте ещё раз')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить' })) })
+
+    expect(requestLocation).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Рядом · 10 км' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

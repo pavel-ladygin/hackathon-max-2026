@@ -6,6 +6,10 @@ export type MaxViewport = {
 };
 
 export type GeoPosition = { lat: number; lng: number; accuracyM: number | null };
+export type GeoLocationFailure = "permission_denied" | "position_unavailable" | "timeout" | "unsupported";
+export type GeoLocationResult =
+  | { ok: true; position: GeoPosition }
+  | { ok: false; reason: GeoLocationFailure };
 
 export type MaxEnvironment = "max" | "browser";
 
@@ -39,7 +43,7 @@ export interface MaxPlatformAdapter {
   shareInvite(payload: InviteSharePayload): Promise<boolean>;
   openMaxLink(url: string): Promise<boolean>;
   openTicketLink(url: string): Promise<boolean>;
-  requestLocation(): Promise<GeoPosition | null>;
+  requestLocation(): Promise<GeoLocationResult>;
   copyText(value: string): Promise<boolean>;
   setClosingConfirmation(enabled: boolean): void;
   snapshot(): MaxPlatformSnapshot;

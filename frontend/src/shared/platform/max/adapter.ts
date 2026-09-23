@@ -4,6 +4,7 @@ import type {
   MaxPlatformName,
   MaxPlatformSnapshot,
   MaxViewport,
+  GeoLocationResult,
 } from "./types";
 
 const MAX_HOST = "max.ru";
@@ -130,10 +131,6 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
         await navigator.share({ title: payload.text, text: payload.text, url: payload.link });
         return true;
       }
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(payload.link);
-        return true;
-      }
     } catch {
       return false;
     }
@@ -181,13 +178,16 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
     return opened !== null;
   }
 
-  async requestLocation(): Promise<{ lat: number; lng: number; accuracyM: number | null } | null> {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+  async requestLocation(): Promise<GeoLocationResult> {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return { ok: false, reason: "unsupported" };
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude, accuracyM: Number.isFinite(coords.accuracy) ? coords.accuracy : null }),
-        () => resolve(null),
-        { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+        ({ coords }) => resolve({ ok: true, position: { lat: coords.latitude, lng: coords.longitude, accuracyM: Number.isFinite(coords.accuracy) ? coords.accuracy : null } }),
+        (error) => {
+          const reason = error.code === 1 ? "permission_denied" : error.code === 3 ? "timeout" : "position_unavailable";
+          resolve({ ok: false, reason });
+        },
+        { enableHighAccuracy: false, timeout: 15_000, maximumAge: 300_000 },
       );
     });
   }

@@ -16,4 +16,10 @@ describe('API boundary mappers', () => {
 
     expect(mapUser(IVAN)).toMatchObject({ displayName: 'Иван', cityId: IVAN.city_id })
   })
+
+  it('preserves the other occurrences count, including zero and absence', () => {
+    expect(mapEvent({ ...EVENTS[0], other_occurrences_count: 3 }).other_occurrences_count).toBe(3)
+    expect(mapEvent({ ...EVENTS[0], other_occurrences_count: 0 }).other_occurrences_count).toBe(0)
+    expect(mapEvent(EVENTS[0]).other_occurrences_count).toBeUndefined()
+  })
 })
