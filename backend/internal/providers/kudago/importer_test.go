@@ -78,6 +78,10 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.SyncRunID == uuid.Nil {
+		t.Fatal("first import returned no sync run ID")
+	}
+	first.SyncRunID = uuid.Nil
 	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
 		t.Fatalf("first stats = %+v", first)
 	}
@@ -85,6 +89,10 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if second.SyncRunID == uuid.Nil {
+		t.Fatal("second import returned no sync run ID")
+	}
+	second.SyncRunID = uuid.Nil
 	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2}) {
 		t.Fatalf("second stats = %+v", second)
 	}
@@ -113,6 +121,10 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if stats.SyncRunID == uuid.Nil {
+		t.Fatal("import returned no sync run ID")
+	}
+	stats.SyncRunID = uuid.Nil
 	if stats != (ImportStats{PagesFetched: 1, Fetched: 2, Matched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
 		t.Fatalf("stats=%+v reported=%d persisted=%v", stats, reported, store.persisted)
 	}

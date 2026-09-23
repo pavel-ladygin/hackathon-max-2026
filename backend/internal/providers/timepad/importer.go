@@ -32,6 +32,7 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)
 	}
 	defer func() {
+		stats.SyncRunID = runID
 		reconciled, finishErr := providers.FinalizeSyncRun(ctx, store, runID, stats, importErr)
 		stats.Reconciled = reconciled
 		if finishErr != nil {

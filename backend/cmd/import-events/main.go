@@ -77,15 +77,24 @@ func run(args []string) error {
 	repository := providers.NewRepository(db)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	stats, err := client.Import(ctx, cityID, repository, func(err error) {
-		logger.Error("event import failed", "error", err)
+		logger.Error("event import record failed", "error", "provider record persistence failed")
 	})
-	fmt.Printf("pages_fetched=%d fetched=%d matched=%d normalized=%d inserted=%d updated=%d skipped=%d errors=%d\n",
-		stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors)
+	finalStatus := string(providers.SyncRunSucceeded)
+	if errors.Is(err, context.Canceled) {
+		finalStatus = string(providers.SyncRunCancelled)
+	} else if err != nil || stats.Errors > 0 {
+		finalStatus = string(providers.SyncRunFailed)
+	}
+	fmt.Printf("sync_run_id=%s pages_fetched=%d fetched=%d matched=%d normalized=%d inserted=%d updated=%d skipped=%d errors=%d reconciled=%d final_status=%s\n",
+		stats.SyncRunID, stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors, stats.Reconciled, finalStatus)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return fmt.Errorf("import cancelled: %w", err)
 		}
 		return err
+	}
+	if stats.Errors > 0 {
+		return fmt.Errorf("import completed with %d record errors", stats.Errors)
 	}
 	return nil
 }

@@ -26,6 +26,8 @@ const (
 	timepadPriority = 50
 )
 
+var errPartialProviderSync = errors.New("provider sync completed with record errors")
+
 type eventImporter interface {
 	Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error)
 }
@@ -98,11 +100,9 @@ func run() error {
 	repository := providers.NewRepository(db)
 	logger.Info("event sync starting", "providers", len(syncProviders), "city", "moscow", "interval", cfg.EventSyncInterval)
 	for {
-		for _, provider := range syncProviders {
-			if err := syncOne(ctx, cityID, repository, provider, logger); err != nil && ctx.Err() != nil {
-				logger.Info("event sync shutdown complete")
-				return nil
-			}
+		if err := syncProvidersOnce(ctx, cityID, repository, syncProviders, logger); err != nil {
+			logger.Info("event sync shutdown complete")
+			return nil
 		}
 
 		timer := time.NewTimer(cfg.EventSyncInterval)
@@ -118,13 +118,37 @@ func run() error {
 	}
 }
 
+func syncProvidersOnce(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, syncProviders []syncProvider, logger *slog.Logger) error {
+	for _, provider := range syncProviders {
+		if err := syncOne(ctx, cityID, repository, provider, logger); err != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
 func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, provider syncProvider, logger *slog.Logger) error {
 	startedAt := time.Now()
 	stats, syncErr := provider.importer.Import(ctx, cityID, repository, func(err error) {
-		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", err)
+		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", "provider record persistence failed")
 	})
+	syncRunID := ""
+	if stats.SyncRunID != uuid.Nil {
+		syncRunID = stats.SyncRunID.String()
+	}
+	finalStatus := string(providers.SyncRunSucceeded)
+	finalErr := syncErr
+	if errors.Is(syncErr, context.Canceled) {
+		finalStatus = string(providers.SyncRunCancelled)
+	} else if syncErr != nil {
+		finalStatus = string(providers.SyncRunFailed)
+	} else if stats.Errors > 0 {
+		finalStatus = string(providers.SyncRunFailed)
+		finalErr = errPartialProviderSync
+	}
 	attributes := []any{
 		"provider", provider.name,
+		"sync_run_id", syncRunID,
 		"priority", provider.priority,
 		"duration", time.Since(startedAt),
 		"pages_fetched", stats.PagesFetched,
@@ -135,11 +159,18 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 		"updated", stats.Updated,
 		"skipped", stats.Skipped,
 		"errors", stats.Errors,
+		"reconciled", stats.Reconciled,
+		"inactivated", stats.Reconciled,
+		"final_status", finalStatus,
 	}
-	if syncErr != nil {
-		logger.Error("event sync provider failed", append(attributes, "error", syncErr)...)
-		return syncErr
+	if finalStatus == string(providers.SyncRunCancelled) {
+		logger.Info("event sync provider finished", attributes...)
+		return finalErr
 	}
-	logger.Info("event sync provider completed", attributes...)
+	if finalErr != nil {
+		logger.Error("event sync provider finished", append(attributes, "error", "provider import failed")...)
+		return finalErr
+	}
+	logger.Info("event sync provider finished", attributes...)
 	return nil
 }

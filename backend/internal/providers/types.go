@@ -116,6 +116,7 @@ type SyncStore interface {
 }
 
 type ImportStats struct {
+	SyncRunID    uuid.UUID
 	PagesFetched int
 	Fetched      int
 	Matched      int

@@ -69,6 +69,10 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.SyncRunID == uuid.Nil {
+		t.Fatal("first import returned no sync run ID")
+	}
+	first.SyncRunID = uuid.Nil
 	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3}) {
 		t.Fatalf("first stats = %+v", first)
 	}
@@ -84,6 +88,10 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if second.SyncRunID == uuid.Nil {
+		t.Fatal("second import returned no sync run ID")
+	}
+	second.SyncRunID = uuid.Nil
 	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Updated: 1, Skipped: 3}) {
 		t.Fatalf("second stats = %+v", second)
 	}
@@ -116,6 +124,10 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if stats.SyncRunID == uuid.Nil {
+		t.Fatal("import returned no sync run ID")
+	}
+	stats.SyncRunID = uuid.Nil
 	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1}) {
 		t.Fatalf("requests=%d stats=%+v", requests, stats)
 	}
@@ -145,6 +157,10 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if stats.SyncRunID == uuid.Nil {
+		t.Fatal("import returned no sync run ID")
+	}
+	stats.SyncRunID = uuid.Nil
 	if stats != (ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
 		t.Fatalf("stats = %+v", stats)
 	}
@@ -173,6 +189,9 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 	stats, err := client.Import(ctx, uuid.New(), store, nil)
 	if err != context.Canceled {
 		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if stats.SyncRunID == uuid.Nil {
+		t.Fatal("cancelled import returned no sync run ID")
 	}
 	if stats.PagesFetched != 1 || stats.Fetched != 2 || stats.Inserted != 2 {
 		t.Fatalf("stats before cancellation = %+v", stats)
