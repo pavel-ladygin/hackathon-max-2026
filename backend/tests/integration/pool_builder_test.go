@@ -224,11 +224,19 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	}
 
 	// A subsequent build must see current catalog availability, status and price.
-	for i, assignment := range []string{"ticket_available=false", "status='sold_out'", "price_from_minor=NULL"} {
-		if _, err := db.Exec(ctx, "UPDATE events SET "+assignment+" WHERE id=$1", free.Candidates[i].EventID); err != nil {
+	assignments := []struct {
+		sql       string
+		wantCount int
+	}{
+		{sql: "ticket_available=false", wantCount: 10},
+		{sql: "status='sold_out'", wantCount: 9},
+		{sql: "price_from_minor=NULL", wantCount: 9},
+	}
+	for i, assignment := range assignments {
+		if _, err := db.Exec(ctx, "UPDATE events SET "+assignment.sql+" WHERE id=$1", free.Candidates[i].EventID); err != nil {
 			t.Fatal(err)
 		}
-		build(freeInput, 10-i)
+		build(freeInput, assignment.wantCount)
 	}
 }
 
