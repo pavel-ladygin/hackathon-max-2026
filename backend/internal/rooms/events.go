@@ -231,7 +231,7 @@ func roomEventAvailable(a contracts.Availability, hardBudget int32, now time.Tim
 }
 
 func roomEventCard(row roomsql.GetRoomEventCardsRow) api.EventCard {
-	card := api.EventCard{Id: row.EventID, Title: row.Title, CategorySlug: api.CategorySlug(row.CategorySlug), StartsAt: row.StartsAt.Time, Timezone: row.Timezone, DateLabel: roomDateLabel(row.StartsAt.Time, row.Timezone), VenueName: row.VenueName, Currency: api.EventCardCurrency(row.Currency), PriceLabel: roomPriceLabel(row.PriceFromMinor), Saved: row.Saved, Reasons: roomRecommendationReasons(row.Explanation), Subtitle: nullable.NewNullNullable[string](), ImageUrl: nullable.NewNullNullable[string](), PriceFromMinor: nullable.NewNullNullable[int](), DistanceM: nullable.NewNullNullable[int](), DistanceLabel: nullable.NewNullNullable[string]()}
+	card := api.EventCard{Id: row.EventID, Title: row.Title, CategorySlug: api.CategorySlug(row.CategorySlug), StartsAt: row.StartsAt.Time, OtherOccurrencesCount: func() *int { v := roomOtherOccurrencesCount(row.FeatureSnapshot); return &v }(), Timezone: row.Timezone, DateLabel: roomDateLabel(row.StartsAt.Time, row.Timezone), VenueName: row.VenueName, Currency: api.EventCardCurrency(row.Currency), PriceLabel: roomPriceLabel(row.PriceFromMinor), Saved: row.Saved, Reasons: roomRecommendationReasons(row.Explanation), Subtitle: nullable.NewNullNullable[string](), ImageUrl: nullable.NewNullNullable[string](), PriceFromMinor: nullable.NewNullNullable[int](), DistanceM: nullable.NewNullNullable[int](), DistanceLabel: nullable.NewNullNullable[string]()}
 	if row.Subtitle.Valid {
 		card.Subtitle = nullable.NewNullableWithValue(row.Subtitle.String)
 	}
@@ -242,6 +242,20 @@ func roomEventCard(row roomsql.GetRoomEventCardsRow) api.EventCard {
 		card.PriceFromMinor = nullable.NewNullableWithValue(int(row.PriceFromMinor.Int32))
 	}
 	return card
+}
+
+func roomOtherOccurrencesCount(raw []byte) int {
+	var features contracts.FeatureSnapshot
+	if err := json.Unmarshal(raw, &features); err != nil {
+		return 0
+	}
+
+	value := features["other_occurrences_count"]
+	if value <= 0 {
+		return 0
+	}
+
+	return int(value)
 }
 
 func roomRecommendationReasons(raw []byte) []api.RecommendationReason {

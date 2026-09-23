@@ -820,22 +820,25 @@ type ErrorResponse_Error_Details struct {
 
 // EventCard defines model for EventCard.
 type EventCard struct {
-	CategorySlug   CategorySlug              `json:"category_slug"`
-	Currency       EventCardCurrency         `json:"currency"`
-	DateLabel      string                    `json:"date_label"`
-	DistanceLabel  nullable.Nullable[string] `json:"distance_label,omitempty"`
-	DistanceM      nullable.Nullable[int]    `json:"distance_m,omitempty"`
-	Id             openapi_types.UUID        `json:"id"`
-	ImageUrl       nullable.Nullable[string] `json:"image_url"`
-	PriceFromMinor nullable.Nullable[int]    `json:"price_from_minor"`
-	PriceLabel     string                    `json:"price_label"`
-	Reasons        []RecommendationReason    `json:"reasons"`
-	Saved          bool                      `json:"saved"`
-	StartsAt       time.Time                 `json:"starts_at"`
-	Subtitle       nullable.Nullable[string] `json:"subtitle,omitempty"`
-	Timezone       string                    `json:"timezone"`
-	Title          string                    `json:"title"`
-	VenueName      string                    `json:"venue_name"`
+	CategorySlug  CategorySlug              `json:"category_slug"`
+	Currency      EventCardCurrency         `json:"currency"`
+	DateLabel     string                    `json:"date_label"`
+	DistanceLabel nullable.Nullable[string] `json:"distance_label,omitempty"`
+	DistanceM     nullable.Nullable[int]    `json:"distance_m,omitempty"`
+	Id            openapi_types.UUID        `json:"id"`
+	ImageUrl      nullable.Nullable[string] `json:"image_url"`
+
+	// OtherOccurrencesCount Количество других подходящих будущих сеансов этого же мероприятия.
+	OtherOccurrencesCount *int                      `json:"other_occurrences_count,omitempty"`
+	PriceFromMinor        nullable.Nullable[int]    `json:"price_from_minor"`
+	PriceLabel            string                    `json:"price_label"`
+	Reasons               []RecommendationReason    `json:"reasons"`
+	Saved                 bool                      `json:"saved"`
+	StartsAt              time.Time                 `json:"starts_at"`
+	Subtitle              nullable.Nullable[string] `json:"subtitle,omitempty"`
+	Timezone              string                    `json:"timezone"`
+	Title                 string                    `json:"title"`
+	VenueName             string                    `json:"venue_name"`
 }
 
 // EventCardCurrency defines model for EventCard.Currency.
@@ -843,30 +846,33 @@ type EventCardCurrency string
 
 // EventDetail defines model for EventDetail.
 type EventDetail struct {
-	AgeRating       nullable.Nullable[EventDetailAgeRating] `json:"age_rating,omitempty"`
-	CategorySlug    CategorySlug                            `json:"category_slug"`
-	Currency        EventDetailCurrency                     `json:"currency"`
-	DataProvenance  DataProvenance                          `json:"data_provenance"`
-	DateLabel       string                                  `json:"date_label"`
-	Description     string                                  `json:"description"`
-	DistanceLabel   nullable.Nullable[string]               `json:"distance_label,omitempty"`
-	DistanceM       nullable.Nullable[int]                  `json:"distance_m,omitempty"`
-	EndsAt          nullable.Nullable[time.Time]            `json:"ends_at,omitempty"`
-	Id              openapi_types.UUID                      `json:"id"`
-	ImageUrl        nullable.Nullable[string]               `json:"image_url"`
-	Images          []EventImage                            `json:"images"`
-	PriceFromMinor  nullable.Nullable[int]                  `json:"price_from_minor"`
-	PriceLabel      string                                  `json:"price_label"`
-	Reasons         []RecommendationReason                  `json:"reasons"`
-	Saved           bool                                    `json:"saved"`
-	StartsAt        time.Time                               `json:"starts_at"`
-	Status          EventDetailStatus                       `json:"status"`
-	Subtitle        nullable.Nullable[string]               `json:"subtitle,omitempty"`
-	TicketAvailable bool                                    `json:"ticket_available"`
-	Timezone        string                                  `json:"timezone"`
-	Title           string                                  `json:"title"`
-	Venue           Venue                                   `json:"venue"`
-	VenueName       string                                  `json:"venue_name"`
+	AgeRating      nullable.Nullable[EventDetailAgeRating] `json:"age_rating,omitempty"`
+	CategorySlug   CategorySlug                            `json:"category_slug"`
+	Currency       EventDetailCurrency                     `json:"currency"`
+	DataProvenance DataProvenance                          `json:"data_provenance"`
+	DateLabel      string                                  `json:"date_label"`
+	Description    string                                  `json:"description"`
+	DistanceLabel  nullable.Nullable[string]               `json:"distance_label,omitempty"`
+	DistanceM      nullable.Nullable[int]                  `json:"distance_m,omitempty"`
+	EndsAt         nullable.Nullable[time.Time]            `json:"ends_at,omitempty"`
+	Id             openapi_types.UUID                      `json:"id"`
+	ImageUrl       nullable.Nullable[string]               `json:"image_url"`
+	Images         []EventImage                            `json:"images"`
+
+	// OtherOccurrencesCount Количество других подходящих будущих сеансов этого же мероприятия.
+	OtherOccurrencesCount *int                      `json:"other_occurrences_count,omitempty"`
+	PriceFromMinor        nullable.Nullable[int]    `json:"price_from_minor"`
+	PriceLabel            string                    `json:"price_label"`
+	Reasons               []RecommendationReason    `json:"reasons"`
+	Saved                 bool                      `json:"saved"`
+	StartsAt              time.Time                 `json:"starts_at"`
+	Status                EventDetailStatus         `json:"status"`
+	Subtitle              nullable.Nullable[string] `json:"subtitle,omitempty"`
+	TicketAvailable       bool                      `json:"ticket_available"`
+	Timezone              string                    `json:"timezone"`
+	Title                 string                    `json:"title"`
+	Venue                 Venue                     `json:"venue"`
+	VenueName             string                    `json:"venue_name"`
 }
 
 // EventDetailAgeRating defines model for EventDetail.AgeRating.

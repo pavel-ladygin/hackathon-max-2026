@@ -85,7 +85,7 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 			t.Fatalf("candidate %s lacks ranking output: %+v", candidate.EventID, candidate)
 		}
 	}
-	if result.RankerVersion != "scoring-diversity-v3-behavior" {
+	if result.RankerVersion != "scoring-diversity-v4-series-dedupe" {
 		t.Fatalf("ranker version = %q", result.RankerVersion)
 	}
 	slices.Reverse(fake.snapshot.Events)
@@ -675,4 +675,107 @@ func contains(ids []uuid.UUID, target uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+func TestPoolBuilderCollapsesKudaGoOccurrencesIntoSingleCandidate(t *testing.T) {
+	cityID := uuid.New()
+	venueID := uuid.New()
+
+	snapshot := catalog.Snapshot{
+		City: platform.City{
+			ID:        cityID,
+			Timezone:  "Europe/Moscow",
+			CenterLat: 55.75,
+			CenterLng: 37.61,
+		},
+		Venues: []platform.Venue{
+			{
+				ID:        venueID,
+				CityID:    cityID,
+				Latitude:  coordinate(55.75),
+				Longitude: coordinate(37.61),
+			},
+		},
+	}
+
+	first := event(
+		uuid.New(),
+		venueID,
+		"2026-09-25T19:00:00+03:00",
+		1000,
+		true,
+		"published",
+	)
+	second := event(
+		uuid.New(),
+		venueID,
+		"2026-09-26T19:00:00+03:00",
+		1000,
+		true,
+		"published",
+	)
+	third := event(
+		uuid.New(),
+		venueID,
+		"2026-09-27T19:00:00+03:00",
+		1000,
+		true,
+		"published",
+	)
+
+	first.Source = "kudago"
+	first.ExternalID = "184068:1790348400"
+
+	second.Source = "kudago"
+	second.ExternalID = "184068:1790434800"
+
+	third.Source = "kudago"
+	third.ExternalID = "184068:1790521200"
+
+	snapshot.Events = []catalog.Event{
+		third,
+		second,
+		first,
+	}
+
+	input := contracts.BuildInput{
+		RoomID:      uuid.New(),
+		CityID:      cityID,
+		RoundNo:     1,
+		PoolVersion: 1,
+		FirstIntent: contracts.ParticipantIntent{
+			Dates:          []string{"2026-09-25", "2026-09-26", "2026-09-27"},
+			BudgetMaxMinor: 2000,
+		},
+		SecondIntent: contracts.ParticipantIntent{
+			Dates:          []string{"2026-09-25", "2026-09-26", "2026-09-27"},
+			BudgetMaxMinor: 2000,
+		},
+	}
+
+	result, err := newBuilder(t, &fakeCatalog{snapshot: snapshot}).Build(
+		context.Background(),
+		input,
+	)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if len(result.Candidates) != 1 {
+		t.Fatalf("candidate count=%d, want 1", len(result.Candidates))
+	}
+
+	candidate := result.Candidates[0]
+
+	if candidate.EventID != first.ID {
+		t.Fatalf(
+			"selected event=%s, want nearest occurrence %s",
+			candidate.EventID,
+			first.ID,
+		)
+	}
+
+	if got := candidate.FeatureSnapshot["other_occurrences_count"]; got != 2 {
+		t.Fatalf("other_occurrences_count=%v, want 2", got)
+	}
 }

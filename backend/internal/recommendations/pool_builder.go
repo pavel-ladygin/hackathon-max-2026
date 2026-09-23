@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v3-behavior"
+	rankerVersion = "scoring-diversity-v4-series-dedupe"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
@@ -148,7 +148,7 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		}
 	}
 
-	items := make([]rankedEvent, 0, len(snapshot.Events))
+	eligibleEvents := make([]catalog.Event, 0, len(snapshot.Events))
 	for _, event := range snapshot.Events {
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
@@ -156,11 +156,21 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, referenceTime, first.radius, second.radius) {
 			continue
 		}
+		eligibleEvents = append(eligibleEvents, event)
+	}
+
+	series := collapseEventSeries(eligibleEvents)
+
+	items := make([]rankedEvent, 0, len(series))
+	for _, candidateSeries := range series {
+		event := candidateSeries.Event
 		venue := venues[event.VenueID]
 		item := scoreEvent(event, venue, first, second)
+		item.features["other_occurrences_count"] = float64(candidateSeries.OtherOccurrences)
 		item.tieBreak = tieBreak(b.tieBreakSecret, input.RoomID, input.PoolVersion, event.ID)
 		items = append(items, item)
 	}
+
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].groupScore != items[j].groupScore {
 			return items[i].groupScore > items[j].groupScore
