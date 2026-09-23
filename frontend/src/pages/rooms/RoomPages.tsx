@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
+import { RoomEventDate } from '../../features/rooms/RoomEventDate'
 import { relaxedIntent } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
@@ -237,7 +238,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
           <motion.span aria-hidden="true" style={{ opacity: likeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #e77888', borderRadius: 18, color: '#c74d63', padding: 12, fontWeight: 800 }}>ХОЧУ ПОЙТИ</motion.span>
           <motion.span aria-hidden="true" style={{ opacity: dislikeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #b8aaa0', borderRadius: 18, color: '#776a60', padding: 12, fontWeight: 800 }}>НЕ ПОДХОДИТ</motion.span>
           <EventImage className={styles.poolImage} src={eventImage(item.event.imageUrl, item.event.category_slug)} fallbackSrc={eventImageFallback(item.event.category_slug)} alt={item.event.title} />
-          <div className={styles.poolCopy}><p className={styles.eyebrow}>{item.event.category_slug}</p><h2>{item.event.title}</h2><p className={styles.subtitle}>{item.event.subtitle}</p><div className={styles.poolMeta}><span>◷ {item.event.date_label}</span><span>⌖ {item.event.venue_name}</span><strong>{item.event.price_label}</strong></div></div>
+          <div className={styles.poolCopy}><p className={styles.eyebrow}>{item.event.category_slug}</p><h2>{item.event.title}</h2><p className={styles.subtitle}>{item.event.subtitle}</p><div className={styles.poolMeta}><RoomEventDate label={item.event.date_label} otherOccurrencesCount={item.event.other_occurrences_count} /><span>⌖ {item.event.venue_name}</span><strong>{item.event.price_label}</strong></div></div>
         </motion.article>
       </AnimatePresence>
       <AnimatePresence>{matchPreview && <motion.div role="status" aria-live="polite" initial={{ opacity: 0, scale: .88 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: .24 }} style={{ position: 'absolute', inset: '28% 12% auto', zIndex: 4, padding: 24, borderRadius: 24, background: 'rgba(255,255,255,.96)', boxShadow: '0 18px 50px rgba(70,48,35,.2)', textAlign: 'center' }}><strong style={{ display: 'block', fontSize: 32 }}>♥</strong><strong>Это мэтч!</strong><span style={{ display: 'block', marginTop: 6 }}>Событие понравилось вам обоим</span></motion.div>}</AnimatePresence>
