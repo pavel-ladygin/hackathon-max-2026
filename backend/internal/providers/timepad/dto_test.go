@@ -59,6 +59,21 @@ func TestRequestedOptionalFieldsNormalizeIntoProviderEvent(t *testing.T) {
 	}
 }
 
+func TestNumericAgeLimitDecodesAndNormalizes(t *testing.T) {
+	var event eventDTO
+	raw := `{"id":42,"name":"Event","starts_at":"2026-10-01T19:00:00+03:00","age_limit":18}`
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
+		t.Fatal(err)
+	}
+	normalized, ok := normalizeEvent(event)
+	if !ok {
+		t.Fatal("event with numeric age_limit was rejected")
+	}
+	if normalized.AgeRating == nil || *normalized.AgeRating != "18+" {
+		t.Fatalf("age rating = %v, want 18+", normalized.AgeRating)
+	}
+}
+
 func TestNormalizeProviderLifecycle(t *testing.T) {
 	tests := []struct {
 		name         string

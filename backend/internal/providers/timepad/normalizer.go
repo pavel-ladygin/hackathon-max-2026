@@ -55,7 +55,7 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		TicketAvailable: registrationURL != nil && event.RegistrationData.IsRegistrationOpen,
 		Status:          status,
 		ProviderActive:  providerActive,
-		AgeRating:       ageRating(event.AgeLimit),
+		AgeRating:       ageRating(string(event.AgeLimit)),
 		Categories:      normalizeCategories(event.Categories.Values),
 		Images:          normalizeImages(event.PosterImage),
 	}
