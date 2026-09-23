@@ -99,6 +99,41 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 	}
 }
 
+func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
+	startsAtMin := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	startsAtMax := startsAtMin.Add(importHorizon)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"total":4,"values":[%s,%s,%s,%s]}`,
+			timepadImportEventAt(20, "Москва", startsAtMin.Add(-time.Second)),
+			timepadImportEventAt(21, "Москва", startsAtMin),
+			timepadImportEventAt(22, "Москва", startsAtMax),
+			timepadImportEventAt(23, "Москва", startsAtMax.Add(time.Second)),
+		)
+	}))
+	defer server.Close()
+
+	client := testClient(t, server)
+	clockCalls := 0
+	client.now = func() time.Time {
+		clockCalls++
+		return startsAtMin
+	}
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats != (ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
+		t.Fatalf("stats = %+v", stats)
+	}
+	if got, want := fmt.Sprint(store.persisted), "[21 22]"; got != want {
+		t.Fatalf("persisted = %s, want %s", got, want)
+	}
+	if clockCalls != 1 {
+		t.Fatalf("clock calls = %d, want 1", clockCalls)
+	}
+}
+
 func TestImportCancellationStopsPaginationWait(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"total":3,"values":[`+timepadImportEvent(10, "Москва")+`,`+timepadImportEvent(11, "Москва")+`]}`)
@@ -122,5 +157,9 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 }
 
 func timepadImportEvent(id int, city string) string {
-	return fmt.Sprintf(`{"id":%d,"name":"Event %d","starts_at":"2026-10-01T10:00:00+0300","url":"https://timepad.ru/event/%d","location":{"city":%q,"address":"Street","coordinates":[55.75,37.61]},"registration_data":{"is_registration_open":true}}`, id, id, id, city)
+	return timepadImportEventAt(id, city, time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC))
+}
+
+func timepadImportEventAt(id int, city string, startsAt time.Time) string {
+	return fmt.Sprintf(`{"id":%d,"name":"Event %d","starts_at":%q,"url":"https://timepad.ru/event/%d","location":{"city":%q,"address":"Street","coordinates":[55.75,37.61]},"registration_data":{"is_registration_open":true}}`, id, id, startsAt.Format(time.RFC3339), id, city)
 }

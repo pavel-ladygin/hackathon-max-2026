@@ -14,7 +14,7 @@ import (
 const (
 	kudagoSource  = "kudago"
 	moscowZone    = "Europe/Moscow"
-	defaultStatus = "published"
+	defaultStatus = providers.EventStatusPublished
 )
 
 var categoryMapping = map[string]string{
@@ -58,11 +58,11 @@ var categoryMapping = map[string]string{
 	"other":                 "other",
 }
 
-func normalizeEvents(events []eventDTO) []providers.NormalizedEvent {
+func normalizeEvents(events []eventDTO, actualSince, actualUntil time.Time) []providers.NormalizedEvent {
 	result := make([]providers.NormalizedEvent, 0)
 	seen := make(map[string]struct{})
 	for _, event := range events {
-		for _, occurrence := range normalizeEvent(event) {
+		for _, occurrence := range normalizeEvent(event, actualSince, actualUntil) {
 			key := occurrence.Source + "\x00" + occurrence.ExternalID
 			if _, duplicate := seen[key]; duplicate {
 				continue
@@ -74,7 +74,7 @@ func normalizeEvents(events []eventDTO) []providers.NormalizedEvent {
 	return result
 }
 
-func normalizeEvent(event eventDTO) []providers.NormalizedEvent {
+func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []providers.NormalizedEvent {
 	title := strings.TrimSpace(event.Title)
 	if event.ID <= 0 || title == "" || event.Place == nil || strings.TrimSpace(event.Place.Title) == "" || !validCoordinates(event.Place.Coords) {
 		return nil
@@ -89,13 +89,16 @@ func normalizeEvent(event eventDTO) []providers.NormalizedEvent {
 		Venue:       normalizeVenue(*event.Place),
 		Timezone:    moscowZone,
 		Currency:    "RUB",
-		TicketURL:   ticketURL(event.SiteURL),
+		TicketURL:   providerPageURL(event.SiteURL),
 		Status:      defaultStatus,
 		AgeRating:   ageRating(string(event.AgeRestriction)),
 		PublishedAt: unixPointer(event.PublicationDate),
 		Categories:  normalizeCategories(event.Categories),
 		Images:      normalizeImages(event.Images),
 	}
+	// KudaGo exposes only site_url for its event page, with no ticket inventory
+	// or registration-open field. For this provider availability therefore means
+	// that a validated KudaGo event-page CTA exists, not that stock is confirmed.
 	base.TicketAvailable = base.TicketURL != nil
 	if event.IsFree {
 		zero := int32(0)
@@ -109,13 +112,17 @@ func normalizeEvent(event eventDTO) []providers.NormalizedEvent {
 		if date.Start <= 0 {
 			continue
 		}
+		startsAt := time.Unix(date.Start, 0).UTC()
+		if startsAt.Before(actualSince) || startsAt.After(actualUntil) {
+			continue
+		}
 		if _, duplicate := seen[date.Start]; duplicate {
 			continue
 		}
 		seen[date.Start] = struct{}{}
 		occurrence := base
 		occurrence.ExternalID = fmt.Sprintf("%d:%d", event.ID, date.Start)
-		occurrence.StartsAt = time.Unix(date.Start, 0).UTC()
+		occurrence.StartsAt = startsAt
 		if date.End != nil && *date.End > date.Start {
 			end := time.Unix(*date.End, 0).UTC()
 			occurrence.EndsAt = &end
@@ -168,7 +175,7 @@ func description(event eventDTO) string {
 	return strings.TrimSpace(event.Description)
 }
 
-func ticketURL(raw string) *string {
+func providerPageURL(raw string) *string {
 	value := strings.TrimSpace(raw)
 	parsed, err := url.ParseRequestURI(value)
 	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil || parsed.Port() != "" {

@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	EventStatusPublished = "published"
+	EventStatusSoldOut   = "sold_out"
+	EventStatusCancelled = "cancelled"
+)
+
 type NormalizedEvent struct {
 	Source          string
 	ExternalID      string
@@ -25,7 +31,11 @@ type NormalizedEvent struct {
 	PriceFromMinor  *int32
 	PriceToMinor    *int32
 	Currency        string
-	TicketURL       *string
+	// TicketURL is an actionable external provider CTA. Depending on the
+	// provider it can be a registration URL or the provider's event page.
+	TicketURL *string
+	// TicketAvailable means the provider CTA is currently usable according to
+	// facts exposed by that provider; it is not a universal inventory guarantee.
 	TicketAvailable bool
 	Status          string
 	AgeRating       *string

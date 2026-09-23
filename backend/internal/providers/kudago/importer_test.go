@@ -31,6 +31,7 @@ func (s *memoryEventStore) UpsertWithResult(_ context.Context, _ uuid.UUID, even
 }
 
 func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
+	importNow := time.Unix(1_699_999_900, 0).UTC()
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "2" {
@@ -39,7 +40,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		}
 		since, sinceErr := strconv.ParseInt(r.URL.Query().Get("actual_since"), 10, 64)
 		until, untilErr := strconv.ParseInt(r.URL.Query().Get("actual_until"), 10, 64)
-		if sinceErr != nil || untilErr != nil || until-since != int64(importHorizon/time.Second) {
+		if sinceErr != nil || untilErr != nil || since != importNow.Unix() || until != importNow.Add(importHorizon).Unix() {
 			t.Errorf("import window actual_since=%q actual_until=%q", r.URL.Query().Get("actual_since"), r.URL.Query().Get("actual_until"))
 		}
 		fmt.Fprintf(w, `{"count":4,"next":%q,"results":[%s,{"id":2,"title":"invalid","dates":[{"start":1700000200}]}]}`,
@@ -50,6 +51,11 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	client, err := NewClient(Options{BaseURL: server.URL, Timeout: time.Second, Location: "msk", PageSize: 100})
 	if err != nil {
 		t.Fatal(err)
+	}
+	nowCalls := 0
+	client.now = func() time.Time {
+		nowCalls++
+		return importNow
 	}
 	store := &memoryEventStore{seen: make(map[string]struct{}), fail: make(map[string]error)}
 	cityID := uuid.New()
@@ -67,9 +73,13 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2}) {
 		t.Fatalf("second stats = %+v", second)
 	}
+	if nowCalls != 2 {
+		t.Fatalf("clock calls=%d, want one per import", nowCalls)
+	}
 }
 
 func TestImportContinuesAfterPersistenceError(t *testing.T) {
+	importNow := time.Unix(1_699_999_900, 0).UTC()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"count":2,"next":"","results":[`+validImportEvent(7, 1700000700)+`,`+validImportEvent(8, 1700000800)+`]}`)
 	}))
@@ -78,6 +88,7 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.now = func() time.Time { return importNow }
 	store := &memoryEventStore{seen: make(map[string]struct{}), fail: map[string]error{"7:1700000700": errors.New("database failure")}}
 	var reported int
 	stats, err := client.Import(context.Background(), uuid.New(), store, func(error) { reported++ })

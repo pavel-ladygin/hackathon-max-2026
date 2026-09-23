@@ -49,7 +49,7 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		Currency:        "RUB",
 		TicketURL:       registrationURL,
 		TicketAvailable: registrationURL != nil && event.RegistrationData.IsRegistrationOpen,
-		Status:          "published",
+		Status:          normalizeStatus(event),
 		AgeRating:       ageRating(event.AgeLimit),
 		Categories:      normalizeCategories(event.Categories.Values),
 		Images:          normalizeImages(event.PosterImage),
@@ -66,6 +66,18 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 	}
 	normalized.PriceFromMinor, normalized.PriceToMinor = normalizePrices(event)
 	return normalized, true
+}
+
+func normalizeStatus(event eventDTO) string {
+	accessStatus := strings.ToLower(strings.TrimSpace(event.AccessStatus))
+	moderationStatus := strings.ToLower(strings.TrimSpace(event.ModerationStatus))
+	if (accessStatus != "" && accessStatus != "public") || moderationStatus == "hidden" {
+		return providers.EventStatusCancelled
+	}
+	if !event.RegistrationData.IsRegistrationOpen {
+		return providers.EventStatusSoldOut
+	}
+	return providers.EventStatusPublished
 }
 
 func parseTime(raw string) (time.Time, error) {

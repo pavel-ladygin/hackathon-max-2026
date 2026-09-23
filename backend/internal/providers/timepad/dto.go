@@ -26,6 +26,8 @@ type eventDTO struct {
 	Categories       categoriesDTO       `json:"categories"`
 	TicketTypes      []ticketTypeDTO     `json:"ticket_types"`
 	AgeLimit         string              `json:"age_limit"`
+	AccessStatus     string              `json:"access_status"`
+	ModerationStatus string              `json:"moderation_status"`
 	RegistrationData registrationDataDTO `json:"registration_data"`
 }
 

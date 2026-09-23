@@ -47,7 +47,7 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 		ingestion.AddFetched(len(page.Results))
 		ingestion.AddMatched(len(page.Results))
 		for _, event := range page.Results {
-			occurrences := normalizeEvent(event)
+			occurrences := normalizeEvent(event, actualSince, actualUntil)
 			if len(occurrences) == 0 {
 				ingestion.AddSkipped(1)
 				continue

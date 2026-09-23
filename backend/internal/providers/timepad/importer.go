@@ -51,6 +51,10 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store EventStore,
 				ingestion.AddSkipped(1)
 				continue
 			}
+			if normalized.StartsAt.Before(startsAtMin) || normalized.StartsAt.After(startsAtMax) {
+				ingestion.AddSkipped(1)
+				continue
+			}
 			if err := ingestion.Persist(ctx, normalized); err != nil {
 				return ingestion.Stats(), err
 			}

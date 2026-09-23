@@ -4,7 +4,90 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
+
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
+
+func TestRequestedOptionalFieldsNormalizeIntoProviderEvent(t *testing.T) {
+	var event eventDTO
+	raw := `{
+		"id":42,
+		"created_at":"2026-09-01T09:00:00+03:00",
+		"starts_at":"2026-10-01T19:00:00+03:00",
+		"ends_at":"2026-10-01T21:30:00+03:00",
+		"name":"Event",
+		"description_short":"Description",
+		"url":"https://timepad.ru/event/42",
+		"poster_image":{"default_url":"https://ucare.timepad.ru/poster/"},
+		"location":{"city":"Москва","address":"","coordinates":[55.75,37.61]},
+		"organization":{"id":7,"name":"Organizer"},
+		"categories":[{"id":1,"name":"Концерты"}],
+		"age_limit":"18+",
+		"access_status":"public",
+		"moderation_status":"featured",
+		"registration_data":{"price_min":500,"price_max":1500,"is_registration_open":true}
+	}`
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
+		t.Fatal(err)
+	}
+
+	normalized, ok := normalizeEvent(event)
+	if !ok {
+		t.Fatal("event with requested optional fields was rejected")
+	}
+	wantStart := time.Date(2026, 10, 1, 16, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, 10, 1, 18, 30, 0, 0, time.UTC)
+	wantPublished := time.Date(2026, 9, 1, 6, 0, 0, 0, time.UTC)
+	if normalized.Description != "Description" || normalized.Subtitle == nil || *normalized.Subtitle != "Description" {
+		t.Fatalf("description fields = %q, %v", normalized.Description, normalized.Subtitle)
+	}
+	if normalized.StartsAt != wantStart || normalized.EndsAt == nil || *normalized.EndsAt != wantEnd || normalized.PublishedAt == nil || *normalized.PublishedAt != wantPublished {
+		t.Fatalf("normalized dates = start %v, end %v, published %v", normalized.StartsAt, normalized.EndsAt, normalized.PublishedAt)
+	}
+	if normalized.Venue.Name != "Organizer" || normalized.AgeRating == nil || *normalized.AgeRating != "18+" {
+		t.Fatalf("venue/age = %+v, %v", normalized.Venue, normalized.AgeRating)
+	}
+	if normalized.PriceFromMinor == nil || *normalized.PriceFromMinor != 50_000 || normalized.PriceToMinor == nil || *normalized.PriceToMinor != 150_000 {
+		t.Fatalf("prices = %v..%v", normalized.PriceFromMinor, normalized.PriceToMinor)
+	}
+	if len(normalized.Images) != 1 || len(normalized.Categories) != 1 || !normalized.Categories[0].IsPrimary {
+		t.Fatalf("images/categories = %+v / %+v", normalized.Images, normalized.Categories)
+	}
+	if normalized.Status != providers.EventStatusPublished || !normalized.TicketAvailable {
+		t.Fatalf("availability = status %q, ticket_available %t", normalized.Status, normalized.TicketAvailable)
+	}
+}
+
+func TestNormalizeProviderLifecycleStatus(t *testing.T) {
+	tests := []struct {
+		name         string
+		access       string
+		moderation   string
+		registration bool
+		want         string
+	}{
+		{name: "public open", access: "public", moderation: "featured", registration: true, want: providers.EventStatusPublished},
+		{name: "legacy missing statuses", registration: true, want: providers.EventStatusPublished},
+		{name: "registration closed", access: "public", moderation: "shown", want: providers.EventStatusSoldOut},
+		{name: "draft", access: "draft", registration: true, want: providers.EventStatusCancelled},
+		{name: "private", access: "private", registration: true, want: providers.EventStatusCancelled},
+		{name: "link only", access: "link_only", registration: true, want: providers.EventStatusCancelled},
+		{name: "hidden moderation", access: "public", moderation: "hidden", registration: true, want: providers.EventStatusCancelled},
+		{name: "unknown access fails closed", access: "future_status", registration: true, want: providers.EventStatusCancelled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := eventDTO{
+				AccessStatus: test.access, ModerationStatus: test.moderation,
+				RegistrationData: registrationDataDTO{IsRegistrationOpen: test.registration},
+			}
+			if got := normalizeStatus(event); got != test.want {
+				t.Fatalf("status = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 func TestLocationCoordinatesDecodeNumericAndNumericStrings(t *testing.T) {
 	for name, raw := range map[string]string{
