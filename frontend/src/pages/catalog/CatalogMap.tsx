@@ -1,11 +1,12 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../shared/api/client'
 import type { CategorySlug, EventCard } from '../../shared/api/types'
 import { Button, Empty, ScreenSkeleton } from '../../shared/ui'
 import styles from './catalogMap.module.css'
 import { createEventMarkerElement } from './eventMarker'
+import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, radiusForViewport, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
 import { collectMapEvents, shouldFetchMapPage } from './mapResults'
 import { useDebouncedValue } from './useDebouncedValue'
@@ -33,13 +34,10 @@ function readCamera(event: YandexMapUpdateEvent): YandexCamera | null {
   return { center, zoom }
 }
 
-function appendMarker(mapApi: YandexMapsApi, map: YandexMap, event: LocatedEvent, index: number, navigate: (path: string) => void) {
+function appendMarker(mapApi: YandexMapsApi, map: YandexMap, event: LocatedEvent, index: number, onSelect: (id: string) => void) {
   const { latitude, longitude } = event
   if (latitude == null || longitude == null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-  const marker = createEventMarkerElement(event, () => {
-    marker.dataset.active = 'true'
-    navigate(`/events/${event.id}`)
-  }, Math.min(index * 20, 120))
+  const marker = createEventMarkerElement(event, () => onSelect(event.id), Math.min(index * 20, 120))
   const child = new mapApi.YMapMarker({ coordinates: [longitude, latitude] }, marker)
   map.addChild(child)
   return { child, element: marker }
@@ -59,6 +57,15 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
   const stableCamera = useDebouncedValue(camera, 350)
   const [mapError, setMapError] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const selectEvent = useCallback((id: string | null) => {
+    for (const [markerId, marker] of markers.current) {
+      const active = markerId === id
+      marker.element.dataset.active = String(active)
+      marker.element.setAttribute('aria-pressed', String(active))
+    }
+    setSelectedEventId(id)
+  }, [])
   const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
   const params = useMemo(() => ({
     ...filters,
@@ -142,14 +149,19 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
         map.current?.removeChild(existing.child)
         markers.current.delete(event.id)
       }
-      const marker = appendMarker(mapApi.current!, map.current!, event, index, navigate)
-      if (marker) markers.current.set(event.id, { ...marker, event })
+      const marker = appendMarker(mapApi.current!, map.current!, event, index, selectEvent)
+      if (marker) {
+        marker.element.dataset.active = String(event.id === selectedEventId)
+        marker.element.setAttribute('aria-pressed', String(event.id === selectedEventId))
+        markers.current.set(event.id, { ...marker, event })
+      }
     })
-  }, [locatedEvents, mapReady, navigate])
+  }, [locatedEvents, mapReady, selectEvent, selectedEventId])
 
   if (!apiKey || mapError) return <Empty title="Карта сейчас недоступна" description={!apiKey ? 'Для карты не настроен API-ключ.' : 'Переключитесь на список — события доступны там.'} />
 
   const hasAnyCoordinates = locatedEvents.some((event) => event.latitude != null && event.longitude != null)
+  const selectedEvent = locatedEvents.find((event) => event.id === selectedEventId)
   const noResults = !results.isPending && !results.isFetchingNextPage && !results.hasNextPage && locatedEvents.length === 0
   return <div className={styles.mapWrap} aria-label="Карта событий">
     <div ref={mapNode} className={styles.map} role="region" aria-label="Яндекс Карта событий" />
@@ -157,6 +169,7 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
     {results.isError ? <div className={`${styles.mapMessage} ${styles.mapMessageInteractive}`}><Empty inline title="События не загрузились" description="Проверьте соединение и повторите поиск." action={<Button onClick={() => void results.refetch()}>Повторить</Button>} /></div> : null}
     {noResults ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="В этой области событий не найдено" description="Переместите карту или измените фильтры." /></div> : null}
     {!results.isPending && locatedEvents.length > 0 && !hasAnyCoordinates ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="Для этих событий нет координат" description="Попробуйте изменить область карты или переключиться на список." /></div> : null}
+    {selectedEvent ? <MapEventPreview event={selectedEvent} onClose={() => selectEvent(null)} onDetails={() => navigate(`/events/${selectedEvent.id}`)} /> : null}
     {locatedEvents.length >= MAP_EVENT_CAP && results.hasNextPage ? <span className={styles.mapLoading} role="status">Показаны первые {MAP_EVENT_CAP}. Приблизьте карту или переместите её, чтобы увидеть остальные.</span> : null}
     {results.isFetchingNextPage ? <span className={styles.mapLoading} role="status">Загружаем события…</span> : null}
   </div>

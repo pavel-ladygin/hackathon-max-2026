@@ -7,6 +7,7 @@ export function createEventMarkerElement(event: Pick<EventDetail, 'title' | 'ima
   marker.type = 'button'
   marker.className = styles.mapMarker
   marker.setAttribute('aria-label', `Открыть событие «${event.title}»`)
+  marker.setAttribute('aria-pressed', 'false')
   marker.dataset.active = 'false'
   marker.style.setProperty('--marker-delay', `${Math.min(120, Math.max(0, entranceDelay))}ms`)
 

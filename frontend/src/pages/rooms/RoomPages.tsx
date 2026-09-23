@@ -56,15 +56,21 @@ export function InvitePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const room = useRoom(roomId)
-  const [shared, setShared] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sharing' | 'shared' | 'share-error' | 'copied' | 'copy-error'>('idle')
   if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
   const rawUrl = room.data.invite?.url ?? ''
   const maxLink = room.data.invite?.max_deep_link ?? rawUrl
   const share = async () => {
+    if (!maxLink || inviteStatus === 'sharing') return
+    setInviteStatus('sharing')
     const ok = await maxPlatform.shareInvite({ text: `Присоединяйся к комнате «${room.data.name}»`, link: maxLink })
-    setShared(ok)
+    setInviteStatus(ok ? 'shared' : 'share-error')
+  }
+  const copy = async () => {
+    if (!rawUrl) return
+    const ok = await maxPlatform.copyText(rawUrl)
+    setInviteStatus(ok ? 'copied' : 'copy-error')
   }
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
@@ -72,8 +78,8 @@ export function InvitePage() {
       <h1 className={styles.title}>Пригласите друга</h1><p className={styles.subtitle}>Отправьте приглашение в MAX. После подключения каждый отдельно заполнит пожелания.</p>
       <div className={styles.inviteLink} data-testid="invite-url">{rawUrl || 'Ссылка появится после создания комнаты'}</div>
       <PrivacyNote>Предпочтения и оценки останутся скрытыми до взаимного лайка.</PrivacyNote>
-      <div aria-live="polite">{shared ? <p>✓ Приглашение отправлено</p> : copied ? <p>✓ Ссылка скопирована</p> : null}</div>
-      <div className={styles.footer}><Button onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" onClick={async () => setCopied(await maxPlatform.copyText(rawUrl))}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(`/rooms/${roomId}/intent`)}>Перейти к моим пожеланиям</Button></div>
+      <div aria-live="polite">{inviteStatus === 'shared' ? <p>✓ Приглашение отправлено</p> : inviteStatus === 'copied' ? <p>✓ Ссылка скопирована</p> : inviteStatus === 'share-error' ? <p className={styles.error} role="alert">Не удалось отправить приглашение. Попробуйте ещё раз или скопируйте ссылку.</p> : inviteStatus === 'copy-error' ? <p className={styles.error} role="alert">Не удалось скопировать ссылку. Вы можете скопировать её вручную выше.</p> : null}</div>
+      <div className={styles.footer}><Button disabled={!maxLink || inviteStatus === 'sharing'} state={inviteStatus === 'sharing' ? 'loading' : 'idle'} loadingLabel="Открываем MAX…" onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" disabled={!rawUrl || inviteStatus === 'sharing'} onClick={() => void copy()}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(`/rooms/${roomId}/intent`)}>Перейти к моим пожеланиям</Button></div>
     </PageContent></PageShell>
   )
 }

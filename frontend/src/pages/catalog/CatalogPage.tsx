@@ -28,7 +28,8 @@ export function CatalogPage() {
   const [price, setPrice] = useState(10_000)
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [view, setView] = useState<'list' | 'map'>('list')
-  const [locationDenied, setLocationDenied] = useState(false)
+  const [locationFailure, setLocationFailure] = useState<'permission_denied' | 'position_unavailable' | 'timeout' | 'unsupported' | null>(null)
+  const [isLocating, setIsLocating] = useState(false)
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const reduceMotion = useReducedMotion()
   const normalizedQuery = debouncedQuery.trim()
@@ -48,8 +49,34 @@ export function CatalogPage() {
     setDateTo('')
     setPrice(10_000)
     setPosition(null)
-    setLocationDenied(false)
+    setLocationFailure(null)
   }
+
+  const findNearby = async () => {
+    if (isLocating) return
+    setIsLocating(true)
+    setLocationFailure(null)
+    try {
+      const result = await maxPlatform.requestLocation()
+      if (result.ok) {
+        setPosition({ lat: result.position.lat, lng: result.position.lng })
+      } else {
+        setLocationFailure(result.reason)
+      }
+    } catch {
+      setLocationFailure('position_unavailable')
+    } finally {
+      setIsLocating(false)
+    }
+  }
+
+  const locationErrorMessage = locationFailure === 'permission_denied'
+    ? 'Доступ к геолокации запрещён. Разрешите его для приложения или браузера в настройках устройства.'
+    : locationFailure === 'timeout'
+      ? 'Не удалось получить координаты вовремя. Попробуйте ещё раз.'
+      : locationFailure === 'unsupported'
+        ? 'Геолокация недоступна в этом браузере или версии MAX.'
+        : 'Сейчас не удаётся определить местоположение. Проверьте сигнал и попробуйте ещё раз.'
 
   return <PageShell withBottomNav>
     <TopBar title="Афиша" onBack={() => navigate('/')} />
@@ -59,7 +86,7 @@ export function CatalogPage() {
       <div className={styles.catalogControls}>
         <div className={styles.quickFilters} aria-label="Быстрые фильтры">
           <Chip selected={freeOnly} onClick={() => setFreeOnly((value) => !value)}>Бесплатно</Chip>
-          <Chip selected={Boolean(position)} onClick={async () => { const geo = await maxPlatform.requestLocation(); if (geo) { setPosition({ lat: geo.lat, lng: geo.lng }); setLocationDenied(false) } else setLocationDenied(true) }}>{position ? 'Рядом · 10 км' : 'Найти рядом'}</Chip>
+          <Chip selected={Boolean(position)} disabled={isLocating} aria-busy={isLocating || undefined} onClick={() => void findNearby()}>{isLocating ? 'Определяем…' : position ? 'Рядом · 10 км' : 'Найти рядом'}</Chip>
           <Chip selected={advancedFiltersOpen || activeFilterCount > 0} aria-expanded={advancedFiltersOpen} aria-controls="catalog-advanced-filters" onClick={() => setAdvancedFiltersOpen((value) => !value)}>Фильтры{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Chip>
         </div>
         <div className={`${styles.refreshOverlay} ${isRefreshing ? styles.refreshOverlayVisible : ''}`} role="status" aria-live="polite" aria-hidden={!isRefreshing}>
@@ -80,7 +107,7 @@ export function CatalogPage() {
           </div>
         </motion.section> : null}
       </AnimatePresence>
-      {locationDenied ? <p className={styles.error} role="status">Геолокация недоступна. Остальные фильтры продолжают работать.</p> : null}
+      {locationFailure ? <p className={styles.error} role="status" aria-live="polite">{locationErrorMessage} {locationFailure === 'timeout' || locationFailure === 'position_unavailable' ? <button type="button" onClick={() => void findNearby()}>Повторить</button> : null} Остальные фильтры продолжают работать.</p> : null}
       <div className={catalogStyles.segmented} role="tablist" aria-label="Вид событий">
         {(['list', 'map'] as const).map((nextView) => <button key={nextView} type="button" role="tab" aria-selected={view === nextView} className={catalogStyles.segmentedItem} onClick={() => startTransition(() => setView(nextView))}>
           {view === nextView ? <motion.span layoutId="catalog-view-indicator" className={catalogStyles.segmentedIndicator} transition={{ duration: reduceMotion ? 0 : .2, ease: 'easeOut' }} /> : null}
