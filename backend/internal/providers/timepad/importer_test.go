@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,16 +18,42 @@ type memoryEventStore struct {
 	seen      map[string]struct{}
 	persisted []string
 	marked    []bool
+	events    []providers.NormalizedEvent
 	starts    []providers.SyncRunStart
 	finishes  []providers.SyncRunFinish
 }
 
 func (s *memoryEventStore) UpsertWithResult(_ context.Context, _ uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
 	s.marked = append(s.marked, event.ProviderLastSeenRunID != nil)
+	s.events = append(s.events, event)
 	_, exists := s.seen[event.ExternalID]
 	s.seen[event.ExternalID] = struct{}{}
 	s.persisted = append(s.persisted, event.ExternalID)
 	return providers.UpsertResult{EventID: uuid.New(), Inserted: !exists}, nil
+}
+
+func TestImportParsesPosterImageReturnedByEventsList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if !strings.Contains(","+request.URL.Query().Get("fields")+",", ",poster_image,") {
+			t.Errorf("fields = %q, want poster_image", request.URL.Query().Get("fields"))
+		}
+		fmt.Fprint(w, `{"total":1,"values":[{"id":42,"name":"Event 42","starts_at":"2026-10-01T07:00:00Z","url":"https://timepad.ru/event/42","poster_image":{"default_url":"https://ucare.timepad.ru/poster.jpg"},"location":{"city":"Москва","address":"Street","coordinates":[55.75,37.61]},"registration_data":{"is_registration_open":true}}]}`)
+	}))
+	defer server.Close()
+
+	client := testClient(t, server)
+	client.now = func() time.Time { return time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC) }
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	if _, err := client.Import(context.Background(), uuid.New(), store, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.events) != 1 {
+		t.Fatalf("persisted events = %d, want 1", len(store.events))
+	}
+	want := providers.NormalizedImage{URL: "https://ucare.timepad.ru/poster.jpg", Role: "card", Position: 0}
+	if len(store.events[0].Images) != 1 || store.events[0].Images[0] != want {
+		t.Fatalf("normalized images = %+v, want %+v", store.events[0].Images, []providers.NormalizedImage{want})
+	}
 }
 
 func (s *memoryEventStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {

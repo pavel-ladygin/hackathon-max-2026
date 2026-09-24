@@ -6,12 +6,13 @@ COPY backend/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed \
-    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/event-sync ./cmd/event-sync
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/event-sync ./cmd/event-sync \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/backfill-timepad-posters ./cmd/backfill-timepad-posters
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
-COPY --from=build /out/server /out/migrate /out/seed /out/event-sync ./
+COPY --from=build /out/server /out/migrate /out/seed /out/event-sync /out/backfill-timepad-posters ./
 USER 65532:65532
 EXPOSE 8080
 CMD ["/app/server"]
