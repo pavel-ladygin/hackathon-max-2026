@@ -169,3 +169,82 @@ for (const viewport of viewports) {
     })
   })
 }
+
+test.describe('desktop full-bleed layout', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('page shell reaches viewport edges without desktop frame styling', async ({ page }) => {
+    await stubCatalogBackend(page)
+    await page.goto('/events')
+    await expect(page.getByRole('heading', { name: 'События' })).toBeVisible()
+
+    const layout = await page.locator('main').first().evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        viewportWidth: document.documentElement.clientWidth,
+        borderRadius: style.borderRadius,
+        boxShadow: style.boxShadow,
+      }
+    })
+
+    expect(layout.left).toBe(0)
+    expect(layout.top).toBe(0)
+    expect(layout.width).toBe(layout.viewportWidth)
+    expect(layout.borderRadius).toBe('0px')
+    expect(layout.boxShadow).toBe('none')
+  })
+
+  test('desktop loading skeleton also reaches viewport edges', async ({ page }) => {
+    await page.route('**/api/v1/auth/max/bootstrap', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ access_token: 'layout-token', token_type: 'Bearer', expires_in: 3600, user, onboarding_state: 'complete', preferences, invite_context: null }),
+      })
+    })
+    await page.goto('/events')
+    const skeleton = page.getByRole('status', { name: 'Знакомимся с вами…' })
+    await expect(skeleton).toBeVisible()
+
+    const geometry = await skeleton.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { left: rect.left, width: rect.width, viewportWidth: document.documentElement.clientWidth }
+    })
+    expect(geometry.left).toBe(0)
+    expect(geometry.width).toBe(geometry.viewportWidth)
+  })
+
+  test('home hero uses the available desktop content width', async ({ page }) => {
+    await page.route('**/api/v1/auth/max/bootstrap', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ access_token: 'layout-token', token_type: 'Bearer', expires_in: 3600, user, onboarding_state: 'complete', preferences, invite_context: null }),
+    }))
+    await page.route('**/api/v1/feed/home**', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ feed_id: 'layout-feed', generated_at: '2026-01-01T00:00:00Z', sections: [{ type: 'for_you', title: 'Для вас', items: [{ ...event }] }], active_room: null }),
+    }))
+
+    await page.goto('/')
+    const hero = page.getByRole('button', { name: /Джазовый вечер/ })
+    await expect(hero).toBeVisible()
+
+    const widths = await hero.evaluate((element) => {
+      const content = element.parentElement!
+      const style = getComputedStyle(content)
+      return {
+        hero: element.getBoundingClientRect().width,
+        content: content.getBoundingClientRect().width,
+        paddingLeft: Number.parseFloat(style.paddingLeft),
+        paddingRight: Number.parseFloat(style.paddingRight),
+      }
+    })
+    expect(widths.hero).toBe(widths.content - widths.paddingLeft - widths.paddingRight)
+  })
+})

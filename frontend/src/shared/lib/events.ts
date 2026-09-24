@@ -44,12 +44,9 @@ export function normalizeEventImageUrl(value: string) {
     if (url.protocol !== 'https:' || url.hostname !== 'ucare.timepad.ru' || url.username || url.password) return value
     const id = url.pathname.split('/')[1]
     if (!uploadcareId.test(id)) return value
-    const path = url.pathname
-    const previews = path.match(/\/-\/preview\//gi)?.length ?? 0
-    const formats = path.match(/\/-\/format\//gi)?.length ?? 0
-    const posters = path.match(/\/poster_[^/]+/gi)?.length ?? 0
-    if (previews < 2 && formats < 2 && posters < 2) return value
-    return `https://ucare.timepad.ru/${id}/-/preview/1200x1200/`
+    // Uploadcare's UUID endpoint serves the stored original. A generated
+    // preview can be only 308px wide and is visibly soft when used as a hero.
+    return `https://ucare.timepad.ru/${id}/`
   } catch {
     return value
   }
@@ -58,3 +55,20 @@ export function normalizeEventImageUrl(value: string) {
 export function eventImage(imageUrl: string | null | undefined, category: CategorySlug | string) {
   return imageUrl ? normalizeEventImageUrl(imageUrl) : eventImageFallback(category)
 }
+
+export function eventHeroImage(images: EventImageCandidate[] | null | undefined, imageUrl: string | null | undefined, category: CategorySlug | string) {
+  const candidates = (images ?? []).filter((image) => image.url)
+  const selected = [...candidates].sort((a, b) => {
+    const aHasSize = a.width != null && a.height != null
+    const bHasSize = b.width != null && b.height != null
+    if (aHasSize !== bHasSize) return aHasSize ? -1 : 1
+    if (aHasSize && bHasSize) {
+      const size = b.width! * b.height! - a.width! * a.height!
+      if (size) return size
+    }
+    return Number(b.role === 'hero') - Number(a.role === 'hero')
+  })[0]
+  return eventImage(selected?.url ?? imageUrl, category)
+}
+
+type EventImageCandidate = { url: string; width: number | null; height: number | null; role: 'card' | 'hero' | 'gallery' }

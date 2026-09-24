@@ -9,20 +9,21 @@ func TestNormalizeImagesRepairsMalformedTimepadPosterURL(t *testing.T) {
 	if len(images) != 1 {
 		t.Fatalf("expected one image, got %d", len(images))
 	}
-	want := "https://ucare.timepad.ru/" + uuid + "/-/preview/1200x1200/"
+	want := "https://ucare.timepad.ru/" + uuid + "/"
 	if images[0].URL != want {
 		t.Fatalf("repaired URL = %q, want %q", images[0].URL, want)
 	}
 }
 
-func TestNormalizeImagesPreservesValidTimepadPosterURL(t *testing.T) {
+func TestNormalizeImagesUsesOriginalForValidTimepadPosterURL(t *testing.T) {
 	const valid = "https://ucare.timepad.ru/616e34b0-b30a-4a3a-8d5a-3f9b0cabe260/-/preview/308x600/-/format/jpeg/poster_event_420945.jpg"
 	images := normalizeImages(imageDTO{DefaultURL: valid})
 	if len(images) != 1 {
 		t.Fatalf("expected one image, got %d", len(images))
 	}
-	if images[0].URL != valid {
-		t.Fatalf("valid URL changed to %q", images[0].URL)
+	const want = "https://ucare.timepad.ru/616e34b0-b30a-4a3a-8d5a-3f9b0cabe260/"
+	if images[0].URL != want {
+		t.Fatalf("image URL = %q, want original %q", images[0].URL, want)
 	}
 }
 

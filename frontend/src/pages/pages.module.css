@@ -90,6 +90,7 @@
 .fieldError { margin: -3px 0 0; color: #b42318; font-size: 11px; }
 
 @media (min-width: 768px) {
+  .narrow.narrow { max-width: 640px; margin-right: auto; margin-left: auto; }
   .footer { margin-right: 0; margin-left: 0; border-radius: var(--radius-xl); }
   .homeAction > .button, .homeAction > button { width: min(280px, 36vw); }
   .hero { min-height: 0; aspect-ratio: 16 / 7; max-height: 440px; }
