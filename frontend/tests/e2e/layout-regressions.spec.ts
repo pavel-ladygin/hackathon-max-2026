@@ -185,7 +185,7 @@ test.describe('desktop full-bleed layout', () => {
         left: rect.left,
         top: rect.top,
         width: rect.width,
-        viewportWidth: document.documentElement.clientWidth,
+        availableWidth: document.body.getBoundingClientRect().width,
         borderRadius: style.borderRadius,
         boxShadow: style.boxShadow,
       }
@@ -193,7 +193,7 @@ test.describe('desktop full-bleed layout', () => {
 
     expect(layout.left).toBe(0)
     expect(layout.top).toBe(0)
-    expect(layout.width).toBe(layout.viewportWidth)
+    expect(layout.width).toBe(layout.availableWidth)
     expect(layout.borderRadius).toBe('0px')
     expect(layout.boxShadow).toBe('none')
   })
@@ -213,10 +213,10 @@ test.describe('desktop full-bleed layout', () => {
 
     const geometry = await skeleton.evaluate((element) => {
       const rect = element.getBoundingClientRect()
-      return { left: rect.left, width: rect.width, viewportWidth: document.documentElement.clientWidth }
+      return { left: rect.left, width: rect.width, availableWidth: document.body.getBoundingClientRect().width }
     })
     expect(geometry.left).toBe(0)
-    expect(geometry.width).toBe(geometry.viewportWidth)
+    expect(geometry.width).toBe(geometry.availableWidth)
   })
 
   test('home hero uses the available desktop content width', async ({ page }) => {
