@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/nullable"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -309,6 +310,36 @@ func (e EventImageRole) Valid() bool {
 	case EventImageRoleGallery:
 		return true
 	case EventImageRoleHero:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventMapClusterKind.
+const (
+	Cluster EventMapClusterKind = "cluster"
+)
+
+// Valid indicates whether the value is a known member of the EventMapClusterKind enum.
+func (e EventMapClusterKind) Valid() bool {
+	switch e {
+	case Cluster:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventMapPointKind.
+const (
+	Event EventMapPointKind = "event"
+)
+
+// Valid indicates whether the value is a known member of the EventMapPointKind enum.
+func (e EventMapPointKind) Valid() bool {
+	switch e {
+	case Event:
 		return true
 	default:
 		return false
@@ -899,6 +930,44 @@ type EventImage struct {
 // EventImageRole defines model for EventImage.Role.
 type EventImageRole string
 
+// EventMapCluster defines model for EventMapCluster.
+type EventMapCluster struct {
+	Count     int                 `json:"count"`
+	East      float64             `json:"east"`
+	Id        string              `json:"id"`
+	Kind      EventMapClusterKind `json:"kind"`
+	Latitude  float64             `json:"latitude"`
+	Longitude float64             `json:"longitude"`
+	North     float64             `json:"north"`
+	South     float64             `json:"south"`
+	West      float64             `json:"west"`
+}
+
+// EventMapClusterKind defines model for EventMapCluster.Kind.
+type EventMapClusterKind string
+
+// EventMapPoint defines model for EventMapPoint.
+type EventMapPoint struct {
+	Event     EventCard          `json:"event"`
+	Id        openapi_types.UUID `json:"id"`
+	Kind      EventMapPointKind  `json:"kind"`
+	Latitude  float64            `json:"latitude"`
+	Longitude float64            `json:"longitude"`
+}
+
+// EventMapPointKind defines model for EventMapPoint.Kind.
+type EventMapPointKind string
+
+// EventMapResponse defines model for EventMapResponse.
+type EventMapResponse struct {
+	Items []EventMapResponse_Items_Item `json:"items"`
+}
+
+// EventMapResponse_Items_Item defines model for EventMapResponse.items.Item.
+type EventMapResponse_Items_Item struct {
+	union json.RawMessage
+}
+
 // EventSearchResponse defines model for EventSearchResponse.
 type EventSearchResponse struct {
 	AppliedFilters map[string]interface{}    `json:"applied_filters"`
@@ -1272,6 +1341,28 @@ type Unauthenticated = ErrorResponse
 // ValidationError defines model for ValidationError.
 type ValidationError = ErrorResponse
 
+// GetEventMapParams defines parameters for GetEventMap.
+type GetEventMapParams struct {
+	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	CityId        *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
+	West          float32             `form:"west" json:"west"`
+	South         float32             `form:"south" json:"south"`
+	East          float32             `form:"east" json:"east"`
+	North         float32             `form:"north" json:"north"`
+	Zoom          int                 `form:"zoom" json:"zoom"`
+	Q             *string             `form:"q,omitempty" json:"q,omitempty"`
+	DateFrom      *openapi_types.Date `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo        *openapi_types.Date `form:"date_to,omitempty" json:"date_to,omitempty"`
+	DayTypes      *[]DayType          `form:"day_types,omitempty" json:"day_types,omitempty"`
+	TimeSlots     *[]TimeSlot         `form:"time_slots,omitempty" json:"time_slots,omitempty"`
+	CategorySlugs *[]CategorySlug     `form:"category_slugs,omitempty" json:"category_slugs,omitempty"`
+	PriceMaxMinor *int                `form:"price_max_minor,omitempty" json:"price_max_minor,omitempty"`
+	DistanceM     *int                `form:"distance_m,omitempty" json:"distance_m,omitempty"`
+	Lat           *float32            `form:"lat,omitempty" json:"lat,omitempty"`
+	Lng           *float32            `form:"lng,omitempty" json:"lng,omitempty"`
+	FreeOnly      *bool               `form:"free_only,omitempty" json:"free_only,omitempty"`
+}
+
 // SearchEventsParams defines parameters for SearchEvents.
 type SearchEventsParams struct {
 	// Q Поиск по названию, описанию и площадке
@@ -1293,6 +1384,10 @@ type SearchEventsParams struct {
 	Lat       *float32 `form:"lat,omitempty" json:"lat,omitempty"`
 	Lng       *float32 `form:"lng,omitempty" json:"lng,omitempty"`
 	FreeOnly  *bool    `form:"free_only,omitempty" json:"free_only,omitempty"`
+	West      *float32 `form:"west,omitempty" json:"west,omitempty"`
+	South     *float32 `form:"south,omitempty" json:"south,omitempty"`
+	East      *float32 `form:"east,omitempty" json:"east,omitempty"`
+	North     *float32 `form:"north,omitempty" json:"north,omitempty"`
 	Limit     *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque подписанный cursor
@@ -1527,4 +1622,66 @@ func (a ErrorResponse_Error_Details) MarshalJSON() ([]byte, error) {
 		}
 	}
 	return json.Marshal(object)
+}
+
+// AsEventMapPoint returns the union data inside the EventMapResponse_Items_Item as a EventMapPoint
+func (t EventMapResponse_Items_Item) AsEventMapPoint() (EventMapPoint, error) {
+	var body EventMapPoint
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEventMapPoint overwrites any union data inside the EventMapResponse_Items_Item as the provided EventMapPoint
+func (t *EventMapResponse_Items_Item) FromEventMapPoint(v EventMapPoint) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEventMapPoint performs a merge with any union data inside the EventMapResponse_Items_Item, using the provided EventMapPoint
+func (t *EventMapResponse_Items_Item) MergeEventMapPoint(v EventMapPoint) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEventMapCluster returns the union data inside the EventMapResponse_Items_Item as a EventMapCluster
+func (t EventMapResponse_Items_Item) AsEventMapCluster() (EventMapCluster, error) {
+	var body EventMapCluster
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEventMapCluster overwrites any union data inside the EventMapResponse_Items_Item as the provided EventMapCluster
+func (t *EventMapResponse_Items_Item) FromEventMapCluster(v EventMapCluster) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEventMapCluster performs a merge with any union data inside the EventMapResponse_Items_Item, using the provided EventMapCluster
+func (t *EventMapResponse_Items_Item) MergeEventMapCluster(v EventMapCluster) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t EventMapResponse_Items_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *EventMapResponse_Items_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
 }

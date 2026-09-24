@@ -43,6 +43,71 @@
   font-size: .85rem;
 }
 
+.clusterMarker {
+  min-width: 46px;
+  height: 46px;
+  padding: 0 9px;
+  border: 3px solid var(--color-paper, #fffaf5);
+  border-radius: 50%;
+  background: var(--color-accent, #ef6b6b);
+  box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
+  color: white;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+.clusterMarker:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
+
+.clusterList {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  width: min(360px, calc(100% - 24px));
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper, #fffaf5);
+  box-shadow: 0 8px 28px rgb(39 29 21 / 20%);
+}
+.clusterList h2 { margin: 0 40px 4px 0; font-size: 1.05rem; }
+.clusterListClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+.clusterEvent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  text-align: left;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.clusterEvent span { color: var(--color-muted); font-size: .85rem; font-weight: 400; }
+.clusterList :focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
 .preview {
   position: absolute;
   right: 12px;

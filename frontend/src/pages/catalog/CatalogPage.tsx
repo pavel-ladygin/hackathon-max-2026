@@ -82,7 +82,10 @@ export function CatalogPage() {
     <TopBar title="Афиша" onBack={() => navigate('/')} />
     <PageContent>
       <label className={styles.searchLabel} htmlFor="catalog-search">Найти событие</label>
-      <input id="catalog-search" className={styles.searchInput} type="search" name="catalog-search" autoComplete="off" maxLength={120} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, место или жанр" />
+      <div className={styles.searchField}>
+        <input id="catalog-search" className={styles.searchInput} type="search" name="catalog-search" autoComplete="off" maxLength={120} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, место или жанр" />
+        {query ? <button type="button" className={styles.searchClear} aria-label="Очистить поиск" onClick={() => setQuery('')}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></button> : null}
+      </div>
       <div className={styles.catalogControls}>
         <div className={styles.quickFilters} aria-label="Быстрые фильтры">
           <Chip selected={freeOnly} onClick={() => setFreeOnly((value) => !value)}>Бесплатно</Chip>

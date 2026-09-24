@@ -48,6 +48,29 @@ func (s *Service) Search(ctx context.Context, filter SearchFilter) (Page, error)
 	return page, nil
 }
 
+// SearchMapPage shares search validation and cursor compatibility while using
+// the repository's map-specific path that omits the unused total count.
+func (s *Service) SearchMapPage(ctx context.Context, filter SearchFilter) (Page, error) {
+	if err := normalizeFilter(&filter); err != nil {
+		return Page{}, err
+	}
+	filterHash := hashFilter(filter)
+	if filter.Cursor != nil && filter.Cursor.FilterHash != filterHash {
+		return Page{}, ErrInvalidCursor
+	}
+	reader, ok := s.repository.(interface {
+		SearchMapPage(context.Context, SearchFilter) (Page, error)
+	})
+	if !ok {
+		return Page{}, errors.New("discovery repository does not support map paging")
+	}
+	page, err := reader.SearchMapPage(ctx, filter)
+	if err == nil && page.NextCursor != nil {
+		page.NextCursor.FilterHash = filterHash
+	}
+	return page, err
+}
+
 func (s *Service) EncodeNextCursor(cursor Cursor) (string, error) { return s.codec.Encode(cursor) }
 
 func (s *Service) DecodeCursor(value string, filter SearchFilter) (Cursor, error) {
@@ -68,6 +91,9 @@ func normalizeFilter(filter *SearchFilter) error {
 	if filter.UserID == uuid.Nil || filter.CityID == uuid.Nil || filter.Limit < 0 || filter.Limit > maxLimit || filter.PriceMaxMinor != nil && *filter.PriceMaxMinor < 0 ||
 		filter.DistanceMeters != nil && (*filter.DistanceMeters < 100 || *filter.DistanceMeters > 50_000) ||
 		filter.Location != nil && !validLocation(*filter.Location) || filter.DistanceMeters != nil && filter.Location == nil {
+		return ErrInvalidFilter
+	}
+	if filter.Bounds != nil && !validBounds(*filter.Bounds) {
 		return ErrInvalidFilter
 	}
 	if filter.Cursor != nil && (filter.Cursor.StartsAt.IsZero() || filter.Cursor.EventID == uuid.Nil || filter.Cursor.FilterHash == "") {
@@ -102,6 +128,13 @@ func normalizeFilter(filter *SearchFilter) error {
 
 func validLocation(location Location) bool {
 	return !math.IsNaN(location.Latitude) && !math.IsNaN(location.Longitude) && !math.IsInf(location.Latitude, 0) && !math.IsInf(location.Longitude, 0) && location.Latitude >= -90 && location.Latitude <= 90 && location.Longitude >= -180 && location.Longitude <= 180
+}
+
+func validBounds(b Bounds) bool {
+	return !math.IsNaN(b.West) && !math.IsNaN(b.South) && !math.IsNaN(b.East) && !math.IsNaN(b.North) &&
+		!math.IsInf(b.West, 0) && !math.IsInf(b.South, 0) && !math.IsInf(b.East, 0) && !math.IsInf(b.North, 0) &&
+		b.West >= -180 && b.West <= 180 && b.East >= -180 && b.East <= 180 && b.West != b.East &&
+		b.South >= -90 && b.North <= 90 && b.South < b.North
 }
 
 func normalizedSet(values []string, allowed ...string) ([]string, bool) {
@@ -156,8 +189,10 @@ func hashFilter(filter SearchFilter) string {
 		Free                    bool
 		Location                *Location
 		Distance                *int32
+		Bounds                  *Bounds
 	}
 	item := fingerprint{User: filter.UserID.String(), City: filter.CityID.String(), Days: filter.DayTypes, Slots: filter.TimeSlots, Categories: filter.CategorySlugs, Price: filter.PriceMaxMinor, Free: filter.FreeOnly, Location: filter.Location, Distance: filter.DistanceMeters}
+	item.Bounds = filter.Bounds
 	if filter.Query != nil {
 		item.Query = *filter.Query
 	}

@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
-import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
+import { eventCategoryLabel, eventHeroImage, eventImageFallback } from '../../shared/lib/events'
 import { withMinimumDuration } from '../../shared/lib/async'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Empty, EventImage, FavoriteButton, InlineNotice, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
@@ -38,7 +38,7 @@ export function EventPage() {
   return (
     <PageShell>
       <div className={styles.eventTopBar}><TopBar spacious prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
-      <EventImage className={styles.detailHero} src={eventImage(item.imageUrl, item.category_slug)} fallbackSrc={eventImageFallback(item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
+      <EventImage className={styles.detailHero} src={eventHeroImage(item.images, item.imageUrl, item.category_slug)} fallbackSrc={eventImageFallback(item.category_slug)} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>
         <h1 className={styles.title}>{item.title}</h1>

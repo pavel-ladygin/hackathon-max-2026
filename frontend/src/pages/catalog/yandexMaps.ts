@@ -8,6 +8,7 @@ export function markerSizeForZoom(zoom: number) {
 export interface YandexMap {
   addChild(child: unknown): YandexMap
   removeChild(child: unknown): YandexMap
+  setLocation?(location: { bounds: [[number, number], [number, number]]; zoom?: number }): void
   destroy(): void
 }
 
@@ -20,8 +21,9 @@ interface YandexMarkerConstructor {
 }
 
 export interface YandexMapUpdateEvent {
-  location?: { center?: YandexCoordinates; zoom?: number }
+  location?: { center?: YandexCoordinates; zoom?: number; bounds?: [[number, number], [number, number]] }
   camera?: { center?: YandexCoordinates; zoom?: number }
+  mapInAction?: boolean
 }
 
 export interface YandexCamera { center: YandexCoordinates; zoom: number }

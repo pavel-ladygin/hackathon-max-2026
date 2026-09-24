@@ -1,5 +1,5 @@
 import { mapDetail, mapEvent } from './mapper'
-import type { EventDetailDto, EventSearchResponseDto, HomeFeedResponseDto, SavedEventsResponseDto, SavedStateResponseDto } from './types'
+import type { EventDetailDto, EventMapItemDto, EventSearchResponseDto, HomeFeedResponseDto, MapBounds, SavedEventsResponseDto, SavedStateResponseDto } from './types'
 
 type RequestFn = <T>(path: string, init?: RequestInit) => Promise<T>
 type Event = ReturnType<typeof mapEvent>
@@ -25,6 +25,7 @@ export interface DiscoverySearchParams {
 export interface DiscoveryApi {
   getHomeFeed(params?: Record<string, string | number | undefined>): Promise<{ feed_id: string; generated_at: string; sections: Array<Omit<HomeFeedResponseDto['sections'][number], 'items'> & { items: Event[] }>; activeRoom: HomeFeedResponseDto['active_room'] }>
   searchEvents(params?: DiscoverySearchParams): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number; nextCursor: string | null }>
+  getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'lat' | 'lng' | 'distance_m' | 'limit' | 'cursor'>): Promise<Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event } | Extract<EventMapItemDto, { kind: 'cluster' }>>>
   getEvent(eventId: string): Promise<Detail>
   recordBehavior(events: Array<{ client_event_id: string; type: 'impression' | 'open' | 'share'; occurred_at: string; event_id?: string | null; room_id?: string | null; metadata?: Record<string, unknown> }>): Promise<{ accepted: number; duplicates: number; rejected: number }>
   setSaved(eventId: string, saved: boolean): Promise<SavedStateResponseDto>
@@ -44,6 +45,12 @@ export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {
       for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, Array.isArray(value) ? value.join(',') : String(value))
       const response = await request<EventSearchResponseDto>(`/events/search${query.size ? `?${query}` : ''}`)
       return { items: response.items.map(mapEvent), appliedFilters: response.applied_filters, totalEstimate: response.total_estimate, nextCursor: response.next_cursor }
+    },
+    async getMapEvents(params) {
+      const query = new URLSearchParams()
+      for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, Array.isArray(value) ? value.join(',') : String(value))
+      const response = await request<{ items: EventMapItemDto[] }>(`/events/map?${query}`)
+      return response.items.map((item) => item.kind === 'event' ? { ...item, event: mapEvent(item.event) } : item)
     },
     async getEvent(eventId) { return mapDetail(await request<EventDetailDto>(`/events/${eventId}`)) },
     async recordBehavior(events) { return request('/behavior/events:batch', { method: 'POST', body: JSON.stringify({ events }) }) },

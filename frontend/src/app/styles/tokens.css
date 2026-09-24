@@ -60,10 +60,6 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 :focus-visible { outline: 3px solid rgb(255 91 91 / 45%); outline-offset: 2px; }
 
-@media (min-width: 768px) {
-  body { background: #f3f0eb; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

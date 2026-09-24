@@ -25,7 +25,7 @@ func TestDiscoveryHandlersRegisterAuthenticatedRoutes(t *testing.T) {
 	NewSearchHandler(search, &fakeSearchCities{city: uuid.New()}).RegisterRoutes(router, authenticated)
 	NewDetailHandler(detail).RegisterRoutes(router, authenticated)
 
-	for _, target := range []string{"/api/v1/feed/home", "/api/v1/events/search", "/api/v1/events/" + uuid.New().String()} {
+	for _, target := range []string{"/api/v1/feed/home", "/api/v1/events/search", "/api/v1/events/map?west=37&south=55&east=38&north=56&zoom=10", "/api/v1/events/" + uuid.New().String()} {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		res := httptest.NewRecorder()
 		router.ServeHTTP(res, req)
