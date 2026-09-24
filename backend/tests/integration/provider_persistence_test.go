@@ -143,6 +143,34 @@ func TestProviderRepositoryPersistence(t *testing.T) {
 		}
 	})
 
+	t.Run("empty image response preserves previously saved images", func(t *testing.T) {
+		current := event
+		current.Images = nil
+		result, err := repo.UpsertWithResult(ctx, cityID, current)
+		if err != nil {
+			t.Fatalf("upsert without images: %v", err)
+		}
+		var count int
+		var imageURL string
+		if err := db.QueryRow(ctx, `SELECT count(*), min(url) FROM event_images WHERE event_id = $1`, result.EventID).Scan(&count, &imageURL); err != nil {
+			t.Fatalf("read preserved images: %v", err)
+		}
+		if count != 1 || imageURL != "https://example.test/replaced.jpg" {
+			t.Fatalf("images after empty response = count %d, url %q; want 1, preserved replacement URL", count, imageURL)
+		}
+
+		current.Images = []providers.NormalizedImage{{URL: "https://example.test/fresh.jpg", Role: "card", Position: 0}}
+		if _, err := repo.UpsertWithResult(ctx, cityID, current); err != nil {
+			t.Fatalf("upsert replacement images: %v", err)
+		}
+		if err := db.QueryRow(ctx, `SELECT count(*), min(url) FROM event_images WHERE event_id = $1`, result.EventID).Scan(&count, &imageURL); err != nil {
+			t.Fatalf("read replaced images: %v", err)
+		}
+		if count != 1 || imageURL != "https://example.test/fresh.jpg" {
+			t.Fatalf("images after nonempty response = count %d, url %q; want 1, fresh URL", count, imageURL)
+		}
+	})
+
 	t.Run("coordinate-less venue preserves address without sentinel coordinates", func(t *testing.T) {
 		withoutCoordinates := event
 		withoutCoordinates.ExternalID = "without-coordinates-" + uuid.NewString()

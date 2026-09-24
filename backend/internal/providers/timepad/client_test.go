@@ -41,6 +41,17 @@ func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
 			t.Errorf("authorization = %q", got)
 		}
 		query := request.URL.Query()
+		fields := strings.Split(query.Get("fields"), ",")
+		includesPosterImage := false
+		for _, field := range fields {
+			if field == "poster_image" {
+				includesPosterImage = true
+				break
+			}
+		}
+		if !includesPosterImage {
+			t.Errorf("fields = %q, want poster_image requested", query.Get("fields"))
+		}
 		if _, exists := query["cities"]; exists {
 			t.Errorf("cities must be omitted, got %q", query.Get("cities"))
 		}

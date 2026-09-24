@@ -22,7 +22,7 @@ const (
 	maxRequestAttempts = 3
 	retryBaseDelay     = time.Second
 	moscowCity         = "Москва"
-	requestedFields    = "location,registration_data,ticket_types,description_short,ends_at,created_at,age_limit,organization,access_status,moderation_status"
+	requestedFields    = "location,registration_data,ticket_types,description_short,ends_at,created_at,age_limit,organization,access_status,moderation_status,poster_image"
 )
 
 type Options struct {

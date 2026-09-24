@@ -97,16 +97,21 @@ func (r *Repository) UpsertWithResult(ctx context.Context, cityID uuid.UUID, eve
 			}
 		}
 
-		if err := queries.ClearProviderEventImages(ctx, result.EventID); err != nil {
-			return fmt.Errorf("clear provider event images: %w", err)
-		}
-		for _, image := range event.Images {
-			imageIdentity := fmt.Sprintf("%s\x00%d\x00%s", identity, image.Position, image.URL)
-			if err := queries.InsertProviderEventImage(ctx, platform.InsertProviderEventImageParams{
-				ID: providerStableID("image", imageIdentity), EventID: result.EventID, Url: image.URL,
-				Width: optionalInt32(image.Width), Height: optionalInt32(image.Height), Role: image.Role, Position: image.Position,
-			}); err != nil {
-				return fmt.Errorf("insert provider event image: %w", err)
+		// Timepad may omit a poster on an occurrence even after a canonical
+		// event poster has been recovered. Keep that recovered image on later
+		// syncs, while preserving replacement semantics for other providers.
+		if len(event.Images) > 0 || event.Source != "timepad" {
+			if err := queries.ClearProviderEventImages(ctx, result.EventID); err != nil {
+				return fmt.Errorf("clear provider event images: %w", err)
+			}
+			for _, image := range event.Images {
+				imageIdentity := fmt.Sprintf("%s\x00%d\x00%s", identity, image.Position, image.URL)
+				if err := queries.InsertProviderEventImage(ctx, platform.InsertProviderEventImageParams{
+					ID: providerStableID("image", imageIdentity), EventID: result.EventID, Url: image.URL,
+					Width: optionalInt32(image.Width), Height: optionalInt32(image.Height), Role: image.Role, Position: image.Position,
+				}); err != nil {
+					return fmt.Errorf("insert provider event image: %w", err)
+				}
 			}
 		}
 		return nil
