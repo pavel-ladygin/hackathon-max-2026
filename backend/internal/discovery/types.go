@@ -29,7 +29,12 @@ type SearchFilter struct {
 	DistanceMeters *int32
 	Limit          int
 	Cursor         *Cursor
+	Bounds         *Bounds
 }
+
+// Bounds is a geographic bounding box. West greater than east denotes an
+// antimeridian-crossing box.
+type Bounds struct{ West, South, East, North float64 }
 
 type Location struct {
 	Latitude  float64

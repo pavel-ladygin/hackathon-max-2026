@@ -24,6 +24,9 @@ export interface MatchDto { id: string; matched_at: string; event: EventCardDto;
 export interface HomeFeedSectionDto { type: 'hero' | 'popular' | 'for_you' | 'nearby'; title: string; items: EventCardDto[] }
 export interface HomeFeedResponseDto { feed_id: string; generated_at: string; sections: HomeFeedSectionDto[]; active_room: { id: string; name: string; city_id: string; state: RoomState } | null }
 export interface EventSearchResponseDto { items: EventCardDto[]; applied_filters: Record<string, unknown>; total_estimate: number; next_cursor: string | null }
+export interface MapBounds { west: number; south: number; east: number; north: number }
+export type EventMapItemDto = { kind: 'event'; id: string; longitude: number; latitude: number; event: EventCardDto } | { kind: 'cluster'; id: string; longitude: number; latitude: number; west: number; south: number; east: number; north: number; count: number }
+export interface EventMapResponseDto { items: EventMapItemDto[] }
 export interface SavedStateResponseDto { event_id: string; saved: boolean; saved_at: string | null }
 export interface SavedEventDto { event: EventCardDto; saved_at: string | null; match: MatchSummaryDto | null }
 export interface SavedEventsResponseDto { items: SavedEventDto[]; next_cursor: string | null }

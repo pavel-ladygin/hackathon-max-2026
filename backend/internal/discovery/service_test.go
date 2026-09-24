@@ -71,6 +71,33 @@ func TestNormalizeFilterRejectsMissingUserAndInvalidCursorKey(t *testing.T) {
 	}
 }
 
+func TestBoundsValidationAndCursorBinding(t *testing.T) {
+	for _, bounds := range []Bounds{{West: 170, East: -170, South: -10, North: 10}, {West: -180, East: 180, South: -90, North: 90}} {
+		if err := normalizeFilter(&SearchFilter{UserID: uuid.New(), CityID: uuid.New(), Bounds: &bounds}); err != nil {
+			t.Errorf("valid bounds %+v rejected: %v", bounds, err)
+		}
+	}
+	for _, bounds := range []Bounds{{West: 1, East: 1, South: -1, North: 1}, {West: -181, East: 1, South: -1, North: 1}, {West: 1, East: 2, South: 2, North: 1}} {
+		if err := normalizeFilter(&SearchFilter{UserID: uuid.New(), CityID: uuid.New(), Bounds: &bounds}); !errors.Is(err, ErrInvalidFilter) {
+			t.Errorf("invalid bounds %+v error = %v", bounds, err)
+		}
+	}
+	codec, _ := NewCursorCodec([]byte("discovery-cursor-test-key-123456"))
+	filter := SearchFilter{UserID: uuid.New(), CityID: uuid.New(), Bounds: &Bounds{West: 37, South: 55, East: 38, North: 56}}
+	if err := normalizeFilter(&filter); err != nil {
+		t.Fatal(err)
+	}
+	cursor := Cursor{StartsAt: time.Now(), EventID: uuid.New(), FilterHash: hashFilter(filter)}
+	encoded, err := codec.Encode(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter.Bounds = &Bounds{West: 38, South: 55, East: 39, North: 56}
+	if _, err := codec.Decode(encoded, hashFilter(filter)); !errors.Is(err, ErrInvalidCursor) {
+		t.Fatalf("cursor accepted changed bounds: %v", err)
+	}
+}
+
 func TestNormalizeFilterAppliesLimitBoundsWithoutClamping(t *testing.T) {
 	base := func(limit int) SearchFilter {
 		return SearchFilter{UserID: uuid.New(), CityID: uuid.New(), Limit: limit}

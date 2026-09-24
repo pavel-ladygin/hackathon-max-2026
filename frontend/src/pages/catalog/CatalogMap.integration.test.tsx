@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
 import { CatalogMap } from './CatalogMap'
 
-const { navigate, pages, FakeYMap, FakeYMapMarker } = vi.hoisted(() => {
+const { navigate, getMapEvents, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef } = vi.hoisted(() => {
   class Marker {
     element: HTMLElement
     constructor(_options: unknown, element: HTMLElement) { this.element = element }
@@ -20,14 +20,18 @@ const { navigate, pages, FakeYMap, FakeYMapMarker } = vi.hoisted(() => {
       if (child instanceof Marker) child.element.remove()
       return this
     }
+    setLocation() {}
     destroy() { this.container.replaceChildren() }
   }
-  return { navigate: vi.fn(), pages: [] as Array<{ items: EventCard[]; nextCursor?: string }>, FakeYMap: Map, FakeYMapMarker: Marker }
+  class Listener { constructor(options: { onUpdate?: (event: unknown) => void }) { listenerRef.current = options.onUpdate ?? null } }
+  return { navigate: vi.fn(), getMapEvents: vi.fn(), listenerRef: { current: null as null | ((event: unknown) => void) }, FakeYMap: Map, FakeYMapMarker: Marker, FakeYMapListener: Listener }
 })
+
+vi.mock('../../shared/api/client', () => ({ apiClient: { getMapEvents, searchEvents: vi.fn() } }))
 
 vi.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: () => ({
-    data: { pages },
+    data: { pages: [] },
     fetchNextPage: vi.fn(), hasNextPage: false, isFetching: false, isFetchingNextPage: false,
     isPending: false, isError: false, refetch: vi.fn(),
   }),
@@ -44,7 +48,7 @@ vi.mock('./yandexMaps', async (importOriginal) => {
     ...actual,
     loadYandexMaps: async () => ({
       ready: Promise.resolve(), YMap: FakeYMap, YMapMarker: FakeYMapMarker,
-      YMapDefaultFeaturesLayer: class {}, YMapDefaultSchemeLayer: class {}, YMapListener: class {},
+      YMapDefaultFeaturesLayer: class {}, YMapDefaultSchemeLayer: class {}, YMapListener: FakeYMapListener,
     }),
   }
 })
@@ -60,7 +64,11 @@ describe('CatalogMap event preview integration', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_YANDEX_MAPS_API_KEY', 'test-key')
     navigate.mockClear()
-    pages.splice(0, pages.length, { items: [event('a', 'Событие A'), event('b', 'Событие B')] })
+    getMapEvents.mockResolvedValue([
+      { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
+      { kind: 'event', id: 'b', longitude: 37.62, latitude: 55.75, event: event('b', 'Событие B') },
+    ])
+    listenerRef.current = null
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
       disconnect() {}
@@ -103,5 +111,34 @@ describe('CatalogMap event preview integration', () => {
     fireEvent.click(markerA)
     fireEvent.click(screen.getByRole('button', { name: 'Подробнее' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/events/a'))
+  })
+
+  it('keeps the selected event preview when a completed pan loads a different area', async () => {
+    const nextEvent = event('c', 'Событие C')
+    getMapEvents.mockResolvedValueOnce([
+      { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
+    ]).mockResolvedValueOnce([
+      { kind: 'event', id: 'c', longitude: 37.8, latitude: 55.8, event: nextEvent },
+    ])
+    render(<MemoryRouter><CatalogMap filters={{ q: 'new' }} /></MemoryRouter>)
+    const markerA = await screen.findByRole('button', { name: 'Открыть событие «Событие A»' })
+    fireEvent.click(markerA)
+    await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
+    listenerRef.current?.({ location: { center: [38, 56], zoom: 12 }, mapInAction: false })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Открыть событие «Событие C»' })).toBeInTheDocument(), { timeout: 2000 })
+    expect(screen.getByRole('region', { name: 'Событие: Событие A' })).toBeInTheDocument()
+  })
+
+  it('clears the previous filter markers and selection as soon as filters change', async () => {
+    const pending = new Promise<never>(() => {})
+    getMapEvents.mockResolvedValueOnce([
+      { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
+    ]).mockReturnValueOnce(pending)
+    const view = render(<MemoryRouter><CatalogMap filters={{ q: 'first' }} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Открыть событие «Событие A»' }))
+    expect(screen.getByRole('region', { name: 'Событие: Событие A' })).toBeInTheDocument()
+    view.rerender(<MemoryRouter><CatalogMap filters={{ q: 'second' }} /></MemoryRouter>)
+    expect(screen.queryByRole('button', { name: 'Открыть событие «Событие A»' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Событие: Событие A' })).not.toBeInTheDocument()
   })
 })

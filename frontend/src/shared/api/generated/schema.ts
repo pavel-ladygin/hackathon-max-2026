@@ -95,6 +95,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить события и кластеры для области карты */
+        get: operations["getEventMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{eventId}": {
         parameters: {
             query?: never;
@@ -480,6 +497,38 @@ export interface components {
             };
             total_estimate: number;
             next_cursor: string | null;
+        };
+        EventMapResponse: {
+            items: (components["schemas"]["EventMapPoint"] | components["schemas"]["EventMapCluster"])[];
+        };
+        EventMapPoint: {
+            /** @constant */
+            kind: "event";
+            /** Format: uuid */
+            id: string;
+            /** Format: double */
+            longitude: number;
+            /** Format: double */
+            latitude: number;
+            event: components["schemas"]["EventCard"];
+        };
+        EventMapCluster: {
+            /** @constant */
+            kind: "cluster";
+            id: string;
+            /** Format: double */
+            longitude: number;
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            west: number;
+            /** Format: double */
+            south: number;
+            /** Format: double */
+            east: number;
+            /** Format: double */
+            north: number;
+            count: number;
         };
         BehaviorBatchRequest: {
             events: components["schemas"]["BehaviorEvent"][];
@@ -949,6 +998,10 @@ export interface operations {
                 lat?: number;
                 lng?: number;
                 free_only?: boolean;
+                west?: number;
+                south?: number;
+                east?: number;
+                north?: number;
                 limit?: components["parameters"]["Limit"];
                 /** @description Opaque подписанный cursor */
                 cursor?: components["parameters"]["Cursor"];
@@ -966,6 +1019,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventSearchResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getEventMap: {
+        parameters: {
+            query: {
+                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                city_id?: components["parameters"]["CityId"];
+                west: number;
+                south: number;
+                east: number;
+                north: number;
+                zoom: number;
+                q?: string;
+                date_from?: string;
+                date_to?: string;
+                day_types?: components["schemas"]["DayType"][];
+                time_slots?: components["schemas"]["TimeSlot"][];
+                category_slugs?: components["schemas"]["CategorySlug"][];
+                price_max_minor?: number;
+                distance_m?: number;
+                lat?: number;
+                lng?: number;
+                free_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Карточки и кластеры событий для текущего окна карты */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventMapResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];

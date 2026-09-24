@@ -219,6 +219,18 @@ paths:
         schema:
           type: boolean
           default: false
+      - name: west
+        in: query
+        schema: {type: number, minimum: -180, maximum: 180}
+      - name: south
+        in: query
+        schema: {type: number, minimum: -90, maximum: 90}
+      - name: east
+        in: query
+        schema: {type: number, minimum: -180, maximum: 180}
+      - name: north
+        in: query
+        schema: {type: number, minimum: -90, maximum: 90}
       - $ref: '#/components/parameters/Limit'
       - $ref: '#/components/parameters/Cursor'
       responses:
@@ -232,6 +244,37 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /events/map:
+    get:
+      tags: [Discovery]
+      operationId: getEventMap
+      summary: Получить события и кластеры для области карты
+      parameters:
+      - $ref: '#/components/parameters/CityId'
+      - {name: west, in: query, required: true, schema: {type: number, minimum: -180, maximum: 180}}
+      - {name: south, in: query, required: true, schema: {type: number, minimum: -90, maximum: 90}}
+      - {name: east, in: query, required: true, schema: {type: number, minimum: -180, maximum: 180}}
+      - {name: north, in: query, required: true, schema: {type: number, minimum: -90, maximum: 90}}
+      - {name: zoom, in: query, required: true, schema: {type: integer, minimum: 0, maximum: 22}}
+      - {name: q, in: query, schema: {type: string, maxLength: 120}}
+      - {name: date_from, in: query, schema: {type: string, format: date}}
+      - {name: date_to, in: query, schema: {type: string, format: date}}
+      - {name: day_types, in: query, style: form, explode: false, schema: {type: array, items: {$ref: '#/components/schemas/DayType'}}}
+      - {name: time_slots, in: query, style: form, explode: false, schema: {type: array, items: {$ref: '#/components/schemas/TimeSlot'}}}
+      - {name: category_slugs, in: query, style: form, explode: false, schema: {type: array, items: {$ref: '#/components/schemas/CategorySlug'}}}
+      - {name: price_max_minor, in: query, schema: {type: integer, minimum: 0}}
+      - {name: distance_m, in: query, schema: {type: integer, minimum: 100, maximum: 50000}}
+      - {name: lat, in: query, schema: {type: number, minimum: -90, maximum: 90}}
+      - {name: lng, in: query, schema: {type: number, minimum: -180, maximum: 180}}
+      - {name: free_only, in: query, schema: {type: boolean, default: false}}
+      responses:
+        '200':
+          description: Карточки и кластеры событий для текущего окна карты
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventMapResponse'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
   /events/{eventId}:
     get:
       tags:
@@ -1314,6 +1357,38 @@ components:
           type:
           - string
           - 'null'
+    EventMapResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/EventMapPoint'
+            - $ref: '#/components/schemas/EventMapCluster'
+    EventMapPoint:
+      type: object
+      required: [kind, id, longitude, latitude, event]
+      properties:
+        kind: {type: string, const: event}
+        id: {type: string, format: uuid}
+        longitude: {type: number, format: double}
+        latitude: {type: number, format: double}
+        event: {$ref: '#/components/schemas/EventCard'}
+    EventMapCluster:
+      type: object
+      required: [kind, id, longitude, latitude, west, south, east, north, count]
+      properties:
+        kind: {type: string, const: cluster}
+        id: {type: string}
+        longitude: {type: number, format: double}
+        latitude: {type: number, format: double}
+        west: {type: number, format: double}
+        south: {type: number, format: double}
+        east: {type: number, format: double}
+        north: {type: number, format: double}
+        count: {type: integer, minimum: 2}
     BehaviorBatchRequest:
       type: object
       additionalProperties: false

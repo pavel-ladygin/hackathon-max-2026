@@ -30,6 +30,10 @@ WITH base AS (
       AND (sqlc.narg('price_max_minor')::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= sqlc.narg('price_max_minor')::integer))
       AND (NOT sqlc.arg('free_only')::boolean OR b.price_from_minor = 0)
       AND (sqlc.narg('distance_meters')::integer IS NULL OR b.distance_m <= sqlc.narg('distance_meters')::integer)
+      AND (sqlc.narg('bounds_west')::double precision IS NULL OR
+           ((sqlc.narg('bounds_west')::double precision < sqlc.narg('bounds_east')::double precision AND b.longitude BETWEEN sqlc.narg('bounds_west')::double precision AND sqlc.narg('bounds_east')::double precision) OR
+            (sqlc.narg('bounds_west')::double precision > sqlc.narg('bounds_east')::double precision AND (b.longitude >= sqlc.narg('bounds_west')::double precision OR b.longitude <= sqlc.narg('bounds_east')::double precision))))
+      AND (sqlc.narg('bounds_south')::double precision IS NULL OR b.latitude BETWEEN sqlc.narg('bounds_south')::double precision AND sqlc.narg('bounds_north')::double precision)
       AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 )
 SELECT f.id, f.title, f.subtitle,
@@ -48,7 +52,7 @@ LIMIT sqlc.arg('limit_count');
 
 -- name: CountDiscoveryEventCards :one
 WITH base AS (
-    SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name,
+    SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name, v.latitude, v.longitude,
            CASE WHEN sqlc.narg('latitude')::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - sqlc.narg('latitude')::double precision) / 2), 2) + cos(radians(sqlc.narg('latitude')::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - sqlc.narg('longitude')::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
     WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
@@ -64,6 +68,10 @@ WHERE (sqlc.narg('query')::text IS NULL OR
   AND (cardinality(sqlc.arg('category_slugs')::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY(sqlc.arg('category_slugs')::text[])))
   AND (sqlc.narg('price_max_minor')::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= sqlc.narg('price_max_minor')::integer)) AND (NOT sqlc.arg('free_only')::boolean OR b.price_from_minor = 0)
   AND (sqlc.narg('distance_meters')::integer IS NULL OR b.distance_m <= sqlc.narg('distance_meters')::integer)
+  AND (sqlc.narg('bounds_west')::double precision IS NULL OR
+       ((sqlc.narg('bounds_west')::double precision < sqlc.narg('bounds_east')::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN sqlc.narg('bounds_west')::double precision AND sqlc.narg('bounds_east')::double precision) OR
+        (sqlc.narg('bounds_west')::double precision > sqlc.narg('bounds_east')::double precision AND b.latitude IS NOT NULL AND (b.longitude >= sqlc.narg('bounds_west')::double precision OR b.longitude <= sqlc.narg('bounds_east')::double precision))))
+  AND (sqlc.narg('bounds_south')::double precision IS NULL OR b.latitude BETWEEN sqlc.narg('bounds_south')::double precision AND sqlc.narg('bounds_north')::double precision)
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary);
 
 -- name: GetDiscoveryEventDetail :one

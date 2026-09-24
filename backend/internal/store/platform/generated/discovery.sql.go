@@ -14,10 +14,10 @@ import (
 
 const countDiscoveryEventCards = `-- name: CountDiscoveryEventCards :one
 WITH base AS (
-    SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name,
-           CASE WHEN $10::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $10::double precision) / 2), 2) + cos(radians($10::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $11::double precision) / 2), 2)))) END AS distance_m
+    SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name, v.latitude, v.longitude,
+           CASE WHEN $14::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $14::double precision) / 2), 2) + cos(radians($14::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $15::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
-    WHERE v.city_id = $12 AND e.status = 'published'
+    WHERE v.city_id = $16 AND e.status = 'published'
       AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 )
 SELECT count(*)::integer FROM base b
@@ -30,6 +30,10 @@ WHERE ($1::text IS NULL OR
   AND (cardinality($6::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY($6::text[])))
   AND ($7::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $7::integer)) AND (NOT $8::boolean OR b.price_from_minor = 0)
   AND ($9::integer IS NULL OR b.distance_m <= $9::integer)
+  AND ($10::double precision IS NULL OR
+       (($10::double precision < $11::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN $10::double precision AND $11::double precision) OR
+        ($10::double precision > $11::double precision AND b.latitude IS NOT NULL AND (b.longitude >= $10::double precision OR b.longitude <= $11::double precision))))
+  AND ($12::double precision IS NULL OR b.latitude BETWEEN $12::double precision AND $13::double precision)
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 `
 
@@ -43,6 +47,10 @@ type CountDiscoveryEventCardsParams struct {
 	PriceMaxMinor  pgtype.Int4
 	FreeOnly       bool
 	DistanceMeters pgtype.Int4
+	BoundsWest     pgtype.Float8
+	BoundsEast     pgtype.Float8
+	BoundsSouth    pgtype.Float8
+	BoundsNorth    pgtype.Float8
 	Latitude       pgtype.Float8
 	Longitude      pgtype.Float8
 	CityID         uuid.UUID
@@ -59,6 +67,10 @@ func (q *Queries) CountDiscoveryEventCards(ctx context.Context, arg CountDiscove
 		arg.PriceMaxMinor,
 		arg.FreeOnly,
 		arg.DistanceMeters,
+		arg.BoundsWest,
+		arg.BoundsEast,
+		arg.BoundsSouth,
+		arg.BoundsNorth,
 		arg.Latitude,
 		arg.Longitude,
 		arg.CityID,
@@ -238,6 +250,10 @@ WITH base AS (
       AND ($14::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $14::integer))
       AND (NOT $15::boolean OR b.price_from_minor = 0)
       AND ($16::integer IS NULL OR b.distance_m <= $16::integer)
+      AND ($17::double precision IS NULL OR
+           (($17::double precision < $18::double precision AND b.longitude BETWEEN $17::double precision AND $18::double precision) OR
+            ($17::double precision > $18::double precision AND (b.longitude >= $17::double precision OR b.longitude <= $18::double precision))))
+      AND ($19::double precision IS NULL OR b.latitude BETWEEN $19::double precision AND $20::double precision)
       AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 )
 SELECT f.id, f.title, f.subtitle,
@@ -272,6 +288,10 @@ type SearchDiscoveryEventCardsParams struct {
 	PriceMaxMinor  pgtype.Int4
 	FreeOnly       bool
 	DistanceMeters pgtype.Int4
+	BoundsWest     pgtype.Float8
+	BoundsEast     pgtype.Float8
+	BoundsSouth    pgtype.Float8
+	BoundsNorth    pgtype.Float8
 }
 
 type SearchDiscoveryEventCardsRow struct {
@@ -311,6 +331,10 @@ func (q *Queries) SearchDiscoveryEventCards(ctx context.Context, arg SearchDisco
 		arg.PriceMaxMinor,
 		arg.FreeOnly,
 		arg.DistanceMeters,
+		arg.BoundsWest,
+		arg.BoundsEast,
+		arg.BoundsSouth,
+		arg.BoundsNorth,
 	)
 	if err != nil {
 		return nil, err

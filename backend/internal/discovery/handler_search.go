@@ -3,7 +3,10 @@ package discovery
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +44,7 @@ func NewSearchHandler(service SearchProvider, cities SearchCityReader) *SearchHa
 
 func (h *SearchHandler) RegisterRoutes(r chi.Router, authenticate func(http.Handler) http.Handler) {
 	r.With(authenticate).Get("/api/v1/events/search", h.SearchEvents)
+	r.With(authenticate).Get("/api/v1/events/map", h.MapEvents)
 }
 
 func (h *SearchHandler) SearchEvents(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +132,10 @@ func searchInput(ctx context.Context, r *http.Request, userID uuid.UUID, cities 
 	if filter.Location, err = locationQuery(query); err != nil {
 		return SearchFilter{}, ErrInvalidFilter
 	}
+	filter.Bounds, err = boundsQuery(query)
+	if err != nil {
+		return SearchFilter{}, ErrInvalidFilter
+	}
 	if filter.DistanceMeters != nil && filter.Location == nil {
 		return SearchFilter{}, ErrInvalidFilter
 	}
@@ -149,6 +157,218 @@ func searchInput(ctx context.Context, r *http.Request, userID uuid.UUID, cities 
 	}
 	return filter, nil
 }
+
+func boundsQuery(query map[string][]string) (*Bounds, error) {
+	keys := []string{"west", "south", "east", "north"}
+	values := make([]float64, 4)
+	present := 0
+	for i, key := range keys {
+		raw, ok := queryValue(query, key)
+		if !ok && query[key] != nil {
+			return nil, ErrInvalidFilter
+		}
+		if !ok {
+			continue
+		}
+		present++
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return nil, ErrInvalidFilter
+		}
+		values[i] = value
+	}
+	if present == 0 {
+		return nil, nil
+	}
+	if present != len(keys) {
+		return nil, ErrInvalidFilter
+	}
+	bounds := &Bounds{West: values[0], South: values[1], East: values[2], North: values[3]}
+	if !validBounds(*bounds) {
+		return nil, ErrInvalidFilter
+	}
+	return bounds, nil
+}
+
+// MapEvents returns all matching events represented as cards or world-anchored
+// 64px clusters. Paging is performed internally so cluster counts are exact.
+func (h *SearchHandler) MapEvents(w http.ResponseWriter, r *http.Request) {
+	principal, ok := contracts.PrincipalFromContext(r.Context())
+	if !ok {
+		writeSearchError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Authentication required")
+		return
+	}
+	query := r.URL.Query()
+	zoomRaw, ok := queryValue(query, "zoom")
+	if !ok || query["zoom"] == nil {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event map request")
+		return
+	}
+	zoom, err := strconv.Atoi(zoomRaw)
+	if err != nil || zoom < 0 || zoom > 22 {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event map request")
+		return
+	}
+	if query["cursor"] != nil || query["limit"] != nil {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event map request")
+		return
+	}
+	filter, err := searchInput(r.Context(), r, principal.UserID, h.cities, h.service)
+	if err != nil {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event map request")
+		return
+	}
+	if filter.Bounds == nil {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Map bounds are required")
+		return
+	}
+	filter.Bounds = expandBoundsToGrid(*filter.Bounds, zoom)
+	filter.Limit = maxLimit
+	mapSearch, ok := h.service.(interface {
+		SearchMapPage(context.Context, SearchFilter) (Page, error)
+	})
+	if !ok {
+		writeSearchError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+		return
+	}
+	groups := make(map[mapCell]mapGroup)
+	for {
+		page, searchErr := mapSearch.SearchMapPage(r.Context(), filter)
+		if searchErr != nil {
+			writeSearchError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+			return
+		}
+		for _, event := range page.Items {
+			addMapEvent(groups, event, zoom)
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		filter.Cursor = page.NextCursor
+	}
+	items := mapItemsFromGroups(groups, zoom)
+	httpapi.WriteJSON(w, http.StatusOK, api.EventMapResponse{Items: items})
+}
+
+type mapCell struct{ x, y int }
+
+type mapGroup struct {
+	count int
+	event Card
+}
+
+func addMapEvent(groups map[mapCell]mapGroup, event Card, zoom int) {
+	if event.Latitude == nil || event.Longitude == nil {
+		return
+	}
+	worldCells := 4 << zoom
+	x := int(math.Floor((*event.Longitude+180)/360*float64(worldCells))) % worldCells
+	lat := math.Max(-85.05112878, math.Min(85.05112878, *event.Latitude)) * math.Pi / 180
+	y := int(math.Floor((1 - math.Asinh(math.Tan(lat))/math.Pi) / 2 * float64(worldCells)))
+	if y < 0 {
+		y = 0
+	}
+	if y >= worldCells {
+		y = worldCells - 1
+	}
+	cell := mapCell{x: x, y: y}
+	group := groups[cell]
+	group.count++
+	if group.count == 1 {
+		group.event = event
+	} else {
+		group.event = Card{}
+	}
+	groups[cell] = group
+}
+
+func clusterMapEvents(events []Card, zoom int) []api.EventMapResponse_Items_Item {
+	groups := make(map[mapCell]mapGroup)
+	for _, event := range events {
+		addMapEvent(groups, event, zoom)
+	}
+	return mapItemsFromGroups(groups, zoom)
+}
+
+func mapItemsFromGroups(groups map[mapCell]mapGroup, zoom int) []api.EventMapResponse_Items_Item {
+	worldCells := 4 << zoom
+	cells := make([]mapCell, 0, len(groups))
+	for cell := range groups {
+		cells = append(cells, cell)
+	}
+	sort.Slice(cells, func(i, j int) bool {
+		if cells[i].y == cells[j].y {
+			return cells[i].x < cells[j].x
+		}
+		return cells[i].y < cells[j].y
+	})
+	items := make([]api.EventMapResponse_Items_Item, 0, len(cells))
+	for _, cell := range cells {
+		group := groups[cell]
+		west, east := float64(cell.x)/float64(worldCells)*360-180, float64(cell.x+1)/float64(worldCells)*360-180
+		north := mercatorLatitude(float64(cell.y) / float64(worldCells))
+		south := mercatorLatitude(float64(cell.y+1) / float64(worldCells))
+		if group.count == 1 {
+			card := homeCard(group.event)
+			if group.event.Latitude != nil {
+				card.Latitude = nullable.NewNullableWithValue(*group.event.Latitude)
+			}
+			if group.event.Longitude != nil {
+				card.Longitude = nullable.NewNullableWithValue(*group.event.Longitude)
+			}
+			lat, lng := *group.event.Latitude, *group.event.Longitude
+			var item api.EventMapResponse_Items_Item
+			_ = item.FromEventMapPoint(api.EventMapPoint{Kind: "event", Id: card.Id, Longitude: lng, Latitude: lat, Event: card})
+			items = append(items, item)
+		} else {
+			var item api.EventMapResponse_Items_Item
+			_ = item.FromEventMapCluster(api.EventMapCluster{Kind: "cluster", Id: fmt.Sprintf("%d/%d/%d", zoom, cell.x, cell.y), Longitude: (west + east) / 2, Latitude: (north + south) / 2, West: west, South: south, East: east, North: north, Count: group.count})
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func mercatorLatitude(y float64) float64 {
+	return math.Atan(math.Sinh(math.Pi*(1-2*y))) * 180 / math.Pi
+}
+
+func expandBoundsToGrid(bounds Bounds, zoom int) *Bounds {
+	worldCells := 4 << zoom
+	cellX := func(longitude float64) int {
+		x := int(math.Floor((longitude + 180) / 360 * float64(worldCells)))
+		if x == worldCells {
+			x--
+		}
+		if x < 0 {
+			x = 0
+		}
+		if x >= worldCells {
+			x = worldCells - 1
+		}
+		return x
+	}
+	westCell, eastCell := cellX(bounds.West), cellX(bounds.East)
+	west := float64(westCell)/float64(worldCells)*360 - 180
+	east := float64(eastCell+1)/float64(worldCells)*360 - 180
+	mercatorY := func(latitude float64) float64 {
+		lat := math.Max(-85.05112878, math.Min(85.05112878, latitude)) * math.Pi / 180
+		return (1 - math.Asinh(math.Tan(lat))/math.Pi) / 2 * float64(worldCells)
+	}
+	topCell := int(math.Floor(mercatorY(bounds.North)))
+	bottomCell := int(math.Floor(mercatorY(bounds.South)))
+	if topCell < 0 {
+		topCell = 0
+	}
+	if bottomCell >= worldCells {
+		bottomCell = worldCells - 1
+	}
+	north := mercatorLatitude(float64(topCell) / float64(worldCells))
+	south := mercatorLatitude(float64(bottomCell+1) / float64(worldCells))
+	return &Bounds{West: west, South: south, East: east, North: north}
+}
+
+func ptr(value float64) *float64 { return &value }
 
 func queryValue(query map[string][]string, key string) (string, bool) {
 	values, ok := query[key]
