@@ -143,7 +143,7 @@ func TestProviderRepositoryPersistence(t *testing.T) {
 		}
 	})
 
-	t.Run("empty image response preserves previously saved images", func(t *testing.T) {
+	t.Run("empty image response clears images for other providers", func(t *testing.T) {
 		current := event
 		current.Images = nil
 		result, err := repo.UpsertWithResult(ctx, cityID, current)
@@ -152,11 +152,11 @@ func TestProviderRepositoryPersistence(t *testing.T) {
 		}
 		var count int
 		var imageURL string
-		if err := db.QueryRow(ctx, `SELECT count(*), min(url) FROM event_images WHERE event_id = $1`, result.EventID).Scan(&count, &imageURL); err != nil {
-			t.Fatalf("read preserved images: %v", err)
+		if err := db.QueryRow(ctx, `SELECT count(*), COALESCE(min(url), '') FROM event_images WHERE event_id = $1`, result.EventID).Scan(&count, &imageURL); err != nil {
+			t.Fatalf("read images after empty response: %v", err)
 		}
-		if count != 1 || imageURL != "https://example.test/replaced.jpg" {
-			t.Fatalf("images after empty response = count %d, url %q; want 1, preserved replacement URL", count, imageURL)
+		if count != 0 || imageURL != "" {
+			t.Fatalf("images after empty response = count %d, url %q; want no images", count, imageURL)
 		}
 
 		current.Images = []providers.NormalizedImage{{URL: "https://example.test/fresh.jpg", Role: "card", Position: 0}}
@@ -168,6 +168,33 @@ func TestProviderRepositoryPersistence(t *testing.T) {
 		}
 		if count != 1 || imageURL != "https://example.test/fresh.jpg" {
 			t.Fatalf("images after nonempty response = count %d, url %q; want 1, fresh URL", count, imageURL)
+		}
+	})
+
+	t.Run("empty Timepad image response preserves saved image", func(t *testing.T) {
+		current := providerEvent("timepad", "integration-"+uuid.NewString(), "integration-venue-"+uuid.NewString())
+		result, err := repo.UpsertWithResult(ctx, cityID, current)
+		if err != nil {
+			t.Fatalf("insert Timepad event: %v", err)
+		}
+		t.Cleanup(func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, _ = db.Exec(cleanupCtx, `WITH deleted AS (
+				DELETE FROM events WHERE id = $1 RETURNING venue_id
+			) DELETE FROM venues WHERE id IN (SELECT venue_id FROM deleted)`, result.EventID)
+		})
+		current.Images = nil
+		if _, err := repo.UpsertWithResult(ctx, cityID, current); err != nil {
+			t.Fatalf("upsert Timepad event without image: %v", err)
+		}
+		var count int
+		var imageURL string
+		if err := db.QueryRow(ctx, `SELECT count(*), min(url) FROM event_images WHERE event_id = $1`, result.EventID).Scan(&count, &imageURL); err != nil {
+			t.Fatalf("read preserved Timepad image: %v", err)
+		}
+		if count != 2 || imageURL != "https://example.test/card.jpg" {
+			t.Fatalf("Timepad images after empty response = count %d, first URL %q; want 2 preserved images", count, imageURL)
 		}
 	})
 
