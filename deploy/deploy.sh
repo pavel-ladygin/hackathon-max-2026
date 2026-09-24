@@ -40,7 +40,7 @@ fi
 
 "${compose[@]}" pull
 "${compose[@]}" run --rm migrate
-"${compose[@]}" up -d postgres backend frontend event-sync
+"${compose[@]}" up -d postgres backend frontend event-sync timepad-image-recovery
 
 healthy=false
 for attempt in $(seq 1 30); do
@@ -66,6 +66,6 @@ if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]]; then
   export BACKEND_IMAGE="$IMAGE_PREFIX/backend:$previous_sha"
   export FRONTEND_IMAGE="$IMAGE_PREFIX/frontend:$previous_sha"
   "${compose[@]}" pull
-  "${compose[@]}" up -d postgres backend frontend event-sync || true
+  "${compose[@]}" up -d postgres backend frontend event-sync timepad-image-recovery || true
 fi
 exit 1
