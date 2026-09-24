@@ -145,6 +145,6 @@ export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; act
       pendingNavClick = token;
       setLastClick(token);
       onChange?.(item.id);
-    }}><span key={clicked ? lastClick?.sequence : 0} className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span>{item.label}</span></button>;
+    }}><span key={clicked ? `icon-${lastClick?.sequence}` : "icon"} className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span key={clicked ? `label-${lastClick?.sequence}` : "label"} className={styles.navLabel}>{item.label}</span></button>;
   })}</nav>;
 }

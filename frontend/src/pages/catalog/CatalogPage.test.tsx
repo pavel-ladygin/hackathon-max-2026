@@ -76,6 +76,20 @@ describe('CatalogPage search', () => {
     expect(searchCalls.at(-1)?.q).toBeUndefined()
   })
 
+  it('shows an accessible clear button only for a nonempty search and clears the query', () => {
+    renderCatalog()
+    const input = screen.getByRole('searchbox')
+    expect(screen.queryByRole('button', { name: 'Очистить поиск' })).not.toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: 'gallery' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить поиск' }))
+
+    expect(input).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Очистить поиск' })).not.toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(searchCalls.at(-1)?.q).toBeUndefined()
+  })
+
   it('keeps active filters while changing the text query', () => {
     renderCatalog()
     fireEvent.click(screen.getByRole('button', { name: /Фильтры/ }))

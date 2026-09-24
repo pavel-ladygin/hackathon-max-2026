@@ -63,7 +63,14 @@
 .center { text-align: center; }
 .narrow { max-width: 640px; margin: 0 auto; }
 .searchLabel { display: block; margin: 8px 0; font-size: 12px; font-weight: 800; }
-.searchInput { width: 100%; height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 14px; background: var(--color-paper); color: var(--color-ink); font: inherit; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.searchField { position: relative; }
+.searchInput { width: 100%; height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 52px 0 14px; background: var(--color-paper); color: var(--color-ink); font: inherit; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.searchInput::-webkit-search-cancel-button { display: none; }
+.searchInput::-ms-clear { display: none; }
+.searchClear { position: absolute; top: 50%; right: 8px; display: grid; width: 34px; height: 34px; place-items: center; transform: translateY(-50%); border: 0; border-radius: 10px; background: transparent; color: var(--color-ink); transition: background-color var(--motion-fast) ease, transform var(--motion-fast) ease; }
+.searchClear svg { width: 18px; height: 18px; }
+.searchClear:active { transform: translateY(-50%) scale(.92); }
+.searchClear:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 1px; }
 .filterRow { display: flex; gap: 8px; margin: 12px 0 8px; }
 .filterRow > * { min-width: 0; flex: 1; }
 .catalogChips { margin-bottom: 22px; }
@@ -88,7 +95,7 @@
   .hero { min-height: 0; aspect-ratio: 16 / 7; max-height: 440px; }
   .detailHero { height: min(38vh, 360px); }
   .eventGrid .catalogItem { min-width: 0; }
-  .eventGrid .eventCardWithSave, .eventGrid .feedCard { height: 100%; min-height: 144px; align-items: flex-start; }
+  .eventGrid .eventCardWithSave, .eventGrid .feedCard { height: 100%; min-height: 143px; align-items: center; }
   .eventGrid .eventCardWithSave strong, .eventGrid .feedCard strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
   .eventGrid .eventCardWithSave > span:last-child, .eventGrid .feedCard > span:last-child { align-self: center; }
 }
@@ -113,10 +120,11 @@
 @keyframes refreshPulse { to { opacity: .35; transform: scale(.78); } }
 @media (hover: hover) and (pointer: fine) {
   .input:hover, .textarea:hover, .searchInput:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
+  .searchClear:hover { background: var(--color-hover-strong); }
   .roomNameInput:hover { border-color: #ad9b8d; background: var(--color-paper); }
   .saveButton:hover { opacity: .9; }
   .profileButton:hover, .hero:hover { opacity: .92; }
   .suggestion:hover { border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: var(--shadow-control); }
 }
-.roomNameInput:focus, .roomNameInput:focus:hover { border-color: #c9bee3; background: var(--color-paper); box-shadow: 0 0 0 2px rgb(171 153 207 / 24%); }
-.roomNameInput:focus-visible { outline: 2px solid #aa98ce; outline-offset: 2px; }
+.input:focus, .input:focus-visible, .textarea:focus, .textarea:focus-visible, .searchInput:focus, .searchInput:focus-visible { outline: none; border-color: var(--color-hover-border); background: var(--color-hover-warm); box-shadow: inset 0 0 0 1px var(--color-hover-border); }
+.roomNameInput:focus, .roomNameInput:focus:hover { border-color: var(--color-hover-border); background: var(--color-paper); box-shadow: inset 0 0 0 1px var(--color-hover-border); }
