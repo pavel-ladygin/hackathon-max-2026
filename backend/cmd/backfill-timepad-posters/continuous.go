@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,7 +13,14 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 )
 
-const idlePollInterval = time.Minute
+const (
+	idlePollInterval       = time.Minute
+	continuousWorkers      = 8
+	continuousAPIPace      = 3 * time.Second
+	timepadSyncPoll        = 5 * time.Second
+	timepadSyncFreshWindow = 30 * time.Minute
+	timepadSyncQuietWindow = time.Minute
+)
 
 func parseExternalID(value string) (int64, error) {
 	id, err := strconv.ParseInt(value, 10, 64)
@@ -23,7 +31,7 @@ func parseExternalID(value string) (int64, error) {
 }
 
 func runContinuous(ctx context.Context, db *store.Pool, client *timepad.Client, limit int) error {
-	pacer := requestPacer{interval: 1100 * time.Millisecond}
+	pacer := &serializedPacer{interval: continuousAPIPace}
 	for {
 		candidates, err := loadDueCandidates(ctx, db, limit)
 		if err != nil {
@@ -39,15 +47,38 @@ func runContinuous(ctx context.Context, db *store.Pool, client *timepad.Client, 
 			}
 			continue
 		}
-		fmt.Printf("continuous batch=%d\n", len(candidates))
-		cache := make(posterCache)
-		for _, item := range candidates {
-			if err := processCandidate(ctx, db, client, cache, &pacer, item); err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
+		fmt.Printf("continuous batch=%d workers=%d\n", len(candidates), continuousWorkers)
+		cache := newContinuousPosterCache()
+		if err := runCandidateBatch(ctx, candidates, continuousWorkers, func(ctx context.Context, item candidate) {
+			if err := processContinuousCandidate(ctx, db, client, cache, pacer, item); err != nil && ctx.Err() == nil {
 				fmt.Printf("event=%s status=processing_error error=%q\n", item.id, err)
 			}
+		}); err != nil {
+			return err
+		}
+		// Do not load the next batch until all writes and recovery outcomes from
+		// this batch have finished.
+	}
+}
+
+func waitForTimepadSync(ctx context.Context, db *store.Pool) error {
+	for {
+		var syncing bool
+		err := db.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM provider_sync_runs
+				WHERE provider = 'timepad'
+				  AND ((state = 'running' AND started_at > now() - ($1::bigint * interval '1 second'))
+				    OR (completed_at IS NOT NULL AND completed_at > now() - ($2::bigint * interval '1 second')))
+			)`, int64(timepadSyncFreshWindow/time.Second), int64(timepadSyncQuietWindow/time.Second)).Scan(&syncing)
+		if err != nil {
+			return fmt.Errorf("check Timepad sync status: %w", err)
+		}
+		if !syncing {
+			return nil
+		}
+		if err := waitContext(ctx, timepadSyncPoll); err != nil {
+			return err
 		}
 	}
 }
@@ -78,16 +109,54 @@ func loadDueCandidates(ctx context.Context, db *store.Pool, limit int) ([]candid
 	return items, rows.Err()
 }
 
-func processCandidate(ctx context.Context, db *store.Pool, client *timepad.Client, cache posterCache, pacer *requestPacer, item candidate) error {
+func runCandidateBatch(ctx context.Context, candidates []candidate, limit int, process func(context.Context, candidate)) error {
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > len(candidates) {
+		limit = len(candidates)
+	}
+	if limit == 0 {
+		return ctx.Err()
+	}
+	jobs := make(chan candidate)
+	var workers sync.WaitGroup
+	for range limit {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for item := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				process(ctx, item)
+			}
+		}()
+	}
+
+sendLoop:
+	for _, item := range candidates {
+		select {
+		case <-ctx.Done():
+			break sendLoop
+		case jobs <- item:
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	return ctx.Err()
+}
+
+func processContinuousCandidate(ctx context.Context, db *store.Pool, client *timepad.Client, cache *continuousPosterCache, pacer *serializedPacer, item candidate) error {
 	parsedID, err := parseExternalID(item.externalID)
 	if err != nil {
 		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
 	}
-	if err := pacer.wait(ctx); err != nil {
-		return err
-	}
 	canonicalID, err := client.ResolveCanonicalEventID(ctx, parsedID, item.url)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
 	}
 	if canonicalID == 0 {
@@ -95,12 +164,23 @@ func processCandidate(ctx context.Context, db *store.Pool, client *timepad.Clien
 		return recordAttempt(ctx, db, item.id, "no_redirect", "", 24*time.Hour)
 	}
 	images, err := cache.get(ctx, canonicalID, func(ctx context.Context, id int64) ([]providers.NormalizedImage, error) {
-		if err := pacer.wait(ctx); err != nil {
+		var fetched []providers.NormalizedImage
+		err := pacer.request(ctx, func(ctx context.Context) error {
+			return waitForTimepadSync(ctx, db)
+		}, func(ctx context.Context) error {
+			var fetchErr error
+			fetched, fetchErr = client.FetchEventPoster(ctx, id)
+			return fetchErr
+		})
+		if err != nil {
 			return nil, err
 		}
-		return client.FetchEventPoster(ctx, id)
+		return fetched, nil
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
 	}
 	if len(images) == 0 {
@@ -109,6 +189,9 @@ func processCandidate(ctx context.Context, db *store.Pool, client *timepad.Clien
 	}
 	inserted, err := insertPoster(ctx, db, item.id, images[0].URL)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
 	}
 	if inserted {
@@ -119,18 +202,78 @@ func processCandidate(ctx context.Context, db *store.Pool, client *timepad.Clien
 	return recordAttempt(ctx, db, item.id, "already_filled", "", 0)
 }
 
+type serializedPacer struct {
+	mu       sync.Mutex
+	interval time.Duration
+	next     time.Time
+}
+
+func (p *serializedPacer) request(ctx context.Context, before func(context.Context) error, request func(context.Context) error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.next.IsZero() {
+		if err := waitContext(ctx, time.Until(p.next)); err != nil {
+			return err
+		}
+	}
+	if before != nil {
+		if err := before(ctx); err != nil {
+			return err
+		}
+	}
+	p.next = time.Now().Add(p.interval)
+	return request(ctx)
+}
+
+type posterFetch struct {
+	done   chan struct{}
+	images []providers.NormalizedImage
+	err    error
+}
+
+type continuousPosterCache struct {
+	mu      sync.Mutex
+	entries map[int64]*posterFetch
+}
+
+func newContinuousPosterCache() *continuousPosterCache {
+	return &continuousPosterCache{entries: make(map[int64]*posterFetch)}
+}
+
+func (cache *continuousPosterCache) get(ctx context.Context, canonicalID int64, fetch func(context.Context, int64) ([]providers.NormalizedImage, error)) ([]providers.NormalizedImage, error) {
+	cache.mu.Lock()
+	if entry, ok := cache.entries[canonicalID]; ok {
+		cache.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-entry.done:
+			return entry.images, entry.err
+		}
+	}
+	entry := &posterFetch{done: make(chan struct{})}
+	cache.entries[canonicalID] = entry
+	cache.mu.Unlock()
+
+	entry.images, entry.err = fetch(ctx, canonicalID)
+	cache.mu.Lock()
+	if entry.err != nil {
+		delete(cache.entries, canonicalID)
+	}
+	close(entry.done)
+	cache.mu.Unlock()
+	return entry.images, entry.err
+}
+
 func insertPoster(ctx context.Context, db *store.Pool, eventID uuid.UUID, imageURL string) (bool, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
-	// Hash collisions only serialize unrelated events; they cannot compromise correctness.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, eventID.String()); err != nil {
 		return false, err
 	}
-	// The provider importer locks the event row during its upsert. Locking it
-	// here ensures the existence check also sees any concurrent image update.
 	var lockedID uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT id FROM events WHERE id = $1 AND source = 'timepad' FOR UPDATE`, eventID).Scan(&lockedID); err != nil {
 		return false, err
@@ -171,6 +314,9 @@ func recordAttempt(ctx context.Context, db *store.Pool, eventID uuid.UUID, outco
 }
 
 func waitContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
