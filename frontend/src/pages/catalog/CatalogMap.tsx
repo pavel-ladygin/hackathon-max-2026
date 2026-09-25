@@ -1,4 +1,3 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../shared/api/client'
@@ -8,11 +7,12 @@ import styles from './catalogMap.module.css'
 import { createEventMarkerElement } from './eventMarker'
 import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
-import { boundsContain, MapAreaCache, paddedViewportBounds } from './mapResults'
+import { MapAreaCache, paddedViewportBounds } from './mapResults'
 
 const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
-const MAP_PAGE_SIZE = 50
+const MAX_OVERLAP_DIAMETER = 72
+const SPIDER_RADIUS = 80
 
 type MapFilters = {
   q?: string
@@ -28,6 +28,34 @@ type MapCluster = { kind: 'cluster'; id: string; longitude: number; latitude: nu
 type MapItem = MapEvent | MapCluster
 type LocatedEvent = EventCard & { latitude?: number | null; longitude?: number | null }
 type MarkerRecord = { child: unknown; element: HTMLElement; item: MapItem }
+type OverlapRecord = { child: unknown; element: HTMLElement; members: MarkerRecord[] }
+const SPIDER_PAGE_SIZE = 4
+
+function wrappedPixelDelta(delta: number, world: number) {
+  return ((delta + world / 2) % world + world) % world - world / 2
+}
+
+function mapPoint(longitude: number, latitude: number, zoom: number): [number, number] {
+  const scale = 256 * 2 ** zoom
+  const x = (longitude + 180) / 360 * scale
+  const sin = Math.sin(Math.max(-85.0511, Math.min(85.0511, latitude)) * Math.PI / 180)
+  const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale
+  return [x, y]
+}
+
+function overlappingGroups(events: MarkerRecord[], zoom: number): MarkerRecord[][] {
+  const world = 256 * 2 ** zoom
+  const points = events.map((marker) => ({ marker, point: mapPoint(marker.item.longitude, marker.item.latitude, zoom) }))
+  const groups: typeof points[] = []
+  for (const candidate of points) {
+    const group = groups.find((members) => members.every(({ point }) =>
+      Math.abs(wrappedPixelDelta(point[0] - candidate.point[0], world)) < MAX_OVERLAP_DIAMETER &&
+      Math.abs(point[1] - candidate.point[1]) < MAX_OVERLAP_DIAMETER))
+    if (group) group.push(candidate)
+    else groups.push([candidate])
+  }
+  return groups.filter((group) => group.length > 1).map((group) => group.map(({ marker }) => marker))
+}
 
 function readCamera(event: YandexMapUpdateEvent): YandexCamera | null {
   const location = event.location ?? event.camera
@@ -44,6 +72,16 @@ function clusterElement(cluster: MapCluster, onOpen: () => void) {
   element.setAttribute('aria-label', `Показать ${cluster.count} событий`)
   element.textContent = String(cluster.count)
   element.addEventListener('click', onOpen)
+  return element
+}
+
+function overlapElement(count: number, onToggle: () => void) {
+  const element = document.createElement('button')
+  element.type = 'button'
+  element.className = styles.clusterMarker
+  element.setAttribute('aria-label', `Показать ${count} событий в этой точке`)
+  element.textContent = String(count)
+  element.addEventListener('click', onToggle)
   return element
 }
 
@@ -73,6 +111,7 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
   const map = useRef<YandexMap | null>(null)
   const mapApi = useRef<YandexMapsApi | null>(null)
   const markers = useRef(new Map<string, MarkerRecord>())
+  const overlaps = useRef(new Map<string, OverlapRecord>())
   const cache = useRef(new MapAreaCache<MapItem[]>(20, 5 * 60_000))
   const sequence = useRef(0)
   const pendingArea = useRef<string | null>(null)
@@ -93,14 +132,11 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventCard | null>(null)
   const [selectedEventFilterKey, setSelectedEventFilterKey] = useState(filtersKey)
-  const [selectedCluster, setSelectedCluster] = useState<MapCluster | null>(null)
-  const [selectedClusterFilterKey, setSelectedClusterFilterKey] = useState(filtersKey)
   const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY
   const integerZoom = Math.max(0, Math.min(22, Math.round(camera.zoom)))
   const cacheKey = `${filtersKey}\u0000${integerZoom}`
   const visibleItems = useMemo(() => itemsFilterKey === filtersKey ? items : [], [filtersKey, items, itemsFilterKey])
   const visibleSelectedEvent = selectedEventFilterKey === filtersKey ? selectedEvent : null
-  const visibleCluster = selectedClusterFilterKey === filtersKey ? selectedCluster : null
 
   const selectEvent = useCallback((event: EventCard | null) => {
     for (const marker of markers.current.values()) {
@@ -112,24 +148,15 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
     setSelectedEventId(event?.id ?? null)
     setSelectedEvent(event)
     setSelectedEventFilterKey(filtersKey)
-    setSelectedCluster(null)
   }, [filtersKey])
 
-  const group = useInfiniteQuery({
-    queryKey: ['event-search', 'map-cluster', filtersKey, selectedCluster?.west, selectedCluster?.south, selectedCluster?.east, selectedCluster?.north],
-    enabled: Boolean(visibleCluster),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => apiClient.searchEvents({ ...filters, west: visibleCluster!.west, south: visibleCluster!.south, east: visibleCluster!.east, north: visibleCluster!.north, limit: MAP_PAGE_SIZE, cursor: pageParam }),
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-  })
-  const groupEvents = useMemo(() => group.data?.pages.flatMap((page) => page.items) ?? [], [group.data])
-
-  const requestArea = useCallback(async (nextCamera: YandexCamera, size = viewportSize) => {
+  const requestArea = useCallback(async (nextCamera: YandexCamera, size = viewportSize, force = false) => {
     if (!mapReady) return
     const zoom = Math.max(0, Math.min(22, Math.round(nextCamera.zoom)))
     const visibleBounds = paddedViewportBounds(nextCamera.center, zoom, size.width, size.height, 0)
     const key = `${filtersKey}\u0000${zoom}`
-    const cached = cache.current.get(key, visibleBounds)
+    if (force) cache.current.clear()
+    const cached = force ? undefined : cache.current.get(key, visibleBounds)
     if (cached) {
       sequence.current += 1
       pendingArea.current = null
@@ -141,7 +168,7 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
       return
     }
     const padded = paddedViewportBounds(nextCamera.center, zoom, size.width, size.height, 0.25)
-    const requestSignature = `${key}\u0000${JSON.stringify(padded)}`
+    const requestSignature = `${key}\u0000${JSON.stringify(padded)}${force ? `\u0000force:${sequence.current + 1}` : ''}`
     if (pendingArea.current === requestSignature) return
     pendingArea.current = requestSignature
     const requestId = ++sequence.current
@@ -166,17 +193,12 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
   useEffect(() => { requestAreaRef.current = requestArea }, [requestArea])
 
   const openCluster = useCallback((cluster: MapCluster) => {
-    if (camera.zoom >= 21.5) { setSelectedCluster(cluster); setSelectedClusterFilterKey(filtersKey); return }
-    const sameArea = boundsContain(cluster, paddedViewportBounds(camera.center, Math.round(camera.zoom), viewportSize.width, viewportSize.height, 0))
-    if (sameArea && camera.zoom >= 20) { setSelectedCluster(cluster); setSelectedClusterFilterKey(filtersKey); return }
-    map.current?.setLocation?.({ bounds: [[cluster.west, cluster.south], [cluster.east, cluster.north]] })
-    if (!map.current?.setLocation) {
-      const next = { center: [cluster.longitude, cluster.latitude] as [number, number], zoom: Math.min(22, camera.zoom + 2) }
-      cameraRef.current = next
-      setCamera(next)
-      void requestArea(next)
-    }
-  }, [camera, filtersKey, requestArea, viewportSize])
+    const next = { center: [cluster.longitude, cluster.latitude] as [number, number], zoom: Math.min(22, Math.max(Math.floor(camera.zoom) + 2, camera.zoom + 1)) }
+    cameraRef.current = next
+    setCamera(next)
+    map.current?.setLocation?.({ center: next.center, zoom: next.zoom })
+    void requestArea(next, viewportSize, true)
+  }, [camera, requestArea, viewportSize])
   const openClusterRef = useRef(openCluster)
   useEffect(() => { openClusterRef.current = openCluster }, [openCluster])
 
@@ -226,7 +248,6 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
     cache.current.clear()
     sequence.current += 1
     const resetTimer = setTimeout(() => {
-      setSelectedCluster(null)
       selectEvent(null)
     }, 0)
     return () => clearTimeout(resetTimer)
@@ -253,6 +274,77 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
       markers.current.set(key, marker)
     }
   }, [integerZoom, mapReady, openCluster, selectEvent, selectedEventId, visibleItems])
+
+  useEffect(() => {
+    if (!mapReady || !map.current || !mapApi.current) return
+    const activeOverlaps = overlaps.current
+    for (const record of activeOverlaps.values()) {
+      map.current.removeChild(record.child)
+      for (const member of record.members) {
+        member.element.style.display = ''
+        member.element.style.position = ''
+        member.element.style.left = ''
+        member.element.style.top = ''
+      }
+    }
+    activeOverlaps.clear()
+    if (integerZoom < 22) return
+    const eventMarkers = [...markers.current.values()].filter((marker) => marker.item.kind === 'event')
+    for (const [index, members] of overlappingGroups(eventMarkers, integerZoom).entries()) {
+      const id = members.map((member) => member.item.id).sort().join(':')
+      const first = members[0].item
+      const world = 256 * 2 ** integerZoom
+      const anchor = mapPoint(first.longitude, first.latitude, integerZoom)
+      const cameraPoint = mapPoint(cameraRef.current.center[0], cameraRef.current.center[1], integerZoom)
+      const screenX = viewportSize.width / 2 + wrappedPixelDelta(anchor[0] - cameraPoint[0], world)
+      const screenY = viewportSize.height / 2 + anchor[1] - cameraPoint[1]
+      const margin = SPIDER_RADIUS + MAX_OVERLAP_DIAMETER / 2 + 8
+      const shiftX = Math.max(margin, Math.min(viewportSize.width - margin, screenX)) - screenX
+      const shiftY = Math.max(margin, Math.min(viewportSize.height - margin, screenY)) - screenY
+      let page = 0
+      const element = overlapElement(members.length, () => {
+        const pageCount = Math.ceil(members.length / SPIDER_PAGE_SIZE)
+        page = (page + 1) % (pageCount + 1)
+        const pageStart = page === 0 ? -1 : (page - 1) * SPIDER_PAGE_SIZE
+        element.textContent = page === 0 ? String(members.length) : `${page}/${pageCount}`
+        element.setAttribute('aria-label', page === 0
+          ? `Показать первые ${Math.min(SPIDER_PAGE_SIZE, members.length)} из ${members.length} событий`
+          : page === pageCount
+            ? `Показать последние события, ${members.length} всего`
+            : `Показать события ${pageStart + 1}–${Math.min(pageStart + SPIDER_PAGE_SIZE, members.length)} из ${members.length}`)
+        for (const [memberIndex, member] of members.entries()) {
+          const visible = page > 0 && memberIndex >= pageStart && memberIndex < pageStart + SPIDER_PAGE_SIZE
+          member.element.style.display = visible ? 'grid' : 'none'
+          member.element.style.position = 'relative'
+          const pageIndex = memberIndex - pageStart
+          const pageCount = Math.min(SPIDER_PAGE_SIZE, members.length - pageStart)
+          const angle = 2 * Math.PI * pageIndex / pageCount - Math.PI / 2
+          const point = mapPoint(member.item.longitude, member.item.latitude, integerZoom)
+          const originX = wrappedPixelDelta(point[0] - anchor[0], world)
+          const originY = point[1] - anchor[1]
+          member.element.style.left = visible ? `${shiftX + Math.cos(angle) * SPIDER_RADIUS - originX}px` : '0px'
+          member.element.style.top = visible ? `${shiftY + Math.sin(angle) * SPIDER_RADIUS - originY}px` : '0px'
+        }
+      })
+      for (const member of members) member.element.style.display = 'none'
+      const child = new mapApi.current.YMapMarker({ coordinates: [first.longitude, first.latitude] }, element)
+      const record: OverlapRecord = { child, element, members }
+      map.current.addChild(child)
+      activeOverlaps.set(`${id}:${index}`, record)
+    }
+    return () => {
+      for (const record of activeOverlaps.values()) {
+        map.current?.removeChild(record.child)
+        for (const member of record.members) {
+          member.element.style.display = ''
+          member.element.style.position = ''
+          member.element.style.left = ''
+          member.element.style.top = ''
+        }
+      }
+      activeOverlaps.clear()
+    }
+  }, [integerZoom, itemsFilterKey, mapReady, viewportSize, visibleItems])
 
   useEffect(() => {
     const size = markerSizeForZoom(integerZoom)
@@ -290,12 +382,5 @@ export function CatalogMap({ filters, initialCenter }: { filters: MapFilters; in
     {!areaLoading && locatedEvents.length > 0 && !hasAnyCoordinates ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="Для этих событий нет координат" description="Попробуйте изменить область карты или переключиться на список." /></div> : null}
     {visibleSelectedEvent ? <MapEventPreview event={visibleSelectedEvent} onClose={() => selectEvent(null)} onDetails={() => navigate(`/events/${visibleSelectedEvent.id}`)} /> : null}
     {areaLoading ? <span className={styles.mapLoading} role="status">Загружаем события…</span> : null}
-    {visibleCluster ? <section className={styles.clusterList} aria-label="События в группе">
-      <button className={styles.clusterListClose} type="button" aria-label="Закрыть список событий" onClick={() => setSelectedCluster(null)}>×</button>
-      <h2>События рядом ({visibleCluster.count})</h2>
-      {group.isPending ? <p>Загружаем события…</p> : groupEvents.map((event) => <button key={event.id} type="button" className={styles.clusterEvent} onClick={() => selectEvent(event)}>{event.title}<span>{event.date_label}</span></button>)}
-      {group.isError ? <Button onClick={() => void group.refetch()}>Повторить</Button> : null}
-      {group.hasNextPage ? <Button disabled={group.isFetchingNextPage} onClick={() => void group.fetchNextPage()}>{group.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}</Button> : null}
-    </section> : null}
   </div>
 }

@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -190,8 +191,8 @@ func boundsQuery(query map[string][]string) (*Bounds, error) {
 	return bounds, nil
 }
 
-// MapEvents returns all matching events represented as cards or world-anchored
-// 64px clusters. Paging is performed internally so cluster counts are exact.
+// MapEvents returns all matching events as event cards or proximity clusters.
+// Paging is performed internally so cluster counts are exact.
 func (h *SearchHandler) MapEvents(w http.ResponseWriter, r *http.Request) {
 	principal, ok := contracts.PrincipalFromContext(r.Context())
 	if !ok {
@@ -231,7 +232,7 @@ func (h *SearchHandler) MapEvents(w http.ResponseWriter, r *http.Request) {
 		writeSearchError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
 		return
 	}
-	groups := make(map[mapCell]mapGroup)
+	var events []Card
 	for {
 		page, searchErr := mapSearch.SearchMapPage(r.Context(), filter)
 		if searchErr != nil {
@@ -239,92 +240,207 @@ func (h *SearchHandler) MapEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, event := range page.Items {
-			addMapEvent(groups, event, zoom)
+			events = append(events, event)
 		}
 		if page.NextCursor == nil {
 			break
 		}
 		filter.Cursor = page.NextCursor
 	}
-	items := mapItemsFromGroups(groups, zoom)
+	items := clusterMapEvents(events, zoom)
 	httpapi.WriteJSON(w, http.StatusOK, api.EventMapResponse{Items: items})
 }
 
-type mapCell struct{ x, y int }
-
-type mapGroup struct {
-	count int
-	event Card
-}
-
-func addMapEvent(groups map[mapCell]mapGroup, event Card, zoom int) {
-	if event.Latitude == nil || event.Longitude == nil {
-		return
-	}
-	worldCells := 4 << zoom
-	x := int(math.Floor((*event.Longitude+180)/360*float64(worldCells))) % worldCells
-	lat := math.Max(-85.05112878, math.Min(85.05112878, *event.Latitude)) * math.Pi / 180
-	y := int(math.Floor((1 - math.Asinh(math.Tan(lat))/math.Pi) / 2 * float64(worldCells)))
-	if y < 0 {
-		y = 0
-	}
-	if y >= worldCells {
-		y = worldCells - 1
-	}
-	cell := mapCell{x: x, y: y}
-	group := groups[cell]
-	group.count++
-	if group.count == 1 {
-		group.event = event
-	} else {
-		group.event = Card{}
-	}
-	groups[cell] = group
-}
-
 func clusterMapEvents(events []Card, zoom int) []api.EventMapResponse_Items_Item {
-	groups := make(map[mapCell]mapGroup)
+	// At the maximum supported zoom users need individual event identities even
+	// when multiple events share exactly the same coordinates.
+	valid := make([]Card, 0, len(events))
 	for _, event := range events {
-		addMapEvent(groups, event, zoom)
+		if event.Latitude != nil && event.Longitude != nil {
+			valid = append(valid, event)
+		}
 	}
-	return mapItemsFromGroups(groups, zoom)
+	if zoom >= 22 {
+		sort.Slice(valid, func(i, j int) bool { return valid[i].ID.String() < valid[j].ID.String() })
+		return mapEventPoints(valid)
+	}
+
+	type projected struct {
+		card Card
+		x, y float64
+	}
+	const clusterRadius = 64.0
+	world := 256.0 * math.Pow(2, float64(zoom))
+	points := make([]projected, 0, len(valid))
+	for _, event := range valid {
+		lat := math.Max(-85.05112878, math.Min(85.05112878, *event.Latitude)) * math.Pi / 180
+		x := (*event.Longitude + 180) / 360 * world
+		y := (1 - math.Asinh(math.Tan(lat))/math.Pi) / 2 * world
+		points = append(points, projected{event, x, y})
+	}
+	sort.Slice(points, func(i, j int) bool {
+		if points[i].y != points[j].y {
+			return points[i].y < points[j].y
+		}
+		if points[i].x != points[j].x {
+			return points[i].x < points[j].x
+		}
+		return points[i].card.ID.String() < points[j].card.ID.String()
+	})
+	// Assign nearby points to the first unassigned seed in stable coordinate
+	// order. Requiring every member to remain within 64px of every other member
+	// bounds each cluster's diameter and prevents long chains from swallowing
+	// an entire neighborhood.
+	assigned := make([]bool, len(points))
+	type bucket struct{ x, y int }
+	buckets := make(map[bucket][]int)
+	bucketCount := int(math.Ceil(world / clusterRadius))
+	for i, point := range points {
+		bx := int(math.Floor(point.x/clusterRadius)) % bucketCount
+		b := bucket{bx, int(math.Floor(point.y / clusterRadius))}
+		buckets[b] = append(buckets[b], i)
+	}
+	components := make([][]Card, 0, len(points))
+	for start := range points {
+		if assigned[start] {
+			continue
+		}
+		assigned[start] = true
+		members := []int{start}
+		seed := points[start]
+		seedBucketX := int(math.Floor(seed.x/clusterRadius)) % bucketCount
+		seedBucketY := int(math.Floor(seed.y / clusterRadius))
+		candidates := make([]int, 0)
+		seenBuckets := make(map[bucket]bool, 9)
+		for by := seedBucketY - 1; by <= seedBucketY+1; by++ {
+			for bxOffset := -1; bxOffset <= 1; bxOffset++ {
+				bx := (seedBucketX + bxOffset + bucketCount) % bucketCount
+				b := bucket{bx, by}
+				if !seenBuckets[b] {
+					candidates = append(candidates, buckets[b]...)
+					seenBuckets[b] = true
+				}
+			}
+		}
+		sort.Ints(candidates)
+		for _, candidate := range candidates {
+			if assigned[candidate] {
+				continue
+			}
+			if !withinPixelDistance(points[candidate], seed, world, clusterRadius) {
+				continue
+			}
+			fits := true
+			for _, member := range members {
+				if !withinPixelDistance(points[candidate], points[member], world, clusterRadius) {
+					fits = false
+					break
+				}
+			}
+			if fits {
+				assigned[candidate] = true
+				members = append(members, candidate)
+			}
+		}
+		cards := make([]Card, 0, len(members))
+		for _, member := range members {
+			cards = append(cards, points[member].card)
+		}
+		components = append(components, cards)
+	}
+	items := make([]api.EventMapResponse_Items_Item, 0, len(components))
+	for _, members := range components {
+		if len(members) == 1 {
+			items = append(items, mapEventPoints(members)[0])
+			continue
+		}
+		var sumX, sumY float64
+		south, north := math.Inf(1), math.Inf(-1)
+		longitudes := make([]float64, 0, len(members))
+		seedX := (*members[0].Longitude + 180) / 360 * world
+		ids := make([]string, 0, len(members))
+		for _, member := range members {
+			lat, lng := *member.Latitude, *member.Longitude
+			rad := math.Max(-85.05112878, math.Min(85.05112878, lat)) * math.Pi / 180
+			x := (lng + 180) / 360 * world
+			delta := x - seedX
+			if delta > world/2 {
+				delta -= world
+			}
+			if delta < -world/2 {
+				delta += world
+			}
+			sumX += seedX + delta
+			sumY += (1 - math.Asinh(math.Tan(rad))/math.Pi) / 2 * world
+			longitudes = append(longitudes, lng)
+			south = math.Min(south, lat)
+			north = math.Max(north, lat)
+			ids = append(ids, member.ID.String())
+		}
+		west, east := minimalLongitudeBounds(longitudes)
+		if north == south {
+			south -= 0.000001
+			north += 0.000001
+		}
+		centroidX := math.Mod(sumX/float64(len(members)), world)
+		if centroidX < 0 {
+			centroidX += world
+		}
+		lng := centroidX/world*360 - 180
+		lat := mercatorLatitude(sumY / float64(len(members)) / world)
+		sort.Strings(ids)
+		digest := sha256.Sum256([]byte(strings.Join(ids, ",")))
+		var item api.EventMapResponse_Items_Item
+		_ = item.FromEventMapCluster(api.EventMapCluster{Kind: "cluster", Id: fmt.Sprintf("cluster-%x", digest[:12]), Longitude: lng, Latitude: lat, West: west, South: south, East: east, North: north, Count: len(members)})
+		items = append(items, item)
+	}
+	return items
 }
 
-func mapItemsFromGroups(groups map[mapCell]mapGroup, zoom int) []api.EventMapResponse_Items_Item {
-	worldCells := 4 << zoom
-	cells := make([]mapCell, 0, len(groups))
-	for cell := range groups {
-		cells = append(cells, cell)
+func withinPixelDistance(a, b struct {
+	card Card
+	x, y float64
+}, world, radius float64) bool {
+	dx := math.Abs(a.x - b.x)
+	dx = math.Min(dx, world-dx)
+	dy := a.y - b.y
+	return dx*dx+dy*dy <= radius*radius
+}
+
+func minimalLongitudeBounds(longitudes []float64) (float64, float64) {
+	values := append([]float64(nil), longitudes...)
+	sort.Float64s(values)
+	if len(values) == 1 {
+		return values[0] - 0.000001, values[0] + 0.000001
 	}
-	sort.Slice(cells, func(i, j int) bool {
-		if cells[i].y == cells[j].y {
-			return cells[i].x < cells[j].x
+	largestGap, gapAfter := -1.0, 0
+	for i := range values {
+		next := values[(i+1)%len(values)]
+		if i == len(values)-1 {
+			next += 360
 		}
-		return cells[i].y < cells[j].y
-	})
-	items := make([]api.EventMapResponse_Items_Item, 0, len(cells))
-	for _, cell := range cells {
-		group := groups[cell]
-		west, east := float64(cell.x)/float64(worldCells)*360-180, float64(cell.x+1)/float64(worldCells)*360-180
-		north := mercatorLatitude(float64(cell.y) / float64(worldCells))
-		south := mercatorLatitude(float64(cell.y+1) / float64(worldCells))
-		if group.count == 1 {
-			card := homeCard(group.event)
-			if group.event.Latitude != nil {
-				card.Latitude = nullable.NewNullableWithValue(*group.event.Latitude)
-			}
-			if group.event.Longitude != nil {
-				card.Longitude = nullable.NewNullableWithValue(*group.event.Longitude)
-			}
-			lat, lng := *group.event.Latitude, *group.event.Longitude
-			var item api.EventMapResponse_Items_Item
-			_ = item.FromEventMapPoint(api.EventMapPoint{Kind: "event", Id: card.Id, Longitude: lng, Latitude: lat, Event: card})
-			items = append(items, item)
-		} else {
-			var item api.EventMapResponse_Items_Item
-			_ = item.FromEventMapCluster(api.EventMapCluster{Kind: "cluster", Id: fmt.Sprintf("%d/%d/%d", zoom, cell.x, cell.y), Longitude: (west + east) / 2, Latitude: (north + south) / 2, West: west, South: south, East: east, North: north, Count: group.count})
-			items = append(items, item)
+		if gap := next - values[i]; gap > largestGap {
+			largestGap, gapAfter = gap, i
 		}
+	}
+	west := values[(gapAfter+1)%len(values)]
+	east := values[gapAfter]
+	if west == east {
+		west -= 0.000001
+		east += 0.000001
+	}
+	return west, east
+}
+
+func mapEventPoints(events []Card) []api.EventMapResponse_Items_Item {
+	items := make([]api.EventMapResponse_Items_Item, 0, len(events))
+	for _, event := range events {
+		card := homeCard(event)
+		card.Latitude = nullable.NewNullableWithValue(*event.Latitude)
+		card.Longitude = nullable.NewNullableWithValue(*event.Longitude)
+		var item api.EventMapResponse_Items_Item
+		_ = item.FromEventMapPoint(api.EventMapPoint{Kind: "event", Id: card.Id, Longitude: *event.Longitude, Latitude: *event.Latitude, Event: card})
+		items = append(items, item)
 	}
 	return items
 }
