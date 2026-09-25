@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { BottomNav, Button, Empty, ErrorState, EventImage, FavoriteButton, HeartIcon, IconButton, Loading, ScreenSkeleton } from './index'
@@ -83,6 +83,31 @@ describe('IconButton', () => {
 })
 
 describe('EventImage', () => {
+  it('shows a tiny Timepad preview before the full card image', () => {
+    const id = '6167e34b-0b30-4a3a-8d5a-3f9bc0cabe26'
+    const fullSrc = `https://ucare.timepad.ru/${id}/-/preview/256x256/`
+    const preloads: FakeImage[] = []
+    class FakeImage {
+      src = ''
+      currentSrc = fullSrc
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      constructor() { preloads.push(this) }
+    }
+    vi.stubGlobal('Image', FakeImage)
+    try {
+      render(<EventImage src={fullSrc} alt="Poster" />)
+      const image = screen.getByRole('img', { name: 'Poster' })
+      expect(image).toHaveAttribute('src', `https://ucare.timepad.ru/${id}/-/preview/64x64/`)
+      expect(preloads[0]?.src).toBe(fullSrc)
+      fireEvent.load(image)
+      expect(image).toHaveAttribute('src', `https://ucare.timepad.ru/${id}/-/preview/64x64/`)
+      act(() => preloads[0]?.onload?.())
+      expect(image).toHaveAttribute('src', fullSrc)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
   it('shows a shimmer until the current image loads', () => {
     render(<EventImage src="https://images.example/poster.jpg" alt="Poster" />)
     const image = screen.getByRole('img', { name: 'Poster' })

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes, type ReactNode } from "react";
 import styles from "./ui.module.css";
 
 type NavClickToken = { id: string; sequence: number };
@@ -41,18 +41,51 @@ export function ChipGroup({ children, label, className = "" }: { children: React
 }
 
 type EventImageProps = ImgHTMLAttributes<HTMLImageElement> & { fallbackSrc?: string };
-export function EventImage({ alt, className = "", width = 400, height = 400, fallbackSrc = "/events/concert-singer.png", onError, src, ...props }: EventImageProps) {
+export function EventImage({ alt, className = "", width = 400, height = 400, fallbackSrc = "/events/concert-singer.png", onError, src, srcSet, ...props }: EventImageProps) {
   const [failure, setFailure] = useState<{ key: string; status: "fallback" | "placeholder" } | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [progressive, setProgressive] = useState<{ key: string; phase: "loading" | "full"; src?: string } | null>(null);
+  const [previewLoadedKey, setPreviewLoadedKey] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const key = `${src ?? ""}\n${fallbackSrc}`;
   const status = failure?.key === key ? failure.status : "original";
-  if (status === "placeholder") return <span className={`${styles.eventImage} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} />;
   const activeSrc = status === "fallback" ? fallbackSrc : src;
   const activeKey = `${key}\n${activeSrc ?? ""}`;
-  return <img alt={alt} className={`${styles.eventImage} ${loadedKey === activeKey ? "" : styles.eventImageLoading} ${className}`} width={width} height={height} loading="lazy" {...props} src={activeSrc} onLoad={(event) => {
+  const timepadId = status === "original" ? /^https:\/\/ucare\.timepad\.ru\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i.exec(activeSrc ?? "")?.[1] : undefined;
+  const previewSrc = timepadId ? `https://ucare.timepad.ru/${timepadId}/-/preview/64x64/` : undefined;
+  const currentProgress = progressive?.key === activeKey ? progressive : null;
+  const showingPreview = Boolean(previewSrc && currentProgress?.phase !== "full");
+  const displaySrc = showingPreview ? previewSrc : currentProgress?.src ?? activeSrc;
+  useEffect(() => {
+    if (!previewSrc || !activeSrc || !imageRef.current) return;
+    let cancelled = false;
+    let observer: IntersectionObserver | undefined;
+    const loadFull = () => {
+      observer?.disconnect();
+      setProgressive({ key: activeKey, phase: "loading" });
+      const full = new Image();
+      if (srcSet) { full.srcset = srcSet; full.sizes = props.sizes ?? "100vw"; }
+      full.onload = () => { if (!cancelled) setProgressive({ key: activeKey, phase: "full", src: full.currentSrc || activeSrc }); };
+      full.onerror = () => { if (!cancelled) setFailure({ key, status: "fallback" }); };
+      full.src = activeSrc;
+    };
+    if (typeof IntersectionObserver === "undefined") loadFull();
+    else {
+      observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadFull(); }, { rootMargin: "200px" });
+      observer.observe(imageRef.current);
+    }
+    return () => { cancelled = true; observer?.disconnect(); };
+  }, [activeKey, activeSrc, key, previewSrc, props.sizes, srcSet]);
+  if (status === "placeholder") return <span className={`${styles.eventImage} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} />;
+  return <img ref={imageRef} alt={alt} className={`${styles.eventImage} ${showingPreview ? previewLoadedKey === activeKey ? "" : styles.eventImageLoading : loadedKey === activeKey ? "" : styles.eventImageLoading} ${className}`} width={width} height={height} loading="lazy" {...props} src={displaySrc} srcSet={showingPreview ? undefined : status === "original" && !currentProgress?.src ? srcSet : undefined} onLoad={(event) => {
+    if (showingPreview) {
+      setPreviewLoadedKey(activeKey);
+      return;
+    }
     props.onLoad?.(event);
     setLoadedKey(activeKey);
   }} onError={(event) => {
+    if (showingPreview) { setProgressive({ key: activeKey, phase: "full" }); return; }
     onError?.(event);
     if (status === "fallback" || event.currentTarget.src === new URL(fallbackSrc, document.baseURI).href) setFailure({ key, status: "placeholder" });
     else setFailure({ key, status: "fallback" });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
 import { CatalogMap } from './CatalogMap'
 
-const { navigate, getMapEvents, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef } = vi.hoisted(() => {
+const { navigate, getMapEvents, setLocation, mapSize, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef } = vi.hoisted(() => {
   class Marker {
     element: HTMLElement
     constructor(_options: unknown, element: HTMLElement) { this.element = element }
@@ -20,11 +20,11 @@ const { navigate, getMapEvents, FakeYMap, FakeYMapMarker, FakeYMapListener, list
       if (child instanceof Marker) child.element.remove()
       return this
     }
-    setLocation() {}
+    setLocation(location: unknown) { setLocation(location) }
     destroy() { this.container.replaceChildren() }
   }
   class Listener { constructor(options: { onUpdate?: (event: unknown) => void }) { listenerRef.current = options.onUpdate ?? null } }
-  return { navigate: vi.fn(), getMapEvents: vi.fn(), listenerRef: { current: null as null | ((event: unknown) => void) }, FakeYMap: Map, FakeYMapMarker: Marker, FakeYMapListener: Listener }
+  return { navigate: vi.fn(), getMapEvents: vi.fn(), setLocation: vi.fn(), mapSize: { width: 700, height: 500 }, listenerRef: { current: null as null | ((event: unknown) => void) }, FakeYMap: Map, FakeYMapMarker: Marker, FakeYMapListener: Listener }
 })
 
 vi.mock('../../shared/api/client', () => ({ apiClient: { getMapEvents, searchEvents: vi.fn() } }))
@@ -63,14 +63,19 @@ const event = (id: string, title: string): EventCard => ({
 describe('CatalogMap event preview integration', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_YANDEX_MAPS_API_KEY', 'test-key')
+    mapSize.width = 700
+    mapSize.height = 500
     navigate.mockClear()
+    setLocation.mockClear()
+    getMapEvents.mockReset()
     getMapEvents.mockResolvedValue([
       { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
       { kind: 'event', id: 'b', longitude: 37.62, latitude: 55.75, event: event('b', 'Событие B') },
     ])
     listenerRef.current = null
     vi.stubGlobal('ResizeObserver', class {
-      observe() {}
+      constructor(private callback: ResizeObserverCallback) {}
+      observe() { this.callback([{ contentRect: mapSize } as ResizeObserverEntry], this as unknown as ResizeObserver) }
       disconnect() {}
     })
   })
@@ -140,5 +145,81 @@ describe('CatalogMap event preview integration', () => {
     view.rerender(<MemoryRouter><CatalogMap filters={{ q: 'second' }} /></MemoryRouter>)
     expect(screen.queryByRole('button', { name: 'Открыть событие «Событие A»' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Событие: Событие A' })).not.toBeInTheDocument()
+  })
+
+  it('moves to a higher zoom and requests that zoom when a server cluster is clicked', async () => {
+    const cluster = {
+      kind: 'cluster', id: 'cluster-1', longitude: 37.61, latitude: 55.75,
+      west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 3,
+    }
+    getMapEvents.mockResolvedValue([cluster])
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать 3 событий' }))
+    await waitFor(() => expect(setLocation).toHaveBeenCalledWith({ center: [37.61, 55.75], zoom: 13 }))
+    await waitFor(() => expect(getMapEvents).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13 })))
+  })
+
+  it('forces a fresh maximum-zoom request when a stale server cluster remains', async () => {
+    const cluster = { kind: 'cluster', id: 'stale', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 2 }
+    getMapEvents.mockResolvedValue([cluster])
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+    await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
+    listenerRef.current?.({ location: { center: [37.61, 55.75], zoom: 22 }, mapInAction: false })
+    const staleMarker = await screen.findByRole('button', { name: 'Показать 2 событий' }, { timeout: 2500 })
+    await waitFor(() => expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(1))
+    fireEvent.click(staleMarker)
+    await waitFor(() => expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(2))
+  })
+
+  it('pages through a large coincident group on a mobile-width map so every event can be selected', async () => {
+    const events = Array.from({ length: 19 }, (_, index) => event(`event-${index + 1}`, `Событие ${index + 1}`))
+    events.push({ ...event('event-20', 'Событие 20'), longitude: 37.61002 })
+    const cluster = { kind: 'cluster', id: 'cluster-1', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 3 }
+    getMapEvents.mockImplementation(async (params) => params.zoom === 22
+      ? events.map((item) => ({ kind: 'event' as const, id: item.id, longitude: item.longitude ?? 37.61, latitude: item.latitude ?? 55.75, event: item }))
+      : [cluster])
+    mapSize.width = 375
+    mapSize.height = 760
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+    await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
+    listenerRef.current?.({ location: { center: [37.61, 55.75], zoom: 22 }, mapInAction: false })
+    await screen.findByRole('button', { name: 'Показать 20 событий в этой точке' }, { timeout: 2500 })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const overlap = screen.getByRole('button', { name: 'Показать 20 событий в этой точке' })
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('1/5')
+    const firstEvent = screen.getByRole('button', { name: 'Открыть событие «Событие 1»' })
+    expect(Math.abs(Number.parseFloat(firstEvent.style.left))).toBeLessThanOrEqual(80)
+    expect(Math.abs(Number.parseFloat(firstEvent.style.top))).toBeLessThanOrEqual(80)
+    fireEvent.click(firstEvent)
+    expect(screen.getByRole('region', { name: 'Событие: Событие 1' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('2/5')
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('3/5')
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('4/5')
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('5/5')
+    const lastEvent = screen.getByRole('button', { name: 'Открыть событие «Событие 20»' })
+    expect(Math.abs(Number.parseFloat(lastEvent.style.left))).toBeLessThanOrEqual(160)
+    expect(Math.abs(Number.parseFloat(lastEvent.style.top))).toBeLessThanOrEqual(80)
+    fireEvent.click(lastEvent)
+    expect(screen.getByRole('region', { name: 'Событие: Событие 20' })).toBeInTheDocument()
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('20')
+  })
+
+  it('groups diagonally overlapping square markers at maximum zoom', async () => {
+    const near = { ...event('near', 'Близкое событие'), longitude: 37.61002, latitude: 55.750011 }
+    getMapEvents.mockImplementation(async (params) => params.zoom === 22 ? [
+      { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
+      { kind: 'event', id: 'near', longitude: near.longitude, latitude: near.latitude, event: near },
+    ] : [])
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+    await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
+    listenerRef.current?.({ location: { center: [37.61, 55.75], zoom: 22 }, mapInAction: false })
+    expect(await screen.findByRole('button', { name: 'Показать 2 событий в этой точке' }, { timeout: 2500 })).toBeInTheDocument()
   })
 })

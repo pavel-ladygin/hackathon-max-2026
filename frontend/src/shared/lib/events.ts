@@ -52,11 +52,21 @@ export function normalizeEventImageUrl(value: string) {
   }
 }
 
-export function eventImage(imageUrl: string | null | undefined, category: CategorySlug | string) {
-  return imageUrl ? normalizeEventImageUrl(imageUrl) : eventImageFallback(category)
+export function eventImage(imageUrl: string | null | undefined, category: CategorySlug | string, maxDimension = 256) {
+  if (!imageUrl) return eventImageFallback(category)
+  const normalized = normalizeEventImageUrl(imageUrl)
+  const match = /^https:\/\/ucare\.timepad\.ru\/([0-9a-f-]{36})\/$/i.exec(normalized)
+  return match ? `${normalized}-/preview/${maxDimension}x${maxDimension}/` : normalized
 }
 
-export function eventHeroImage(images: EventImageCandidate[] | null | undefined, imageUrl: string | null | undefined, category: CategorySlug | string) {
+export function eventImageSrcSet(imageUrl: string | null | undefined, category: CategorySlug | string) {
+  if (!imageUrl) return undefined
+  const small = eventImage(imageUrl, category, 640)
+  const large = eventImage(imageUrl, category, 1200)
+  return small === large ? undefined : `${small} 640w, ${large} 1200w`
+}
+
+export function eventHeroImage(images: EventImageCandidate[] | null | undefined, imageUrl: string | null | undefined, category: CategorySlug | string, maxDimension = 1200) {
   const candidates = (images ?? []).filter((image) => image.url)
   const selected = [...candidates].sort((a, b) => {
     const aHasSize = a.width != null && a.height != null
@@ -68,7 +78,7 @@ export function eventHeroImage(images: EventImageCandidate[] | null | undefined,
     }
     return Number(b.role === 'hero') - Number(a.role === 'hero')
   })[0]
-  return eventImage(selected?.url ?? imageUrl, category)
+  return eventImage(selected?.url ?? imageUrl, category, maxDimension)
 }
 
 type EventImageCandidate = { url: string; width: number | null; height: number | null; role: 'card' | 'hero' | 'gallery' }

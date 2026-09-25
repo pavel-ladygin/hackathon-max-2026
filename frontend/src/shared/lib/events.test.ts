@@ -4,9 +4,10 @@ import { eventHeroImage, eventImage, normalizeEventImageUrl } from './events'
 const id = '6167e34b-0b30-4a3a-8d5a-3f9bc0cabe26'
 
 describe('Timepad poster URLs', () => {
-	it('uses the stored original instead of small or repeated previews', () => {
+	it('uses a small preview of the stored original for cards', () => {
 		const broken = `https://ucare.timepad.ru/${id}/-/preview/308x600/-/format/jpeg/-/format/jpeg/poster_org_418499.jpg/-/preview/308x600/-/format/jpeg/poster_event_4202945.jpg`
-		expect(eventImage(broken, 'concerts')).toBe(`https://ucare.timepad.ru/${id}/`)
+		expect(eventImage(broken, 'concerts')).toBe(`https://ucare.timepad.ru/${id}/-/preview/256x256/`)
+		expect(eventImage(broken, 'concerts', 1200)).toBe(`https://ucare.timepad.ru/${id}/-/preview/1200x1200/`)
 	})
 
 	it('uses original for valid Timepad previews and keeps other provider images unchanged', () => {
