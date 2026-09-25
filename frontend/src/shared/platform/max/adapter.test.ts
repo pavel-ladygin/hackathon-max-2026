@@ -106,12 +106,60 @@ describe("MaxBridgeAdapterImpl location", () => {
   };
 
   it.each([[1, "permission_denied"], [2, "position_unavailable"], [3, "timeout"]] as const)(
-    "preserves the browser location error code %s",
+    "maps browser location error code %s and retains diagnostics",
     async (code, reason) => {
-      setGeolocation((_success, error) => error?.({ code, message: "location unavailable", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }));
-      await expect(new MaxBridgeAdapterImpl().requestLocation()).resolves.toEqual({ ok: false, reason });
+      const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback | null) => {
+        error?.({ code, message: "location unavailable", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
+      });
+      setGeolocation(getCurrentPosition);
+      const result = await new MaxBridgeAdapterImpl().requestLocation();
+      expect(result).toMatchObject({
+        ok: false,
+        reason,
+        diagnostics: { code, message: "location unavailable", environment: "browser", attempt: code === 1 ? 1 : 2 },
+      });
+      expect(getCurrentPosition).toHaveBeenCalledTimes(code === 1 ? 1 : 2);
     },
   );
+
+  it("converts synchronous API exceptions into diagnostic failures", async () => {
+    setGeolocation(() => {
+      throw new Error("geolocation API unavailable");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const result = await new MaxBridgeAdapterImpl().requestLocation();
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "position_unavailable",
+      diagnostics: { code: null, message: "geolocation API unavailable", environment: "browser", attempt: 2 },
+    });
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("55.75");
+  });
+
+  it("retries transient failures once with higher accuracy and a short timeout", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback | null, ...options: [PositionOptions?]) => {
+      void options;
+      if (getCurrentPosition.mock.calls.length === 1) {
+        error?.({ code: 2, message: "no signal", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
+      } else {
+        success({
+          coords: { latitude: 55.75, longitude: 37.61, accuracy: 50, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}) },
+          timestamp: Date.now(), toJSON: () => ({}),
+        });
+      }
+    });
+    setGeolocation(getCurrentPosition);
+
+    const result = await new MaxBridgeAdapterImpl().requestLocation();
+
+    expect(result).toMatchObject({ ok: true, position: { lat: 55.75, lng: 37.61 } });
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    expect(getCurrentPosition.mock.calls[0]?.[2]).toMatchObject({ enableHighAccuracy: false, timeout: 15_000 });
+    expect(getCurrentPosition.mock.calls[1]?.[2]).toMatchObject({ enableHighAccuracy: true, timeout: 5_000, maximumAge: 0 });
+  });
 
   it("returns coordinates on success without logging them", async () => {
     const getCurrentPosition = vi.fn((success: PositionCallback, ...rest: [PositionErrorCallback | null | undefined, PositionOptions | undefined]) => {

@@ -177,7 +177,7 @@ describe('CatalogPage search', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
 
     expect(screen.getByRole('status')).toHaveTextContent('Доступ к геолокации запрещён')
-    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(searchCalls.at(-1)).toMatchObject({ lat: undefined, lng: undefined })
   })
 
@@ -188,7 +188,7 @@ describe('CatalogPage search', () => {
     renderCatalog()
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
-    expect(screen.getByRole('status')).toHaveTextContent('Попробуйте ещё раз')
+    expect(screen.getByRole('status')).toHaveTextContent('попробуйте ещё раз')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить' })) })
 
     expect(requestLocation).toHaveBeenCalledTimes(2)

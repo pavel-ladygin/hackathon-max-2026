@@ -73,10 +73,10 @@ export function CatalogPage() {
   const locationErrorMessage = locationFailure === 'permission_denied'
     ? 'Доступ к геолокации запрещён. Разрешите его для приложения или браузера в настройках устройства.'
     : locationFailure === 'timeout'
-      ? 'Не удалось получить координаты вовремя. Попробуйте ещё раз.'
+      ? 'Определение местоположения заняло слишком много времени. Проверьте сигнал и попробуйте ещё раз.'
       : locationFailure === 'unsupported'
         ? 'Геолокация недоступна в этом браузере или версии MAX.'
-        : 'Сейчас не удаётся определить местоположение. Проверьте сигнал и попробуйте ещё раз.'
+        : 'Устройство не смогло определить местоположение. Включите службы геолокации, проверьте соединение и попробуйте ещё раз.'
 
   return <PageShell withBottomNav>
     <TopBar title="Афиша" onBack={() => navigate('/')} />
@@ -110,7 +110,7 @@ export function CatalogPage() {
           </div>
         </motion.section> : null}
       </AnimatePresence>
-      {locationFailure ? <p className={styles.error} role="status" aria-live="polite">{locationErrorMessage} {locationFailure === 'timeout' || locationFailure === 'position_unavailable' ? <button type="button" onClick={() => void findNearby()}>Повторить</button> : null} Остальные фильтры продолжают работать.</p> : null}
+      {locationFailure ? <p className={styles.error} role="status" aria-live="polite">{locationErrorMessage} {locationFailure !== 'unsupported' ? <button type="button" disabled={isLocating} onClick={() => void findNearby()}>Повторить</button> : null} Остальные фильтры продолжают работать.</p> : null}
       <div className={catalogStyles.segmented} role="tablist" aria-label="Вид событий">
         {(['list', 'map'] as const).map((nextView) => <button key={nextView} type="button" role="tab" aria-selected={view === nextView} className={catalogStyles.segmentedItem} onClick={() => startTransition(() => setView(nextView))}>
           {view === nextView ? <motion.span layoutId="catalog-view-indicator" className={catalogStyles.segmentedIndicator} transition={{ duration: reduceMotion ? 0 : .2, ease: 'easeOut' }} /> : null}
