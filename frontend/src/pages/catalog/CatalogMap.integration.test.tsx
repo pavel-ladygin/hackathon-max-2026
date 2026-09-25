@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
@@ -85,7 +85,7 @@ describe('CatalogMap event preview integration', () => {
     vi.unstubAllGlobals()
   })
 
-  it('switches selected markers, closes the preview, and navigates only from Подробнее', async () => {
+  it('switches selected markers, closes without navigation, and navigates from preview actions', async () => {
     render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
 
     const markerA = await screen.findByRole('button', { name: 'Открыть событие «Событие A»' })
@@ -107,6 +107,13 @@ describe('CatalogMap event preview integration', () => {
     expect(markerA).toHaveAttribute('aria-pressed', 'false')
     expect(markerB).toHaveAttribute('aria-pressed', 'true')
     expect(navigate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть событие «Событие B» по фото' }))
+    expect(navigate).toHaveBeenCalledWith('/events/b')
+    navigate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть событие «Событие B» по заголовку' }))
+    expect(navigate).toHaveBeenCalledWith('/events/b')
+    navigate.mockClear()
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
     expect(screen.queryByRole('region', { name: 'Событие: Событие B' })).not.toBeInTheDocument()
@@ -159,13 +166,67 @@ describe('CatalogMap event preview integration', () => {
     expect(await screen.findByRole('group', { name: 'Кластер: 5 событий' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Открыть событие «Событие 0»' }))
     expect(screen.getByRole('region', { name: 'Событие: Событие 0' })).toBeInTheDocument()
+    const locationCallsBeforeClose = setLocation.mock.calls.length
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
     expect(screen.getByRole('group', { name: 'Кластер: 5 событий' })).toBeInTheDocument()
+    expect(setLocation).toHaveBeenCalledTimes(locationCallsBeforeClose)
     fireEvent.click(screen.getByRole('button', { name: 'Следующие события, страница 1 из 2' }))
+    const markerOnSecondPage = screen.getByRole('button', { name: 'Открыть событие «Событие 4»' })
+    expect(markerOnSecondPage).toBeInTheDocument()
+    fireEvent.click(markerOnSecondPage)
+    expect(screen.getByRole('region', { name: 'Событие: Событие 4' })).toBeInTheDocument()
+    const locationCallsOnSecondPage = setLocation.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
+    expect(screen.getByRole('group', { name: 'Кластер: 5 событий' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Открыть событие «Событие 4»' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Следующие события, страница 2 из 2' })).toBeInTheDocument()
+    expect(setLocation).toHaveBeenCalledTimes(locationCallsOnSecondPage)
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть кластер' }))
     expect(screen.queryByRole('group', { name: 'Кластер: 5 событий' })).not.toBeInTheDocument()
     expect(setLocation).not.toHaveBeenCalled()
+  })
+
+  it('keeps cluster controls accessible and clear of event markers on a narrow map', async () => {
+    const members = Array.from({ length: 8 }, (_, index) => ({
+      kind: 'event' as const,
+      id: `mobile-${index}`,
+      longitude: 37.61,
+      latitude: 55.75,
+      event: event(`mobile-${index}`, `Событие ${index + 1}`),
+    }))
+    getMapEvents.mockResolvedValue([{
+      kind: 'cluster', id: 'mobile-cluster', longitude: 37.61, latitude: 55.75,
+      west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: members.length, members,
+    }])
+    mapSize.width = 320
+    mapSize.height = 430
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать 8 событий' }))
+    const cluster = await screen.findByRole('group', { name: 'Кластер: 8 событий' })
+    const close = within(cluster).getByRole('button', { name: 'Закрыть кластер' })
+    const pager = within(cluster).getByRole('button', { name: 'Следующие события, страница 1 из 2' })
+    const markers = within(cluster).getAllByRole('button', { name: /^Открыть событие/ })
+
+    expect(close.className).toMatch(/expandedClose/)
+    expect(pager.className).toMatch(/expandedNext/)
+    expect(markers).toHaveLength(4)
+
+    const parsePx = (value: string) => Number.parseFloat(value)
+    expect(parsePx(pager.style.top)).toBe(150)
+    const pagerX = parsePx(pager.style.left)
+    const pagerY = parsePx(pager.style.top)
+    for (const marker of markers) {
+      const markerX = parsePx(marker.style.left)
+      const markerY = parsePx(marker.style.top)
+      expect(Math.hypot(pagerX - markerX, pagerY - markerY)).toBeGreaterThan(60)
+    }
+
+    fireEvent.click(pager)
+    const secondPageCluster = await screen.findByRole('group', { name: 'Кластер: 8 событий' })
+    expect(within(secondPageCluster).getByRole('button', { name: 'Следующие события, страница 2 из 2' })).toBeInTheDocument()
+    fireEvent.click(within(secondPageCluster).getByRole('button', { name: 'Закрыть кластер' }))
+    expect(screen.queryByRole('group', { name: 'Кластер: 8 событий' })).not.toBeInTheDocument()
   })
 
   it('opens a server cluster at maximum zoom without another request', async () => {

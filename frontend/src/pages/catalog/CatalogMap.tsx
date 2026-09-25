@@ -13,6 +13,9 @@ const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
 const MAX_OVERLAP_DIAMETER = 72
 const SPIDER_RADIUS = 80
+const EXPANDED_CONTROL_SIZE = 44
+const EXPANDED_CONTROL_GAP = 12
+const EXPANDED_NEXT_OFFSET = SPIDER_RADIUS + MAX_OVERLAP_DIAMETER / 2 + EXPANDED_CONTROL_SIZE / 2 + EXPANDED_CONTROL_GAP
 
 type MapFilters = {
   q?: string
@@ -308,9 +311,10 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
     const cameraPoint = mapPoint(cameraRef.current.center[0], cameraRef.current.center[1], integerZoom)
     const screenX = viewportSize.width / 2 + wrappedPixelDelta(anchor[0] - cameraPoint[0], world)
     const screenY = viewportSize.height / 2 + anchor[1] - cameraPoint[1]
-    const margin = SPIDER_RADIUS + MAX_OVERLAP_DIAMETER / 2 + 12
-    const shiftX = Math.max(margin, Math.min(viewportSize.width - margin, screenX)) - screenX
-    const shiftY = Math.max(margin, Math.min(viewportSize.height - margin, screenY)) - screenY
+    const markerMargin = SPIDER_RADIUS + MAX_OVERLAP_DIAMETER / 2 + EXPANDED_CONTROL_GAP
+    const bottomMargin = pageCount > 1 ? EXPANDED_NEXT_OFFSET + EXPANDED_CONTROL_SIZE / 2 + EXPANDED_CONTROL_GAP : markerMargin
+    const shiftX = Math.max(markerMargin, Math.min(viewportSize.width - markerMargin, screenX)) - screenX
+    const shiftY = Math.max(markerMargin, Math.min(viewportSize.height - bottomMargin, screenY)) - screenY
     for (const [index, member] of members.entries()) {
       const button = createEventMarkerElement(member.event, () => selectEvent(member.event))
       const angle = 2 * Math.PI * index / members.length - Math.PI / 2
@@ -340,7 +344,7 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
       next.setAttribute('aria-label', `Следующие события, страница ${page + 1} из ${pageCount}`)
       next.textContent = `${page + 1}/${pageCount} ›`
       next.style.left = `${shiftX}px`
-      next.style.top = `${shiftY + SPIDER_RADIUS + 44}px`
+      next.style.top = `${shiftY + EXPANDED_NEXT_OFFSET}px`
       next.addEventListener('click', () => setExpandedCluster({ id: cluster.id, page: (page + 1) % pageCount }))
       root.append(next)
     }
