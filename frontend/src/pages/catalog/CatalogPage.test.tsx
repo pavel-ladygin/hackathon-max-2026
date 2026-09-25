@@ -25,7 +25,7 @@ vi.mock('../../features/discovery/queries', () => ({
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
-vi.mock('./CatalogMap', () => ({ CatalogMap: () => <div aria-label="map-placeholder" /> }))
+vi.mock('./CatalogMap', () => ({ CatalogMap: ({ filters, userLocation }: { filters: Record<string, unknown>; userLocation?: { latitude: number; longitude: number } }) => <div aria-label="map-placeholder" data-filters={JSON.stringify(filters)} data-user-location={JSON.stringify(userLocation)} /> }))
 
 function renderCatalog() {
   return render(<MemoryRouter><CatalogPage /></MemoryRouter>)
@@ -194,5 +194,20 @@ describe('CatalogPage search', () => {
     expect(requestLocation).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Рядом · 10 км' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps the current view and applies the 10 km radius and user marker to the map after locating', async () => {
+    vi.spyOn(maxPlatform, 'requestLocation').mockResolvedValue({ ok: true, position: { lat: 55.75, lng: 37.61, accuracyM: 30 } })
+    renderCatalog()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
+
+    expect(screen.getByRole('tab', { name: 'Список' })).toHaveAttribute('aria-selected', 'true')
+    expect(searchCalls.at(-1)).toMatchObject({ lat: 55.75, lng: 37.61, distance_m: 10_000 })
+
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Карта' })) })
+    const map = screen.getByLabelText('map-placeholder')
+    expect(JSON.parse(map.getAttribute('data-filters') ?? '{}')).toMatchObject({ lat: 55.75, lng: 37.61, distance_m: 10_000 })
+    expect(JSON.parse(map.getAttribute('data-user-location') ?? 'null')).toEqual({ latitude: 55.75, longitude: 37.61 })
   })
 })

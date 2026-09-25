@@ -59,6 +59,56 @@
 }
 .clusterMarker:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 
+.expandedCluster { position: relative; width: 0; height: 0; z-index: 5; }
+.expandedCluster .mapMarker { position: absolute; }
+.expandedClose, .expandedNext {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-paper);
+  background: var(--color-ink);
+  color: white;
+  box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.expandedClose { width: 44px; height: 44px; border-radius: 50%; font-size: 28px; }
+.expandedNext { min-width: 70px; height: 38px; padding: 0 10px; border-radius: 999px; }
+.expandedClose:focus-visible, .expandedNext:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+.overlapClose {
+  position: relative;
+  left: 38px;
+  top: -38px;
+  z-index: 6;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: var(--color-ink);
+  color: white;
+  box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 24px;
+  transform: translate(-50%, -50%);
+}
+.overlapClose:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+.userLocation {
+  width: 22px;
+  height: 22px;
+  border: 4px solid white;
+  border-radius: 50%;
+  background: #3089ee;
+  box-shadow: 0 0 0 8px rgb(48 137 238 / 18%), 0 2px 8px rgb(0 0 0 / 25%);
+  transform: translate(-50%, -50%);
+}
+
 .preview {
   position: absolute;
   right: 12px;

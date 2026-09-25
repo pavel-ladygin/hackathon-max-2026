@@ -21,7 +21,7 @@ export class ApiClient {
   async replacePreferences(input: PreferencesRequestDto): Promise<Preferences> { return mapPreferences(await this.request('/me/preferences', { method: 'PUT', body: JSON.stringify(input) })) }
   async getHomeFeed(params: Record<string, string | number | undefined> = {}) { return this.discovery.getHomeFeed(params) }
   async searchEvents(params: Record<string, string | number | boolean | string[] | undefined> = {}) { return this.discovery.searchEvents(params) }
-  async getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'lat' | 'lng' | 'distance_m' | 'limit' | 'cursor'>) { return this.discovery.getMapEvents(params) }
+  async getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>) { return this.discovery.getMapEvents(params) }
   async getEvent(eventId: string) { return this.discovery.getEvent(eventId) }
   async recordBehavior(events: Array<{ client_event_id: string; type: 'impression' | 'open' | 'share'; occurred_at: string; event_id?: string | null; room_id?: string | null; metadata?: Record<string, unknown> }>) { return this.discovery.recordBehavior(events) }
   async setSaved(eventId: string, saved: boolean) { return this.discovery.setSaved(eventId, saved) }

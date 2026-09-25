@@ -938,6 +938,7 @@ type EventMapCluster struct {
 	Kind      EventMapClusterKind `json:"kind"`
 	Latitude  float64             `json:"latitude"`
 	Longitude float64             `json:"longitude"`
+	Members   []EventMapPoint     `json:"members"`
 	North     float64             `json:"north"`
 	South     float64             `json:"south"`
 	West      float64             `json:"west"`

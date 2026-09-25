@@ -26,6 +26,19 @@ func TestClusterMapEventsGroupsNearbyPointsAcrossFormerGridBoundary(t *testing.T
 	if err != nil || cluster.Kind != "cluster" || cluster.Count != 2 {
 		t.Fatalf("cluster item lacks exact count: %+v (%v)", cluster, err)
 	}
+	if len(cluster.Members) != cluster.Count {
+		t.Fatalf("cluster has %d members, want %d", len(cluster.Members), cluster.Count)
+	}
+	clusterMemberIDs := map[uuid.UUID]bool{}
+	for _, member := range cluster.Members {
+		if member.Kind != "event" || member.Id != member.Event.Id || member.Latitude != member.Event.Latitude.MustGet() || member.Longitude != member.Event.Longitude.MustGet() {
+			t.Fatalf("cluster member should be a complete map point: %+v", member)
+		}
+		clusterMemberIDs[member.Id] = true
+	}
+	if !clusterMemberIDs[idA] || !clusterMemberIDs[idB] {
+		t.Fatalf("cluster members should include both clustered events: %v", clusterMemberIDs)
+	}
 	if cluster.Longitude < lngA || cluster.Longitude > lngB || cluster.Latitude < latA || cluster.Latitude > latB {
 		t.Fatalf("cluster marker should be at member centroid, got (%f,%f)", cluster.Latitude, cluster.Longitude)
 	}
