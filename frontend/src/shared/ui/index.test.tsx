@@ -53,6 +53,24 @@ describe('BottomNav', () => {
     expect(onChange).toHaveBeenCalledTimes(2)
   })
 
+  it('clears the click animation after it finishes so a later click starts fresh', () => {
+    vi.useFakeTimers()
+    try {
+      render(<BottomNav activeId="home" items={[{ id: 'home', label: 'Главная', icon: 'home' }]} />)
+      const button = screen.getByRole('button', { name: 'Главная' })
+
+      fireEvent.click(button)
+      expect(button.className).toContain('navClick_home')
+      act(() => vi.advanceTimersByTime(720))
+      expect(button.className).not.toContain('navClick_home')
+
+      fireEvent.click(button)
+      expect(button.className).toContain('navClick_home')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('carries one click animation across a route remount without animating on initial render', () => {
     const items = [{ id: 'home', label: 'Главная', icon: 'home' as const }, { id: 'catalog', label: 'Афиша', icon: 'calendar' as const }]
     function RouteNav() {

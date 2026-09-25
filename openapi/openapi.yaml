@@ -1378,7 +1378,7 @@ components:
         event: {$ref: '#/components/schemas/EventCard'}
     EventMapCluster:
       type: object
-      required: [kind, id, longitude, latitude, west, south, east, north, count]
+      required: [kind, id, longitude, latitude, west, south, east, north, count, members]
       properties:
         kind: {type: string, const: cluster}
         id: {type: string}
@@ -1389,6 +1389,10 @@ components:
         east: {type: number, format: double}
         north: {type: number, format: double}
         count: {type: integer, minimum: 2}
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventMapPoint'
     BehaviorBatchRequest:
       type: object
       additionalProperties: false

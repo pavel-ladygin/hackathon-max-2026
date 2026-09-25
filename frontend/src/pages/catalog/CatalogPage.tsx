@@ -34,7 +34,7 @@ export function CatalogPage() {
   const reduceMotion = useReducedMotion()
   const normalizedQuery = debouncedQuery.trim()
   const params = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, distance_m: position ? 10_000 : undefined, lat: position?.lat, lng: position?.lng, limit: 24 }), [dateFrom, dateTo, freeOnly, normalizedQuery, position, price, selected])
-  const mapFilters = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined }), [dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
+  const mapFilters = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, distance_m: position ? 10_000 : undefined, lat: position?.lat, lng: position?.lng }), [dateFrom, dateTo, freeOnly, normalizedQuery, position, price, selected])
   const mapCenter = useMemo(() => position ? [position.lng, position.lat] as [number, number] : undefined, [position])
   const results = useEventSearch(params, view === 'list')
   const save = useSetSavedEvent()
@@ -119,7 +119,7 @@ export function CatalogPage() {
       </div>
       <div className={styles.catalogResults}>{view === 'map' ? <>
         <div className={styles.sectionHead}><h2>События на карте</h2></div>
-        <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap filters={mapFilters} initialCenter={mapCenter} /></Suspense>
+        <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap filters={mapFilters} initialCenter={mapCenter} userLocation={position ? { latitude: position.lat, longitude: position.lng } : undefined} /></Suspense>
       </> : results.isPending ? <ScreenSkeleton variant="cards" inline label="Загружаем события…" /> : results.isError ? <Empty inline title="Поиск недоступен" description="Проверьте соединение и попробуйте ещё раз." action={<Button onClick={() => void results.refetch()}>Повторить</Button>} /> : events.length === 0 ? <Empty inline title="Ничего не нашли" description="Попробуйте убрать фильтр или изменить запрос." /> : <>
         <div className={styles.sectionHead}><h2>События</h2><span className={styles.eyebrow}>{totalEstimate} найдено</span></div>
         <AnimatePresence mode="wait" initial={false}>

@@ -529,6 +529,7 @@ export interface components {
             /** Format: double */
             north: number;
             count: number;
+            members: components["schemas"]["EventMapPoint"][];
         };
         BehaviorBatchRequest: {
             events: components["schemas"]["BehaviorEvent"][];

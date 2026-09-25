@@ -147,20 +147,30 @@ describe('CatalogMap event preview integration', () => {
     expect(screen.queryByRole('region', { name: 'Событие: Событие A' })).not.toBeInTheDocument()
   })
 
-  it('moves to a higher zoom and requests that zoom when a server cluster is clicked', async () => {
+  it('opens five clustered events, pages through them, and closes without moving the camera', async () => {
+    const members = Array.from({ length: 5 }, (_, index) => ({ kind: 'event' as const, id: `e${index}`, longitude: 37.61, latitude: 55.75, event: event(`e${index}`, `Событие ${index}`) }))
     const cluster = {
       kind: 'cluster', id: 'cluster-1', longitude: 37.61, latitude: 55.75,
-      west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 3,
+      west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 5, members,
     }
     getMapEvents.mockResolvedValue([cluster])
     render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
-    fireEvent.click(await screen.findByRole('button', { name: 'Показать 3 событий' }))
-    await waitFor(() => expect(setLocation).toHaveBeenCalledWith({ center: [37.61, 55.75], zoom: 13 }))
-    await waitFor(() => expect(getMapEvents).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13 })))
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать 5 событий' }))
+    expect(await screen.findByRole('group', { name: 'Кластер: 5 событий' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть событие «Событие 0»' }))
+    expect(screen.getByRole('region', { name: 'Событие: Событие 0' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
+    expect(screen.getByRole('group', { name: 'Кластер: 5 событий' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Следующие события, страница 1 из 2' }))
+    expect(screen.getByRole('button', { name: 'Открыть событие «Событие 4»' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть кластер' }))
+    expect(screen.queryByRole('group', { name: 'Кластер: 5 событий' })).not.toBeInTheDocument()
+    expect(setLocation).not.toHaveBeenCalled()
   })
 
-  it('forces a fresh maximum-zoom request when a stale server cluster remains', async () => {
-    const cluster = { kind: 'cluster', id: 'stale', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 2 }
+  it('opens a server cluster at maximum zoom without another request', async () => {
+    const members = ['a', 'b'].map((id) => ({ kind: 'event' as const, id, longitude: 37.61, latitude: 55.75, event: event(id, `Событие ${id}`) }))
+    const cluster = { kind: 'cluster', id: 'stale', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 2, members }
     getMapEvents.mockResolvedValue([cluster])
     render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
     await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
@@ -168,13 +178,14 @@ describe('CatalogMap event preview integration', () => {
     const staleMarker = await screen.findByRole('button', { name: 'Показать 2 событий' }, { timeout: 2500 })
     await waitFor(() => expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(1))
     fireEvent.click(staleMarker)
-    await waitFor(() => expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(2))
+    expect(await screen.findByRole('group', { name: 'Кластер: 2 событий' })).toBeInTheDocument()
+    expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(1)
   })
 
   it('pages through a large coincident group on a mobile-width map so every event can be selected', async () => {
     const events = Array.from({ length: 19 }, (_, index) => event(`event-${index + 1}`, `Событие ${index + 1}`))
     events.push({ ...event('event-20', 'Событие 20'), longitude: 37.61002 })
-    const cluster = { kind: 'cluster', id: 'cluster-1', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 3 }
+    const cluster = { kind: 'cluster', id: 'cluster-1', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 3, members: [] }
     getMapEvents.mockImplementation(async (params) => params.zoom === 22
       ? events.map((item) => ({ kind: 'event' as const, id: item.id, longitude: item.longitude ?? 37.61, latitude: item.latitude ?? 55.75, event: item }))
       : [cluster])
@@ -194,6 +205,10 @@ describe('CatalogMap event preview integration', () => {
     fireEvent.click(firstEvent)
     expect(screen.getByRole('region', { name: 'Событие: Событие 1' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть превью события' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть кластер' }))
+    expect(overlap).toHaveTextContent('20')
+    fireEvent.click(overlap)
+    expect(overlap).toHaveTextContent('1/5')
     fireEvent.click(overlap)
     expect(overlap).toHaveTextContent('2/5')
     fireEvent.click(overlap)
@@ -221,5 +236,11 @@ describe('CatalogMap event preview integration', () => {
     await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
     listenerRef.current?.({ location: { center: [37.61, 55.75], zoom: 22 }, mapInAction: false })
     expect(await screen.findByRole('button', { name: 'Показать 2 событий в этой точке' }, { timeout: 2500 })).toBeInTheDocument()
+  })
+
+  it('shows the user location and sends the 10 km filter in map requests', async () => {
+    render(<MemoryRouter><CatalogMap filters={{ lat: 55.75, lng: 37.61, distance_m: 10_000 }} initialCenter={[37.61, 55.75]} userLocation={{ latitude: 55.75, longitude: 37.61 }} /></MemoryRouter>)
+    expect(await screen.findByRole('img', { name: 'Моё местоположение' })).toBeInTheDocument()
+    await waitFor(() => expect(getMapEvents).toHaveBeenCalledWith(expect.objectContaining({ lat: 55.75, lng: 37.61, distance_m: 10_000 })))
   })
 })

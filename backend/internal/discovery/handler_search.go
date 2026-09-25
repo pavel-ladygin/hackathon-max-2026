@@ -359,6 +359,7 @@ func clusterMapEvents(events []Card, zoom int) []api.EventMapResponse_Items_Item
 		longitudes := make([]float64, 0, len(members))
 		seedX := (*members[0].Longitude + 180) / 360 * world
 		ids := make([]string, 0, len(members))
+		memberPoints := make([]api.EventMapPoint, 0, len(members))
 		for _, member := range members {
 			lat, lng := *member.Latitude, *member.Longitude
 			rad := math.Max(-85.05112878, math.Min(85.05112878, lat)) * math.Pi / 180
@@ -376,6 +377,7 @@ func clusterMapEvents(events []Card, zoom int) []api.EventMapResponse_Items_Item
 			south = math.Min(south, lat)
 			north = math.Max(north, lat)
 			ids = append(ids, member.ID.String())
+			memberPoints = append(memberPoints, mapEventPoint(member))
 		}
 		west, east := minimalLongitudeBounds(longitudes)
 		if north == south {
@@ -391,7 +393,7 @@ func clusterMapEvents(events []Card, zoom int) []api.EventMapResponse_Items_Item
 		sort.Strings(ids)
 		digest := sha256.Sum256([]byte(strings.Join(ids, ",")))
 		var item api.EventMapResponse_Items_Item
-		_ = item.FromEventMapCluster(api.EventMapCluster{Kind: "cluster", Id: fmt.Sprintf("cluster-%x", digest[:12]), Longitude: lng, Latitude: lat, West: west, South: south, East: east, North: north, Count: len(members)})
+		_ = item.FromEventMapCluster(api.EventMapCluster{Kind: "cluster", Id: fmt.Sprintf("cluster-%x", digest[:12]), Longitude: lng, Latitude: lat, West: west, South: south, East: east, North: north, Count: len(members), Members: memberPoints})
 		items = append(items, item)
 	}
 	return items
@@ -435,14 +437,18 @@ func minimalLongitudeBounds(longitudes []float64) (float64, float64) {
 func mapEventPoints(events []Card) []api.EventMapResponse_Items_Item {
 	items := make([]api.EventMapResponse_Items_Item, 0, len(events))
 	for _, event := range events {
-		card := homeCard(event)
-		card.Latitude = nullable.NewNullableWithValue(*event.Latitude)
-		card.Longitude = nullable.NewNullableWithValue(*event.Longitude)
 		var item api.EventMapResponse_Items_Item
-		_ = item.FromEventMapPoint(api.EventMapPoint{Kind: "event", Id: card.Id, Longitude: *event.Longitude, Latitude: *event.Latitude, Event: card})
+		_ = item.FromEventMapPoint(mapEventPoint(event))
 		items = append(items, item)
 	}
 	return items
+}
+
+func mapEventPoint(event Card) api.EventMapPoint {
+	card := homeCard(event)
+	card.Latitude = nullable.NewNullableWithValue(*event.Latitude)
+	card.Longitude = nullable.NewNullableWithValue(*event.Longitude)
+	return api.EventMapPoint{Kind: "event", Id: card.Id, Longitude: *event.Longitude, Latitude: *event.Latitude, Event: card}
 }
 
 func mercatorLatitude(y float64) float64 {
