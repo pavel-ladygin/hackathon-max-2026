@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { BottomNav, Button, Empty, ErrorState, EventImage, FavoriteButton, HeartIcon, IconButton, Loading, ScreenSkeleton } from './index'
+import { eventImageFallback } from '../lib/events'
 
 describe('shared status states', () => {
   it('supports embedded and full-page presentation without changing live semantics', () => {
@@ -134,12 +135,14 @@ describe('EventImage', () => {
     expect(image.className).not.toContain('eventImageLoading')
   })
 
-  it('retries a failed image with its category fallback and stops if that also fails', () => {
-    render(<EventImage src="https://images.example/poster.jpg" fallbackSrc="/events/jazz-comedy.png" alt="Jazz concert poster" />)
+  it('retries a failed image with the neutral no-photo asset and shows an accessible placeholder if it also fails', () => {
+    const fallback = eventImageFallback('concerts')
+    render(<EventImage src="https://images.example/poster.jpg" fallbackSrc={fallback} alt="Jazz concert poster" />)
     const image = screen.getByRole('img', { name: 'Jazz concert poster' })
 
     fireEvent.error(image)
-    expect(image).toHaveAttribute('src', '/events/jazz-comedy.png')
+    expect(image).toHaveAttribute('src', fallback)
+    expect(image).toHaveAttribute('src', '/events/photo-unavailable.png')
 
     fireEvent.error(image)
     expect(screen.getByRole('img', { name: 'Jazz concert poster' }).tagName).toBe('SPAN')

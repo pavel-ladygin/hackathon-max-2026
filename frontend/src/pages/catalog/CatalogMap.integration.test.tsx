@@ -186,6 +186,35 @@ describe('CatalogMap event preview integration', () => {
     expect(setLocation).not.toHaveBeenCalled()
   })
 
+  it('shows the image placeholder on a page-two cluster marker failure without retrying a fallback image', async () => {
+    const members = Array.from({ length: 5 }, (_, index) => {
+      const item = event(`e${index}`, `Событие ${index}`)
+      return {
+        kind: 'event' as const,
+        id: item.id,
+        longitude: 37.61,
+        latitude: 55.75,
+        event: index === 4 ? { ...item, imageUrl: 'https://images.example.com/event.jpg' } : item,
+      }
+    })
+    getMapEvents.mockResolvedValue([{
+      kind: 'cluster', id: 'cluster-images', longitude: 37.61, latitude: 55.75,
+      west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: members.length, members,
+    }])
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать 5 событий' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Следующие события, страница 1 из 2' }))
+    const marker = await screen.findByRole('button', { name: 'Открыть событие «Событие 4»' })
+    const image = marker.querySelector('img')!
+
+    fireEvent.error(image)
+
+    expect(within(marker).getByText('Фото недоступно')).toBeVisible()
+    expect(image).not.toBeVisible()
+    expect(image.src).toBe('https://images.example.com/event.jpg')
+  })
+
   it('keeps cluster controls accessible and clear of event markers on a narrow map', async () => {
     const members = Array.from({ length: 8 }, (_, index) => ({
       kind: 'event' as const,

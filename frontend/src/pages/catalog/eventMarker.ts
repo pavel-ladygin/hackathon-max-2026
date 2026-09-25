@@ -1,5 +1,5 @@
 import type { EventDetail } from '../../shared/api/types'
-import { eventImage, eventImageFallback } from '../../shared/lib/events'
+import { eventImage } from '../../shared/lib/events'
 import styles from './catalogMap.module.css'
 
 export function createEventMarkerElement(event: Pick<EventDetail, 'title' | 'imageUrl' | 'category_slug'>, onOpen: () => void, entranceDelay = 0) {
@@ -11,28 +11,38 @@ export function createEventMarkerElement(event: Pick<EventDetail, 'title' | 'ima
   marker.dataset.active = 'false'
   marker.style.setProperty('--marker-delay', `${Math.min(120, Math.max(0, entranceDelay))}ms`)
 
+  const initialSrc = event.imageUrl ? eventImage(event.imageUrl, event.category_slug) : null
+  const placeholder = document.createElement('span')
+  placeholder.className = styles.markerImagePlaceholder
+  placeholder.setAttribute('aria-hidden', 'true')
+  placeholder.dataset.state = initialSrc ? 'loading' : 'unavailable'
+  if (!initialSrc) placeholder.textContent = 'Фото недоступно'
+
   const image = document.createElement('img')
   image.className = styles.markerImage
-  const fallbackSrc = eventImageFallback(event.category_slug)
-  image.src = eventImage(event.imageUrl, event.category_slug)
   image.alt = ''
   image.width = 48
   image.height = 48
-  image.addEventListener('error', () => {
-    if (image.dataset.fallbackApplied === 'true') {
-      image.hidden = true
-      return
-    }
-    image.dataset.fallbackApplied = 'true'
-    image.src = fallbackSrc
+  image.addEventListener('load', () => {
+    image.dataset.loaded = 'true'
+    placeholder.hidden = true
   })
+  image.addEventListener('error', () => {
+    delete image.dataset.loaded
+    placeholder.hidden = false
+    placeholder.dataset.state = 'unavailable'
+    placeholder.textContent = 'Фото недоступно'
+    image.hidden = true
+  })
+  if (initialSrc) image.src = initialSrc
+  else image.hidden = true
 
   const tooltip = document.createElement('span')
   tooltip.className = styles.markerTooltip
   tooltip.setAttribute('aria-hidden', 'true')
   tooltip.textContent = event.title
 
-  marker.append(image, tooltip)
+  marker.append(placeholder, image, tooltip)
   marker.addEventListener('click', onOpen)
   return marker
 }

@@ -224,12 +224,43 @@
 }
 
 .markerImage {
+  grid-area: 1 / 1;
   display: block;
   width: var(--marker-size);
   height: var(--marker-size);
   border-radius: var(--radius-sm);
   object-fit: cover;
   transition: width 180ms ease, height 180ms ease;
+}
+
+.markerImage:not([data-loaded='true']), .markerImage[hidden] { display: none; }
+
+.markerImagePlaceholder {
+  grid-area: 1 / 1;
+  display: grid;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted, #6b625c);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+}
+.markerImagePlaceholder[data-state='loading'] {
+  background: linear-gradient(100deg, #eee8e1 25%, #faf8f5 50%, #eee8e1 75%);
+  background-size: 200% 100%;
+  animation: markerImageLoading 1.4s ease infinite;
+}
+.markerImagePlaceholder[data-state='unavailable'] {
+  padding: 24px 2px 2px;
+  background: #f7f4ef url('/events/photo-unavailable-icon.png') center 3px / 23px 23px no-repeat;
+}
+.markerImagePlaceholder[hidden] { display: none; }
+
+@keyframes markerImageLoading {
+  to { background-position-x: -200%; }
 }
 
 .markerTooltip {
@@ -329,4 +360,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .markerImage { transition: none; }
+  .markerImagePlaceholder[data-state='loading'] { animation: none; }
 }

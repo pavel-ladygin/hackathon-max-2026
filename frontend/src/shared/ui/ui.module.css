@@ -33,6 +33,8 @@
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--color-hover); box-shadow: var(--shadow-control-soft); } .chipSelected:hover { background: #30302f; } }
 .chipSelected { border-color: #242423; background: #242423; color: #fff; animation: chipSelect var(--motion-micro) var(--motion-ease-standard) both; }
 .eventImage { display: block; width: 100%; height: 100%; object-fit: cover; background: #eee8e1; }
+.eventImageUnavailable { display: grid; place-content: center; justify-items: center; gap: 8px; padding: 6px; background: #f7f4ef; color: #77716b; font-size: var(--unavailable-font-size, 10px); font-weight: 600; text-align: center; }
+.eventImageUnavailable::before { content: ''; width: var(--unavailable-icon-size, 28px); height: var(--unavailable-icon-size, 28px); background: url('/events/photo-unavailable-icon.png') center / contain no-repeat; }
 .eventImageLoading { background: linear-gradient(100deg, #eee8e1 25%, #faf8f5 50%, #eee8e1 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; }
 .eventCard { display: flex; min-height: 96px; align-items: center; gap: 12px; width: 100%; margin: 0; padding: 9px; border: 1px solid #e2dcd5; border-radius: var(--radius-lg); background: var(--color-paper); color: var(--color-ink); text-align: left; box-shadow: 0 2px 8px rgb(32 26 22 / 3%); touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform var(--motion-fast), background-color var(--motion-fast), box-shadow var(--motion-fast); }
 .eventCard:active { transform: scale(.99); }

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
+import { eventImageFallback } from '../../shared/lib/events'
 import { MapEventPreview } from './MapEventPreview'
 import { createEventMarkerElement } from './eventMarker'
 
@@ -14,6 +15,19 @@ const event: EventCard = {
 }
 
 describe('map event preview', () => {
+  it('keeps the shimmer over a remote photo until it fails, then uses the neutral fallback', () => {
+    const imageFallback = eventImageFallback('concerts')
+    render(<MapEventPreview event={{ ...event, imageUrl: 'https://images.example.com/jazz.jpg' }} onClose={vi.fn()} onDetails={vi.fn()} />)
+
+    const image = document.querySelector('img')!
+    expect(image).toHaveAttribute('src', 'https://images.example.com/jazz.jpg')
+    expect(image.className).toContain('eventImageLoading')
+    expect(image.style.backgroundImage).toBe('')
+
+    fireEvent.error(image)
+    expect(image).toHaveAttribute('src', imageFallback)
+  })
+
   it('shows event summary and invokes close/details actions', () => {
     const onClose = vi.fn()
     const onDetails = vi.fn()
