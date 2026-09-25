@@ -26,7 +26,13 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	referenceTime := databaseNow(t, db)
-	base := referenceTime.In(zone).AddDate(0, 0, 1).Truncate(24 * time.Hour)
+	// Keep the seeded fixture on the same weekdays on every CI run.
+	localNow := referenceTime.In(zone)
+	daysUntilWednesday := (int(time.Wednesday) - int(localNow.Weekday()) + 7) % 7
+	if daysUntilWednesday == 0 {
+		daysUntilWednesday = 7
+	}
+	base := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, zone).AddDate(0, 0, daysUntilWednesday)
 	if _, err := catalogseed.Apply(ctx, db, base); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +179,20 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 	build(evening, 8)
 	weekend := freeInput
 	weekend.SecondIntent.DayTypes = []string{"weekend"}
-	build(weekend, 4)
+	freeWeekendIDs := make([]string, 0, len(free.Candidates))
+	for _, candidate := range free.Candidates {
+		day := events[candidate.EventID].StartsAt.Time.In(zone).Weekday()
+		if day == time.Saturday || day == time.Sunday {
+			freeWeekendIDs = append(freeWeekendIDs, candidate.EventID.String())
+		}
+	}
+	weekendResult := build(weekend, len(freeWeekendIDs))
+	weekendIDs := candidateIDsFromResult(weekendResult)
+	slices.Sort(freeWeekendIDs)
+	slices.Sort(weekendIDs)
+	if !slices.Equal(weekendIDs, freeWeekendIDs) {
+		t.Fatalf("weekend filter returned event IDs %v; want %v", weekendIDs, freeWeekendIDs)
+	}
 	oneDate := input
 	oneDate.SecondIntent.Dates = []string{dates[0]}
 	build(oneDate, 1)
