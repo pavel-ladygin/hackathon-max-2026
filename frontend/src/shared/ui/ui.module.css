@@ -95,9 +95,7 @@
 .bottomNav { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 8px; padding: 9px 12px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #ddd7d0; background: rgb(255 255 255 / 97%); box-shadow: 0 -8px 24px rgb(38 31 25 / 8%); backdrop-filter: blur(14px); }
 .navItem { display: flex; min-width: 0; min-height: 48px; flex: 1 1 0; align-items: center; flex-direction: column; justify-content: center; gap: 4px; border: 0; border-radius: var(--radius-md); padding: 4px 8px; background: transparent; color: #77716a; font-size: 10px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast); }
 .navIcon { position: relative; display: grid; width: 28px; height: 28px; place-items: center; }
-.navIcon::before, .navIcon::after { position: absolute; z-index: 0; width: 24px; height: 24px; border-radius: 50%; content: ""; opacity: 0; pointer-events: none; }
-.navIcon::before { background: var(--color-hover-strong); }
-.navIcon::after { border: 1px solid var(--color-accent); }
+.navIcon::after { position: absolute; right: 2px; bottom: 0; left: 2px; height: 2px; border-radius: 2px; background: currentColor; content: ""; opacity: 0; transform: scaleX(0); pointer-events: none; }
 .navIcon svg { transform-origin: center; }
 .navIcon svg { position: relative; z-index: 1; }
 .navLabel { display: block; transform-origin: center top; }
@@ -105,24 +103,23 @@
 .navItem:active { transform: scale(.96); }
 .navItem.active { background: var(--color-hover); color: var(--color-ink); font-weight: 800; }
 @media (hover: hover) and (pointer: fine) { .navItem:hover { background: var(--color-hover); color: var(--color-ink); } }
-.navClick_home .navIcon::before, .navClick_calendar .navIcon::before, .navClick_saved .navIcon::before { animation: navIconBloom 520ms var(--motion-ease-emphasized) both; }
-.navClick_home .navIcon::after, .navClick_calendar .navIcon::after, .navClick_saved .navIcon::after { animation: navIconRipple 560ms var(--motion-ease-standard) both; }
-.navClick_home .navIcon svg { animation: navHomeLift 520ms var(--motion-spring) both; }
-.navClick_calendar .navIcon svg { animation: navCalendarFlip 560ms var(--motion-spring) both; }
-.navClick_saved .navIcon svg { animation: navHeartPulse 600ms var(--motion-spring) both; }
-.navClick_home .navLabel, .navClick_calendar .navLabel, .navClick_saved .navLabel { animation: navLabelSettle 420ms var(--motion-spring) both; }
-@media (prefers-reduced-motion: reduce) { .button, .iconButton, .chip, .eventCard, .navItem, .favoriteButton { transition: none; animation: none; } .navIcon, .navIcon::before, .navIcon::after, .navIcon svg, .navLabel { animation: none !important; transition: none; } .buttonSpinner, .skeleton, .eventImageLoading, .spinner { animation: none; } .status { animation: none; } }
+.navClick_home .navIcon { animation: navHomeLift 580ms cubic-bezier(.18, .9, .24, 1) both; }
+.navClick_home .navIcon::after { animation: navHomeLine 580ms ease both; }
+.navClick_calendar .navIcon { animation: navCalendarFlip 620ms cubic-bezier(.2, .7, .2, 1) both; }
+.navClick_calendar .navLabel { animation: navCalendarLabel 620ms ease both; }
+.navClick_saved .navIcon { animation: navHeartFill 700ms ease both; }
+.navClick_saved .navIcon svg path { animation: navHeartPathFill 700ms ease both; }
+@media (prefers-reduced-motion: reduce) { .button, .iconButton, .chip, .eventCard, .navItem, .favoriteButton { transition: none; animation: none; } .navIcon, .navIcon::after, .navIcon svg, .navIcon svg path, .navLabel { animation: none !important; transition: none; } .buttonSpinner, .skeleton, .eventImageLoading, .spinner { animation: none; } .status { animation: none; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { to { background-position-x: -200%; } }
 @keyframes statusPop { from { transform: scale(.7); opacity: .4; } to { transform: scale(1); opacity: 1; } }
 @keyframes heartPop { 0% { transform: scale(.84); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @keyframes chipSelect { from { transform: scale(.97); } to { transform: scale(1); } }
 @keyframes statusEntrance { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes navActive { from { opacity: .72; transform: scale(.98); } to { opacity: 1; transform: scale(1); } }
-@keyframes navHomeLift { 0%, 100% { transform: translateY(0); } 48% { transform: translateY(-3px); } }
-@keyframes navCalendarFlip { 0%, 100% { transform: perspective(80px) rotateX(0); } 45% { transform: perspective(80px) rotateX(-18deg); } }
-@keyframes navHeartPulse { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.16); } 62% { transform: scale(.96); } }
-@keyframes navIconBloom { 0% { opacity: 0; transform: scale(.55); } 35% { opacity: .92; transform: scale(1.18); } 100% { opacity: 0; transform: scale(1.45); } }
-@keyframes navIconRipple { 0% { opacity: .7; transform: scale(.68); } 100% { opacity: 0; transform: scale(1.65); } }
-@keyframes navLabelSettle { 0% { transform: translateY(2px) scale(.94); } 55% { transform: translateY(-1px) scale(1.04); } 100% { transform: translateY(0) scale(1); } }
+@keyframes navHomeLift { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-6px); } }
+@keyframes navHomeLine { 0% { transform: scaleX(0); opacity: 0; } 35% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes navCalendarFlip { 0%, 100% { transform: perspective(80px) rotateX(0); } 38% { transform: perspective(80px) rotateX(-38deg); } 65% { transform: perspective(80px) rotateX(8deg); } }
+@keyframes navCalendarLabel { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2px); } }
+@keyframes navHeartFill { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.13); } 65% { transform: scale(.98); } }
+@keyframes navHeartPathFill { 0%, 100% { fill: transparent; } 40%, 70% { fill: var(--color-hover-strong); } }
 @media (min-width: 768px) { .pageShell { width: 100%; min-height: 100dvh; margin: 0; border-radius: 0; box-shadow: none; } .pageContent { max-width: none; margin: 0; padding-right: 32px; padding-left: 32px; } .bottomNav { right: auto; bottom: 16px; left: 50%; width: min(520px, calc(100vw - 32px)); transform: translateX(-50%); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding-bottom: 9px; } .eventCard .eventImage { width: 92px; height: 92px; } }
