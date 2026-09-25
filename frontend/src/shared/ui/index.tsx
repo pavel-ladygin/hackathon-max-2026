@@ -171,6 +171,13 @@ export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; act
   useEffect(() => {
     if (lastClick && pendingNavClick?.sequence === lastClick.sequence) consumedNavClickSequence = lastClick.sequence;
   }, [lastClick]);
+  useEffect(() => {
+    if (!lastClick) return;
+    const timeout = window.setTimeout(() => {
+      setLastClick((current) => current?.sequence === lastClick.sequence ? null : current);
+    }, 720);
+    return () => window.clearTimeout(timeout);
+  }, [lastClick]);
   return <nav className={styles.bottomNav} aria-label="Основная навигация">{items.map(item => {
     const clicked = lastClick?.id === item.id;
     return <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""} ${clicked ? styles[`navClick_${item.icon}`] : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => {
