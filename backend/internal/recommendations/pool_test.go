@@ -517,6 +517,10 @@ func TestPoolBuilderIndividualConstraints(t *testing.T) {
 		}, 1},
 		{"unknown indoor allowed", func(f *fixture) { f.input.SecondIntent.ExclusionSlugs = []string{"outdoor"} }, 1},
 		{"nil radius ignores location", func(f *fixture) { f.input.FirstIntent.Location = &contracts.GeoPoint{Latitude: 70, Longitude: 70} }, 1},
+		{"missing venue coordinates without radius", func(f *fixture) {
+			f.data.Venues[0].Latitude = pgtype.Float8{}
+			f.data.Venues[0].Longitude = pgtype.Float8{}
+		}, 1},
 		{"radius uses city center", func(f *fixture) {
 			r := int32(1000)
 			f.input.FirstIntent.RadiusM = &r

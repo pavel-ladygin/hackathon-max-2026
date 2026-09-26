@@ -146,13 +146,9 @@ func participantIntent(in roomsql.RoomIntent) contracts.ParticipantIntent {
 	out.TimeSlots = append([]string(nil), in.TimeSlots...)
 	out.CategorySlugs = append([]string(nil), in.CategorySlugs...)
 	out.ExclusionSlugs = append([]string(nil), in.ExclusionSlugs...)
-	if in.RadiusM.Valid {
-		v := in.RadiusM.Int32
-		out.RadiusM = &v
-	}
-	if in.LocationLat.Valid && in.LocationLng.Valid {
-		out.Location = &contracts.GeoPoint{Latitude: in.LocationLat.Float64, Longitude: in.LocationLng.Float64}
-	}
+	// Room recommendations currently do not use participant geolocation. Keep
+	// the persisted fields for future use, but do not let stale values narrow
+	// pools for either existing rooms or newly submitted intents.
 	if in.FreeText.Valid {
 		v := in.FreeText.String
 		out.FreeText = &v

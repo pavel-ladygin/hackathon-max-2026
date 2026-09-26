@@ -9,7 +9,7 @@ import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
 import { RoomEventDate } from '../../features/rooms/RoomEventDate'
-import { relaxedIntent } from '../../features/rooms/relaxation'
+import { availableRelaxations } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import { withMinimumDuration } from '../../shared/lib/async'
@@ -135,7 +135,6 @@ const intentSchema = z.object({
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
   category_slugs: z.array(z.enum(['concerts', 'cinema', 'theatre', 'standup', 'exhibitions', 'sports', 'food', 'parties', 'festivals', 'walks', 'other'])).min(1),
   budget: z.coerce.number().min(0).max(1_000_000),
-  radius: z.coerce.number().min(100).max(50_000),
   free_text: z.string().max(300),
 })
 type IntentForm = z.infer<typeof intentSchema>
@@ -150,13 +149,12 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
-  const radius = useWatch({ control: form.control, name: 'radius' })
   const save = useMutation({
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: (error) => {
       if (!(error instanceof ApiError)) return
-      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', radius_m: 'radius', free_text: 'free_text' }
+      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', free_text: 'free_text' }
       for (const [field, message] of Object.entries(error.fieldErrors)) if (mapping[field]) form.setError(mapping[field], { message })
     },
   })
@@ -169,7 +167,6 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
         <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
         <label className={intentStyles.rangeField} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
-        <label className={intentStyles.rangeField} htmlFor="room-radius">Радиус · до {(radius / 1000).toFixed(0)} км<input id="room-radius" className={styles.range} type="range" min="100" max="50000" step="500" aria-invalid={Boolean(form.formState.errors.radius)} {...form.register('radius')} />{form.formState.errors.radius ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.radius.message}</span> : null}</label>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {Object.keys(form.formState.errors).length ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}
         {save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
@@ -267,9 +264,13 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
 function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState('budget')
-  const restart = useMutation({ mutationFn: () => apiClient.replaceMyIntent(room.id, relaxedIntent(room.myIntent, selected)), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
-  const suggestions = [{ id: 'budget', title: 'Увеличить бюджет до 3 500 ₽', meta: '+8 подходящих событий' }, { id: 'date', title: 'Добавить пятницу вечером', meta: '+5 событий' }, { id: 'radius', title: 'Увеличить радиус до 10 км', meta: '+7 событий' }, { id: 'category', title: 'Добавить выставки', meta: '+4 события' }]
+  const [selected, setSelected] = useState<string | null>(null)
+  const suggestions = availableRelaxations(room.myIntent)
+  const selectedSuggestion = suggestions.find((item) => item.id === selected) ?? suggestions[0]
+  const restart = useMutation({ mutationFn: () => {
+    if (!selectedSuggestion) throw new Error('No room intent change selected')
+    return apiClient.replaceMyIntent(room.id, selectedSuggestion.intent)
+  }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
   if (!room.allowed_actions.includes('restart_with_new_intent')) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
@@ -281,12 +282,11 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   }
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Можно немного расширить только ваши условия и запустить новый приватный раунд.</p>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что ограничило подборку</h2><div className={styles.reason}><strong>Бюджет и время</strong><p>Пересечение получилось небольшим, а часть подходящих событий немного дороже.</p></div><div className={styles.reason}><strong>Категории и расстояние</strong><p>В выбранном радиусе мало событий с общими интересами.</p></div></section>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selected === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{item.meta}</small></span><span aria-hidden="true">{selected === item.id ? '✓' : '○'}</span></button>)}</section>
-      <PrivacyNote>Это только общие причины — ответы второго участника не раскрываются.</PrivacyNote>
+      <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Сейчас нет событий по выбранным условиям. Можно изменить свои условия и запустить новый приватный раунд.</p>
+      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selectedSuggestion?.id === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selectedSuggestion?.id === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong></span><span aria-hidden="true">{selectedSuggestion?.id === item.id ? '✓' : '○'}</span></button>)}{suggestions.length === 0 ? <p className={styles.subtitle}>Больше нечего изменить в текущих условиях. Попробуйте позже или создайте новую комнату.</p> : null}</section>
+      <PrivacyNote>Ответы второго участника не раскрываются.</PrivacyNote>
       {restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
-      <div className={styles.footer}><Button disabled={restart.isPending} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => restart.mutate()}>Применить и обновить подборку</Button></div>
+      <div className={styles.footer}><Button disabled={restart.isPending || !selectedSuggestion} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => { if (selectedSuggestion) restart.mutate() }}>Применить и обновить подборку</Button></div>
     </PageContent></PageShell>
   )
 }
@@ -304,7 +304,7 @@ function expectedScreen(room: RoomSnapshot) {
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
-  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: values.radius, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
+  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: null, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }
@@ -321,9 +321,8 @@ function intentDefaults(room: RoomSnapshot, fallbackDate: string): IntentForm {
     time_slots: intent.time_slots,
     category_slugs: intent.category_slugs,
     budget: Math.round(intent.budget_max_minor / 100),
-    radius: intent.radius_m ?? 5_000,
     free_text: intent.free_text ?? '',
-  } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' }
+  } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, free_text: '' }
 }
 
 function maxAppUrl(token: string) {
