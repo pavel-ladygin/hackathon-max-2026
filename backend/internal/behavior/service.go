@@ -2,6 +2,7 @@ package behavior
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -121,6 +122,18 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, events []ClientE
 	result := Result{}
 	err := s.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		for _, event := range events {
+			properties := event.Properties
+			if len(properties) == 0 {
+				properties = []byte(`{}`)
+			}
+			eventVersion := event.EventVersion
+			if eventVersion == 0 {
+				eventVersion = 1
+			}
+			var propertyFields map[string]json.RawMessage
+			if eventVersion != 1 || json.Unmarshal(properties, &propertyFields) != nil || propertyFields == nil {
+				return ErrInvalid
+			}
 			if event.EventID.Valid {
 				var exists bool
 				if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM events WHERE id = $1)", uuid.UUID(event.EventID.Bytes)).Scan(&exists); err != nil {
@@ -142,7 +155,7 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, events []ClientE
 				ON CONFLICT DO NOTHING`, uuid.New(), userID, event.Type, event.EventID,
 				event.RoomID, event.Surface, event.Position, event.RequestID,
 				pgtype.Text{String: event.ClientEventID, Valid: true}, event.OccurredAt,
-				event.EventVersion, event.SessionID, event.Platform, event.AppVersion, event.EntryPoint, string(event.Properties))
+				eventVersion, event.SessionID, event.Platform, event.AppVersion, event.EntryPoint, string(properties))
 			if err != nil {
 				return err
 			}

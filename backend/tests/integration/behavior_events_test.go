@@ -149,8 +149,16 @@ func TestBehaviorRecorderPersistsAndValidatesServerEvents(t *testing.T) {
 	if err := recorder.Record(ctx, db, serverEvent); err != nil {
 		t.Fatal(err)
 	}
-	if err := recorder.Record(ctx, db, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: user, Type: "unknown", OccurredAt: time.Now().UTC()}); err == nil {
-		t.Fatal("invalid server event accepted")
+	invalidEvent := contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: user, Type: "unknown", OccurredAt: time.Now().UTC()}
+	if err := recorder.Record(ctx, db, invalidEvent); err != nil {
+		t.Fatalf("invalid server event disrupted the caller: %v", err)
+	}
+	var rejectedRows int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE id=$1`, invalidEvent.ID).Scan(&rejectedRows); err != nil {
+		t.Fatal(err)
+	}
+	if rejectedRows != 0 {
+		t.Fatal("invalid server event was persisted")
 	}
 	var origin, typ string
 	if err := db.QueryRow(ctx, `SELECT origin,type FROM behavior_events WHERE id=$1`, serverEvent.ID).Scan(&origin, &typ); err != nil {

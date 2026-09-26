@@ -288,7 +288,7 @@ func assertB9TerminalState(t *testing.T, db *store.Pool, roomID, eventID, creato
 type failOnMatchRecorder struct{ err error }
 
 func (r failOnMatchRecorder) Record(ctx context.Context, db store.DBTX, event contracts.ServerBehaviorEvent) error {
-	if event.Type == "match" {
+	if event.Type == "match_created" {
 		return r.err
 	}
 	return (behavior.Recorder{}).Record(ctx, db, event)
