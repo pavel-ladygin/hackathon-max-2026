@@ -93,6 +93,11 @@ func homeResponse(feed HomeFeed) api.HomeFeedResponse {
 		Title string                           `json:"title"`
 		Type  api.HomeFeedResponseSectionsType `json:"type"`
 	}, 0, len(feed.Sections))}
+	if feed.ActiveRoom != nil {
+		response.ActiveRoom = nullable.NewNullableWithValue(api.RoomSummary{
+			Id: feed.ActiveRoom.ID, Name: feed.ActiveRoom.Name, CityId: feed.ActiveRoom.CityID, State: api.RoomState(feed.ActiveRoom.State),
+		})
+	}
 	for _, section := range feed.Sections {
 		item := struct {
 			Items []api.EventCard                  `json:"items"`

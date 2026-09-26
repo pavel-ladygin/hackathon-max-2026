@@ -103,13 +103,17 @@ func TestRoomEventAvailabilityUsesBothParticipantsHardBudget(t *testing.T) {
 	if roomEventAvailable(available, 1499, now) {
 		t.Fatal("price above the strictest participant budget must be unavailable")
 	}
+	unknownPrice := available
+	unknownPrice.PriceFromMinor = nil
+	if !roomEventAvailable(unknownPrice, 0, now) {
+		t.Fatal("unknown price must remain available without being treated as zero")
+	}
 	for name, mutate := range map[string]func(*contracts.Availability){
 		"missing":   func(a *contracts.Availability) { a.Exists = false },
 		"cancelled": func(a *contracts.Availability) { a.Status = "cancelled" },
 		"sold out":  func(a *contracts.Availability) { a.Status = "sold_out" },
 		"no ticket": func(a *contracts.Availability) { a.TicketAvailable = false },
 		"no url":    func(a *contracts.Availability) { a.TicketURL = nil },
-		"no price":  func(a *contracts.Availability) { a.PriceFromMinor = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := available

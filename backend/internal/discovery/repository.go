@@ -19,6 +19,22 @@ type Repository struct{ db *store.Pool }
 
 func NewRepository(db *store.Pool) *Repository { return &Repository{db: db} }
 
+// GetActiveRoom returns the caller's unexpired non-terminal room, if one
+// exists. It never mutates stale memberships; room lifecycle owns retirement.
+func (r *Repository) GetActiveRoom(ctx context.Context, userID uuid.UUID) (ActiveRoom, bool, error) {
+	if userID == uuid.Nil {
+		return ActiveRoom{}, false, ErrInvalidFilter
+	}
+	row, err := platform.New(r.db).GetDiscoveryActiveRoom(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ActiveRoom{}, false, nil
+	}
+	if err != nil {
+		return ActiveRoom{}, false, err
+	}
+	return ActiveRoom{ID: row.ID, Name: row.Name, CityID: row.CityID, State: row.State}, true, nil
+}
+
 // UserCity returns the profile city used when discovery has no explicit city.
 func (r *Repository) UserCity(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
 	if userID == uuid.Nil {
