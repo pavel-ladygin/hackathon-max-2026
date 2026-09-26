@@ -63,7 +63,7 @@ func TestJoinRoomPersistsSafeParticipantSnapshotAndIsRepeatable(t *testing.T) {
 		t.Fatalf("creator actions = %v; want edit_intent for a full room", creatorView.AllowedActions)
 	}
 	var creatorJoinEvents int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_join'", created.Room.Id, f.creator).Scan(&creatorJoinEvents); err != nil || creatorJoinEvents != 0 {
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_joined'", created.Room.Id, f.creator).Scan(&creatorJoinEvents); err != nil || creatorJoinEvents != 0 {
 		t.Fatalf("creator own invite behavior count=%d err=%v; want zero", creatorJoinEvents, err)
 	}
 
@@ -191,9 +191,9 @@ func TestJoinRoomRetiresRestartableRoomAndRollsBackRecorderFailure(t *testing.T)
 		t.Fatal("recorder failure unexpectedly committed")
 	}
 	for query, want := range map[string]int{
-		"SELECT count(*) FROM room_members WHERE room_id=$1 AND user_id=$2":                         0,
-		"SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND user_id=$2":              0,
-		"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_join'": 0,
+		"SELECT count(*) FROM room_members WHERE room_id=$1 AND user_id=$2":                           0,
+		"SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND user_id=$2":                0,
+		"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_joined'": 0,
 	} {
 		var got int
 		if err := db.QueryRow(ctx, query, failingTarget.Room.Id, failingUser).Scan(&got); err != nil || got != want {
@@ -249,7 +249,7 @@ func TestJoinRoomConcurrencyEnforcesCapacityAndSameUserIdempotence(t *testing.T)
 	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1", target.Room.Id).Scan(&members); err != nil || members != 2 {
 		t.Fatalf("member count=%d err=%v; want 2", members, err)
 	}
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_join'", target.Room.Id).Scan(&joins); err != nil || joins != 1 {
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_joined'", target.Room.Id).Scan(&joins); err != nil || joins != 1 {
 		t.Fatalf("join behaviors=%d err=%v; want 1", joins, err)
 	}
 
@@ -299,7 +299,7 @@ func assertJoinRows(t *testing.T, db *store.Pool, roomID, userID uuid.UUID, memb
 	}{
 		{"SELECT count(*) FROM room_members WHERE room_id=$1 AND user_id=$2", memberships},
 		{"SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND user_id=$2 AND round_no=1", memberships},
-		{"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_join'", behaviors},
+		{"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_joined'", behaviors},
 	}
 	for _, check := range checks {
 		var got int

@@ -69,3 +69,36 @@ func TestDecodeBatchStrictMetadataByType(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeBatchAcceptsAnalyticsEnvelopeAndRejectsUnsafeOrServerEvents(t *testing.T) {
+	userSession := uuid.NewString()
+	valid := `{"events":[{"client_event_id":"evt-1","type":"onboarding_completed","event_version":1,"occurred_at":"2026-09-20T10:00:00Z","session_id":"` + userSession + `","platform":"max_android","app_version":"1.2.3","entry_point":"feed","properties":{"selected_categories_count":3,"budget_configured":true}}]}`
+	events, err := decodeBatch(httptest.NewRecorder(), httptest.NewRequest("POST", "/", strings.NewReader(valid)))
+	if err != nil || len(events) != 1 || events[0].EventVersion != 1 || !events[0].SessionID.Valid || events[0].Platform.String != "max_android" || len(events[0].Properties) == 0 {
+		t.Fatalf("valid envelope events=%#v err=%v", events, err)
+	}
+	for _, body := range []string{
+		`{"events":[{"client_event_id":"a","type":"search_performed","event_version":1,"occurred_at":"2026-09-20T10:00:00Z","properties":{"query":"raw private text"}}]}`,
+		`{"events":[{"client_event_id":"a","type":"event_saved","event_version":1,"occurred_at":"2026-09-20T10:00:00Z"}]}`,
+		`{"events":[{"client_event_id":"a","type":"onboarding_started","event_version":2,"occurred_at":"2026-09-20T10:00:00Z"}]}`,
+	} {
+		if _, err := decodeBatch(httptest.NewRecorder(), httptest.NewRequest("POST", "/", strings.NewReader(body))); err == nil {
+			t.Fatalf("invalid analytics event accepted: %s", body)
+		}
+	}
+}
+
+func TestDecodeBatchAllowsSafeFailureEventsOnlyWithBoundedCodes(t *testing.T) {
+	valid := `{"events":[{"client_event_id":"failed-1","type":"room_join_failed","event_version":1,"occurred_at":"2026-09-20T10:00:00Z","room_id":"` + uuid.NewString() + `","properties":{"error_code":"not_found"}},{"client_event_id":"perf-1","type":"client_performance","event_version":1,"occurred_at":"2026-09-20T10:00:01Z","properties":{"operation":"feed_load","duration_ms":600000}}]}`
+	if events, err := decodeBatch(httptest.NewRecorder(), httptest.NewRequest("POST", "/", strings.NewReader(valid))); err != nil || len(events) != 2 {
+		t.Fatalf("valid failure/performance events=%#v err=%v", events, err)
+	}
+	for _, body := range []string{
+		`{"events":[{"client_event_id":"a","type":"client_error","event_version":1,"occurred_at":"2026-09-20T10:00:00Z","properties":{"error_code":"private-message"}}]}`,
+		`{"events":[{"client_event_id":"a","type":"client_performance","event_version":1,"occurred_at":"2026-09-20T10:00:00Z","properties":{"operation":"feed_load","duration_ms":600001}}]}`,
+	} {
+		if _, err := decodeBatch(httptest.NewRecorder(), httptest.NewRequest("POST", "/", strings.NewReader(body))); err == nil {
+			t.Fatalf("unsafe failure/performance event accepted: %s", body)
+		}
+	}
+}

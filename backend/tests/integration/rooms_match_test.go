@@ -49,7 +49,7 @@ func TestB9ConcurrentMutualLikesCommitOneTerminalMatch(t *testing.T) {
 	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM room_matches WHERE room_id=$1", f.room).Scan(&matches); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match'", f.room).Scan(&terminalEvents); err != nil {
+	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match_created'", f.room).Scan(&terminalEvents); err != nil {
 		t.Fatal(err)
 	}
 	if matches != 1 || terminalEvents != 1 {
@@ -214,7 +214,7 @@ func TestB9MatchRecorderFailureRollsBackTerminalTransition(t *testing.T) {
 	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM room_matches WHERE room_id=$1", f.room).Scan(&matches); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match'", f.room).Scan(&matchBehaviors); err != nil {
+	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match_created'", f.room).Scan(&matchBehaviors); err != nil {
 		t.Fatal(err)
 	}
 	if votes != 1 || matches != 0 || matchBehaviors != 0 {
@@ -254,7 +254,7 @@ func TestB9IdempotentVoteDoesNotDuplicatePersistence(t *testing.T) {
 	}
 	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM behavior_events
-		WHERE room_id=$1 AND event_id=$2 AND user_id=$3 AND type='dislike'`,
+		WHERE room_id=$1 AND event_id=$2 AND user_id=$3 AND type='event_disliked'`,
 		f.room, events[0], f.creator).Scan(&behaviors); err != nil {
 		t.Fatal(err)
 	}

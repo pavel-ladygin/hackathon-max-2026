@@ -128,7 +128,7 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 			return err
 		}
 		if both.Valid && both.Bool {
-			if err := s.buildRoomPool(ctx, repo, room); err != nil {
+			if err := s.buildRoomPool(ctx, repo, room, principal.UserID, now); err != nil {
 				return err
 			}
 			transitioned = true
@@ -137,7 +137,7 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 				return err
 			}
 		}
-		if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "intent_submit", RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now}); err != nil {
+		if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_intent_submitted", RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now}); err != nil {
 			return err
 		}
 		snapshot, err = s.snapshot(ctx, repo, principal.UserID, room, membership, now)

@@ -19,7 +19,7 @@ import (
 const ticketClickRequestLimit = 4 * 1024
 
 type Provider interface {
-	Click(context.Context, uuid.UUID, uuid.UUID) (string, error)
+	Click(context.Context, uuid.UUID, uuid.UUID, ...uuid.UUID) (string, error)
 }
 
 type Handler struct{ service Provider }
@@ -41,11 +41,16 @@ func (h *Handler) Click(w http.ResponseWriter, r *http.Request) {
 		writeTicketError(w, r, http.StatusNotFound, "NOT_FOUND", "Event not found")
 		return
 	}
-	if err := decodeTicketClickRequest(w, r); err != nil {
+	roomID, err := decodeTicketClickRequest(w, r)
+	if err != nil {
 		writeTicketError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid ticket click request")
 		return
 	}
-	externalURL, err := h.service.Click(r.Context(), principal.UserID, eventID)
+	var roomIDs []uuid.UUID
+	if roomID != nil {
+		roomIDs = append(roomIDs, *roomID)
+	}
+	externalURL, err := h.service.Click(r.Context(), principal.UserID, eventID, roomIDs...)
 	if errors.Is(err, ErrNotFound) {
 		writeTicketError(w, r, http.StatusNotFound, "NOT_FOUND", "Event not found")
 		return
@@ -61,36 +66,38 @@ func (h *Handler) Click(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, api.TicketClickResponse{ExternalUrl: externalURL})
 }
 
-func decodeTicketClickRequest(w http.ResponseWriter, r *http.Request) error {
+func decodeTicketClickRequest(w http.ResponseWriter, r *http.Request) (*uuid.UUID, error) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, ticketClickRequestLimit))
 	if err != nil || !utf8.Valid(body) {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	var fields map[string]json.RawMessage
 	if err := decoder.Decode(&fields); err != nil || fields == nil {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF || len(fields) < 1 || len(fields) > 2 || fields["source"] == nil || bytes.Equal(fields["source"], []byte("null")) {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	for name := range fields {
 		if name != "source" && name != "room_id" {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
 	}
 	var source api.TicketClickRequestSource
 	if err := json.Unmarshal(fields["source"], &source); err != nil || !source.Valid() {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
+	var parsedRoomID *uuid.UUID
 	if roomID, ok := fields["room_id"]; ok && !bytes.Equal(roomID, []byte("null")) {
 		var value uuid.UUID
 		if err := json.Unmarshal(roomID, &value); err != nil || value == uuid.Nil {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
+		parsedRoomID = &value
 	}
-	return nil
+	return parsedRoomID, nil
 }
 
 func writeTicketError(w http.ResponseWriter, r *http.Request, status int, code, message string) {

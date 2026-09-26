@@ -160,7 +160,7 @@ func (s *Service) Create(ctx context.Context, principal contracts.Principal, key
 			}
 			response = api.CreateRoomResponse{Room: createSnapshot(room, participants, material)}
 			response.Invite.Token, response.Invite.Url, response.Invite.MaxDeepLink, response.Invite.ExpiresAt = material.Token, material.URL, material.MaxDeepLink, material.ExpiresAt
-			if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_create", RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: clock}); err != nil {
+			if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_created", RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: clock, DeduplicationKey: "room/" + room.ID.String() + "/created"}); err != nil {
 				return err
 			}
 			body, err := json.Marshal(response)

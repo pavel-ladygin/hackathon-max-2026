@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
 )
@@ -17,7 +19,7 @@ var errPoolBuilderUnavailable = errors.New("room pool builder is not configured"
 // buildRoomPool runs after the room row has been locked and both round states
 // are ready. All writes remain on the caller's transaction and roll back when
 // the builder fails or any persistence operation fails.
-func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room roomsql.Room) error {
+func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room roomsql.Room, actorID uuid.UUID, occurredAt time.Time) error {
 	if s.builder == nil {
 		return errPoolBuilderUnavailable
 	}
@@ -127,6 +129,9 @@ func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room room
 		if err := s.finalizeExhaustedRoom(ctx, repo, room); err != nil {
 			return err
 		}
+		if err := s.recordPoolGenerated(ctx, repo, room, actorID, occurredAt, input.PoolVersion, count); err != nil {
+			return err
+		}
 		// Do not reset round completion markers here: zero candidates means the
 		// pool is already exhausted for both members.
 		return nil
@@ -134,7 +139,19 @@ func (s *Service) buildRoomPool(ctx context.Context, repo *Repository, room room
 	if _, err := repo.Queries.ResetRoundPoolFinished(ctx, roomsql.ResetRoundPoolFinishedParams{RoomID: room.ID, RoundNo: room.RoundNo}); err != nil {
 		return err
 	}
-	return nil
+	return s.recordPoolGenerated(ctx, repo, room, actorID, occurredAt, input.PoolVersion, count)
+}
+
+func (s *Service) recordPoolGenerated(ctx context.Context, repo *Repository, room roomsql.Room, actorID uuid.UUID, occurredAt time.Time, version int32, candidateCount int) error {
+	properties, err := json.Marshal(map[string]any{"candidate_count": candidateCount, "round_no": room.RoundNo, "pool_size": candidateCount})
+	if err != nil {
+		return err
+	}
+	return s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{
+		ID: uuid.New(), UserID: actorID, Type: "room_pool_generated", RoomID: &room.ID,
+		RequestID: httpapi.RequestID(ctx), OccurredAt: occurredAt, Properties: properties,
+		DeduplicationKey: fmt.Sprintf("room/%s/pool/%d", room.ID, version),
+	})
 }
 
 func participantIntent(in roomsql.RoomIntent) contracts.ParticipantIntent {

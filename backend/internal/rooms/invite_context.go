@@ -40,7 +40,7 @@ func (s *Service) ResolveInviteContext(ctx context.Context, userID uuid.UUID, to
 		if preview.InviterAvatarUrl.Valid {
 			inviter.AvatarUrl = nullable.NewNullableWithValue(preview.InviterAvatarUrl.String)
 		}
-		result = &api.InviteContext{Token: token, RoomName: preview.RoomName, Inviter: inviter, ExpiresAt: preview.ExpiresAt.Time, AlreadyJoined: preview.AlreadyJoined, Status: status}
+		result = &api.InviteContext{Token: token, RoomId: preview.RoomID, RoomName: preview.RoomName, Inviter: inviter, ExpiresAt: preview.ExpiresAt.Time, AlreadyJoined: preview.AlreadyJoined, Status: status}
 		return nil
 	})
 	return result, err

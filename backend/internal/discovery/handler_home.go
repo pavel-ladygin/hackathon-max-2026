@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/oapi-codegen/nullable"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
@@ -20,12 +21,19 @@ type HomeFeedProvider interface {
 }
 
 // HomeHandler exposes the authenticated home-feed route.
-type HomeHandler struct{ service HomeFeedProvider }
+type HomeHandler struct {
+	service       HomeFeedProvider
+	operationSink behavior.OperationEventSink
+}
 
 func NewHomeHandler(service HomeFeedProvider) *HomeHandler { return &HomeHandler{service: service} }
 
+func (h *HomeHandler) EnableOperationTelemetry(sink behavior.OperationEventSink) {
+	h.operationSink = sink
+}
+
 func (h *HomeHandler) RegisterRoutes(r chi.Router, authenticate func(http.Handler) http.Handler) {
-	r.With(authenticate).Get("/api/v1/feed/home", h.GetHome)
+	r.With(authenticate, behavior.OperationMiddleware("feed_load", h.operationSink)).Get("/api/v1/feed/home", h.GetHome)
 }
 
 func (h *HomeHandler) GetHome(w http.ResponseWriter, r *http.Request) {

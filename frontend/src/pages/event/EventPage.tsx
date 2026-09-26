@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
+import { track, trackClientError, trackFailure, trackPerformance } from '../../shared/analytics/client'
 import { ApiError } from '../../shared/api/errors'
 import { eventCategoryLabel, eventHeroImage, eventImageFallback } from '../../shared/lib/events'
 import { withMinimumDuration } from '../../shared/lib/async'
@@ -14,19 +15,32 @@ export function EventPage() {
   const { eventId } = useParams()
   const navigate = useNavigate()
   const event = useEventDetail(eventId)
+  const loadedEventId = event.data?.id
+  const eventStartedAt = useRef<number | null>(null)
+  const reportedEventError = useRef<unknown>(null)
+  useEffect(() => {
+    eventStartedAt.current = performance.now()
+    reportedEventError.current = null
+  }, [eventId])
   const save = useSetSavedEvent()
-  const behaviorId = useRef(crypto.randomUUID())
   const ticket = useMutation({
     mutationFn: async () => {
       const { external_url } = await withMinimumDuration(apiClient.recordTicketClick(eventId!, { source: 'event_detail' }), 140)
       if (!await maxPlatform.openTicketLink(external_url)) throw new Error('Ticket link could not be opened')
     },
+    onError: (error) => trackFailure('ticket_redirect_failed', error, { eventId: event.data?.id }),
   })
 
   useEffect(() => {
-    if (!event.data) return
-    void apiClient.recordBehavior([{ client_event_id: behaviorId.current, type: 'open', occurred_at: new Date().toISOString(), event_id: event.data.id, metadata: { surface: 'event_detail' } }])
-  }, [event.data])
+    if (!loadedEventId) return
+    track('event_opened', { eventId: loadedEventId, properties: { source_screen: 'direct' } })
+    trackPerformance('event_detail_load', performance.now() - (eventStartedAt.current ?? performance.now()))
+  }, [loadedEventId])
+  useEffect(() => {
+    if (!event.isError || !event.error || reportedEventError.current === event.error) return
+    reportedEventError.current = event.error
+    trackClientError('event_detail_load', event.error)
+  }, [event.error, event.isError])
 
   if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем событие…" />
   if (event.isError) {

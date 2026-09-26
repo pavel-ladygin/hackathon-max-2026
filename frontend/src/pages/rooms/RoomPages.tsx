@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
@@ -21,6 +21,7 @@ import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, EventImage, PageContent, PageShell, PrivacyNote, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 import intentStyles from './intent.module.css'
+import { track, trackFailure } from '../../shared/analytics/client'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
@@ -34,10 +35,14 @@ export function NewRoomPage() {
   const bootstrap = useBootstrap()
   const [createSuccess, setCreateSuccess] = useState(false)
   const form = useForm<RoomForm>({ resolver: zodResolver(roomSchema), defaultValues: { name: 'Куда идём в субботу?' } })
+  useEffect(() => { track('room_creation_started') }, [])
   const create = useMutation({
     mutationFn: (values: RoomForm) => apiClient.createRoom({ name: values.name.trim(), city_id: bootstrap.data?.preferences?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID }),
     onSuccess: async ({ room }) => { setCreateSuccess(true); await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350)); navigate(`/rooms/${room.id}/invite`) },
-    onError: (error) => { if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true }) },
+    onError: (error) => {
+      trackFailure('room_creation_failed', error)
+      if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true })
+    },
   })
   return (
     <PageShell><TopBar title="Новая комната" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
@@ -57,6 +62,8 @@ export function InvitePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const room = useRoom(roomId)
+  const loadedRoomId = room.data?.id
+  useEffect(() => { if (loadedRoomId) track('invite_opened', { roomId: loadedRoomId }) }, [loadedRoomId])
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sharing' | 'shared' | 'share-error' | 'copied' | 'copy-error'>('idle')
   if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
@@ -67,6 +74,8 @@ export function InvitePage() {
     setInviteStatus('sharing')
     const ok = await maxPlatform.shareInvite({ text: `Присоединяйся к комнате «${room.data.name}»`, link: maxLink })
     setInviteStatus(ok ? 'shared' : 'share-error')
+    if (ok) track('invite_shared', { roomId: room.data.id })
+    else trackFailure('invite_share_failed', new Error('Invite sharing failed'), { roomId: room.data.id })
   }
   const copy = async () => {
     if (!rawUrl) return
@@ -91,6 +100,8 @@ export function JoinPage() {
   const bootstrap = useBootstrap()
   const inviteContext = bootstrap.data?.inviteContext
   const context = inviteContext?.token === inviteToken ? inviteContext : null
+  const inviteStatus = context?.status
+  useEffect(() => { if (inviteStatus) track('invite_link_opened', { roomId: context?.room_id }) }, [context?.room_id, inviteStatus])
   const queryClient = useQueryClient()
   const join = useMutation({ mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
@@ -103,14 +114,14 @@ export function JoinPage() {
       queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
     ])
     navigate(`/rooms/${room.id}/intent`, { replace: true })
-  } })
+  }, onError: (error) => trackFailure('room_join_failed', error, { roomId: context?.room_id }) })
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
       <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
       <PrivacyNote />{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => join.mutate()}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
+      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { track('room_join_started', { roomId: context?.room_id }); join.mutate() }}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
     </PageContent></PageShell>
   )
 }
@@ -118,6 +129,8 @@ export function JoinPage() {
 export function RoomFlowPage() {
   const { roomId, roomScreen } = useParams()
   const room = useRoom(roomId)
+  const loadedRoomId = room.data?.id
+  useEffect(() => { if (loadedRoomId) track('room_opened', { roomId: loadedRoomId }) }, [loadedRoomId])
   if (room.isPending) return <ScreenSkeleton variant="room" label="Восстанавливаем комнату…" />
   if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
@@ -193,6 +206,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const events = useRoomEvents(room.id, true)
+  const swipeSessionTracked = useRef(false)
   const [pendingVote, setPendingVote] = useState<VoteValue | null>(null)
   const [matchPreview, setMatchPreview] = useState(false)
   const dragX = useMotionValue(0)
@@ -217,6 +231,34 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
     },
     onError: async (error) => { setPendingVote(null); dragX.set(0); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
+  const item = events.data?.items[0]
+  const itemEventId = item?.event.id
+  const itemPosition = item?.position
+  const itemCategory = item?.event.category_slug
+  const itemHasImage = Boolean(item?.event.imageUrl)
+  const itemHasPrice = item?.event.priceFromMinor !== null && item?.event.priceFromMinor !== undefined
+  const poolSize = room.pool?.total ?? events.data?.total ?? 0
+  useEffect(() => {
+    if (!events.data || swipeSessionTracked.current) return
+    swipeSessionTracked.current = true
+    track('swipe_session_started', { roomId: room.id, properties: { pool_size: room.pool?.total ?? events.data.total } })
+  }, [events.data, room.id, room.pool?.total])
+  useEffect(() => {
+    if (!itemEventId || itemPosition === undefined || !itemCategory) return
+    track('event_swipe_impression', { roomId: room.id, eventId: itemEventId, properties: {
+      position: itemPosition,
+      recommendation_rank: itemPosition + 1,
+      pool_size: poolSize,
+      category: itemCategory,
+      has_image: itemHasImage,
+      has_price: itemHasPrice,
+    } })
+  }, [itemCategory, itemEventId, itemHasImage, itemHasPrice, itemPosition, poolSize, room.id])
+  useEffect(() => {
+    if (events.data && (room.pool?.room_exhausted || room.state === 'exhausted')) {
+      track('swipe_pool_exhausted', { roomId: room.id })
+    }
+  }, [events.data, room.id, room.pool?.room_exhausted, room.pool?.voted_by_me, room.state])
   if (events.isPending) return <ScreenSkeleton variant="room" label="Загружаем общий пул…" />
   if (events.isError) {
     if (isRoomError(events.error, 'POOL_EXHAUSTED')) return <WaitingScreen room={room} />
@@ -224,7 +266,6 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   }
   const votedByMe = room.pool?.voted_by_me ?? 0
   const poolTotal = room.pool?.total ?? events.data.total
-  const item = events.data.items[0]
   if (!item) return <WaitingScreen room={room} />
   const cast = (value: VoteValue) => { if (!vote.isPending) { setPendingVote(value); vote.mutate({ eventId: item.event.id, value }) } }
   return (
@@ -249,13 +290,20 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
 function MatchScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const event = useEventDetail(room.match?.event_id)
-  const ticket = useMutation({ mutationFn: () => withMinimumDuration(apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), 120), onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url) })
+  const loadedMatchEventId = event.data?.id
+  const matchedEventId = room.match?.event_id
+  const matchId = room.match?.id
+  useEffect(() => { if (loadedMatchEventId && matchedEventId) track('match_shown', { roomId: room.id, eventId: matchedEventId }) }, [loadedMatchEventId, matchId, matchedEventId, room.id])
+  const ticket = useMutation({ mutationFn: async () => {
+    const { external_url } = await withMinimumDuration(apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), 120)
+    if (!await maxPlatform.openTicketLink(external_url)) throw new Error('Ticket link could not be opened')
+  }, onError: (error) => trackFailure('ticket_redirect_failed', error, { eventId: room.match?.event_id, roomId: room.id }) })
   if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем ваш мэтч…" />
   if (event.isError) return <Empty title="Мэтч найден, но событие не загрузилось" />
   return (
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <Suspense fallback={<ScreenSkeleton variant="event" inline label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
-      <div className={styles.footer}><Button onClick={() => navigate(`/events/${event.data.id}`)}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>К билетам</Button></div>
+      <div className={styles.footer}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>К билетам</Button></div>
       {ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>
   )

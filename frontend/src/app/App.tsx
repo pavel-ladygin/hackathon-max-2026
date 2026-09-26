@@ -6,6 +6,7 @@ import { Button, ErrorState, ScreenSkeleton } from '../shared/ui/index'
 import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
 import { skeletonVariant } from './skeletonVariant'
+import { trackAppOpen, trackClientError, trackPerformance } from '../shared/analytics/client'
 
 const HomePage = lazy(() => import('../pages/home/HomePage').then((m) => ({ default: m.HomePage })))
 const EventPage = lazy(() => import('../pages/event/EventPage').then((m) => ({ default: m.EventPage })))
@@ -31,7 +32,22 @@ function MaxBridgeReady() {
 
 function AppRoutes() {
   const location = useLocation()
+  const appOpened = useRef(false)
+  const bootStartedAt = useRef<number | null>(null)
+  const bootFailure = useRef<unknown>(null)
   const bootstrap = useBootstrap()
+  useEffect(() => { bootStartedAt.current = performance.now() }, [])
+  useEffect(() => {
+    if (bootstrap.isError && !bootFailure.current) bootFailure.current = bootstrap.error
+    if (!bootstrap.data || appOpened.current) return
+    appOpened.current = true
+    const path = location.pathname
+    const entryPoint = path.startsWith('/join/') ? 'room_invite' : path.startsWith('/rooms/') ? 'room' : path.startsWith('/events/') ? 'deep_link' : path === '/' || path === '/events' ? 'feed' : path === '/saved' ? 'saved' : 'home'
+    trackAppOpen(entryPoint)
+    trackPerformance('app_boot', performance.now() - (bootStartedAt.current ?? performance.now()))
+    if (bootFailure.current) trackClientError('app_boot', bootFailure.current)
+    bootFailure.current = null
+  }, [bootstrap.data, bootstrap.error, bootstrap.isError, location.pathname])
   const inviteContext = bootstrap.data?.inviteContext
   const inviteToken = location.pathname.match(/^\/join\/([^/]+)$/)?.[1]
   if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={inviteToken ? decodeInviteToken(inviteToken) : null} />

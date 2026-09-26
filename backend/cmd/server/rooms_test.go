@@ -92,11 +92,11 @@ func TestNewHandlerCreateRoomUsesProductionRecorderAndAuth(t *testing.T) {
 		UserID, RoomID          uuid.UUID
 	}
 	err = db.QueryRow(ctx, `SELECT origin, type, request_id, user_id, room_id FROM behavior_events WHERE room_id=$1`, roomID).Scan(&event.Origin, &event.Type, &event.RequestID, &event.UserID, &event.RoomID)
-	if err != nil || event.Origin != "server" || event.Type != "room_create" || event.UserID != user || event.RoomID.String() != roomID || event.RequestID != first.Header().Get("X-Request-ID") {
+	if err != nil || event.Origin != "server" || event.Type != "room_created" || event.UserID != user || event.RoomID.String() != roomID || event.RequestID != first.Header().Get("X-Request-ID") {
 		t.Fatalf("recorded event=%+v err=%v", event, err)
 	}
 	var eventCount int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_create'", roomID).Scan(&eventCount); err != nil || eventCount != 1 {
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_created'", roomID).Scan(&eventCount); err != nil || eventCount != 1 {
 		t.Fatalf("room_create behavior rows = %d, %v; want exactly one", eventCount, err)
 	}
 	if strings.Contains(logs.String(), token) || strings.Contains(logs.String(), body) || strings.Contains(logs.String(), tokenValue) {

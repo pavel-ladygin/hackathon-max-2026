@@ -27,10 +27,24 @@ export interface DiscoveryApi {
   searchEvents(params?: DiscoverySearchParams): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number; nextCursor: string | null }>
   getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>): Promise<Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event } | (Omit<Extract<EventMapItemDto, { kind: 'cluster' }>, 'members'> & { members: Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event }> })>>
   getEvent(eventId: string): Promise<Detail>
-  recordBehavior(events: Array<{ client_event_id: string; type: 'impression' | 'open' | 'share'; occurred_at: string; event_id?: string | null; room_id?: string | null; metadata?: Record<string, unknown> }>): Promise<{ accepted: number; duplicates: number; rejected: number }>
+  recordBehavior(events: AnalyticsEvent[]): Promise<{ accepted: number; duplicates: number; rejected: number }>
   setSaved(eventId: string, saved: boolean): Promise<SavedStateResponseDto>
   getSaved(params?: { tab?: 'saved' | 'matches'; limit?: number; cursor?: string }): Promise<{ items: Array<{ event: Event; savedAt: string | null; match: SavedEventsResponseDto['items'][number]['match'] }>; nextCursor: string | null }>
   recordTicketClick(eventId: string, input: { source: string; room_id?: string | null }): Promise<{ external_url: string }>
+}
+
+export interface AnalyticsEvent {
+  client_event_id: string
+  type: string
+  event_version: number
+  occurred_at: string
+  event_id?: string | null
+  room_id?: string | null
+  session_id: string | null
+  platform: string
+  app_version: string
+  entry_point: string
+  properties: Record<string, string | number | boolean | string[] | null>
 }
 
 export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {

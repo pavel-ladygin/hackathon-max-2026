@@ -8,6 +8,7 @@ import { createEventMarkerElement } from './eventMarker'
 import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
 import { MapAreaCache, paddedViewportBounds } from './mapResults'
+import { track } from '../../shared/analytics/client'
 
 const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
@@ -150,6 +151,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     setSelectedEventId(event?.id ?? null)
     setSelectedEvent(event)
     setSelectedEventFilterKey(filtersKey)
+    if (event) track('map_marker_opened', { eventId: event.id, properties: { zoom_level: Math.round(cameraRef.current.zoom) } })
   }, [filtersKey])
 
   const requestArea = useCallback(async (nextCamera: YandexCamera, size = viewportSize, force = false) => {

@@ -15,19 +15,51 @@ import (
 
 // Defines values for BehaviorEventType.
 const (
-	Impression BehaviorEventType = "impression"
-	Open       BehaviorEventType = "open"
-	Share      BehaviorEventType = "share"
+	Impression           BehaviorEventType = "impression"
+	Open                 BehaviorEventType = "open"
+	Share                BehaviorEventType = "share"
+	AppOpened            BehaviorEventType = "app_opened"
+	SessionStarted       BehaviorEventType = "session_started"
+	OnboardingStarted    BehaviorEventType = "onboarding_started"
+	OnboardingCompleted  BehaviorEventType = "onboarding_completed"
+	FeedOpened           BehaviorEventType = "feed_opened"
+	EventImpression      BehaviorEventType = "event_impression"
+	EventOpened          BehaviorEventType = "event_opened"
+	SearchPerformed      BehaviorEventType = "search_performed"
+	FiltersOpened        BehaviorEventType = "filters_opened"
+	FiltersApplied       BehaviorEventType = "filters_applied"
+	FiltersReset         BehaviorEventType = "filters_reset"
+	MapOpened            BehaviorEventType = "map_opened"
+	MapMarkerOpened      BehaviorEventType = "map_marker_opened"
+	RoomCreationStarted  BehaviorEventType = "room_creation_started"
+	RoomCreationFailed   BehaviorEventType = "room_creation_failed"
+	RoomOpened           BehaviorEventType = "room_opened"
+	InviteOpened         BehaviorEventType = "invite_opened"
+	InviteShared         BehaviorEventType = "invite_shared"
+	InviteShareFailed    BehaviorEventType = "invite_share_failed"
+	InviteLinkOpened     BehaviorEventType = "invite_link_opened"
+	RoomJoinStarted      BehaviorEventType = "room_join_started"
+	RoomJoinFailed       BehaviorEventType = "room_join_failed"
+	SwipeSessionStarted  BehaviorEventType = "swipe_session_started"
+	EventSwipeImpression BehaviorEventType = "event_swipe_impression"
+	MatchShown           BehaviorEventType = "match_shown"
+	MatchOpened          BehaviorEventType = "match_opened"
+	SwipePoolExhausted   BehaviorEventType = "swipe_pool_exhausted"
+	ClientError          BehaviorEventType = "client_error"
+	ClientPerformance    BehaviorEventType = "client_performance"
+	TicketRedirectFailed BehaviorEventType = "ticket_redirect_failed"
 )
 
 // Valid indicates whether the value is a known member of the BehaviorEventType enum.
 func (e BehaviorEventType) Valid() bool {
 	switch e {
-	case Impression:
-		return true
-	case Open:
-		return true
-	case Share:
+	case Impression, Open, Share, AppOpened, SessionStarted, OnboardingStarted,
+		OnboardingCompleted, FeedOpened, EventImpression, EventOpened, SearchPerformed,
+		FiltersOpened, FiltersApplied, FiltersReset,
+		MapOpened, MapMarkerOpened, RoomCreationStarted, RoomCreationFailed, RoomOpened, InviteOpened,
+		InviteShared, InviteShareFailed, InviteLinkOpened, RoomJoinStarted, RoomJoinFailed, SwipeSessionStarted,
+		EventSwipeImpression, MatchShown, MatchOpened, SwipePoolExhausted,
+		ClientError, ClientPerformance, TicketRedirectFailed:
 		return true
 	default:
 		return false
@@ -742,7 +774,13 @@ type BehaviorBatchResponse struct {
 // BehaviorEvent defines model for BehaviorEvent.
 type BehaviorEvent struct {
 	ClientEventId string                                `json:"client_event_id"`
+	EventVersion  int                                   `json:"event_version"`
 	EventId       nullable.Nullable[openapi_types.UUID] `json:"event_id,omitempty"`
+	SessionId     nullable.Nullable[openapi_types.UUID] `json:"session_id,omitempty"`
+	Platform      nullable.Nullable[string]             `json:"platform,omitempty"`
+	AppVersion    nullable.Nullable[string]             `json:"app_version,omitempty"`
+	EntryPoint    nullable.Nullable[string]             `json:"entry_point,omitempty"`
+	Properties    map[string]interface{}                `json:"properties,omitempty"`
 
 	// Metadata Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены.
 	Metadata   *BehaviorMetadata                     `json:"metadata,omitempty"`
@@ -1022,6 +1060,7 @@ type InviteContext struct {
 	AlreadyJoined bool                `json:"already_joined"`
 	ExpiresAt     time.Time           `json:"expires_at"`
 	Inviter       PublicParticipant   `json:"inviter"`
+	RoomId        openapi_types.UUID  `json:"room_id"`
 	RoomName      string              `json:"room_name"`
 	Status        InviteContextStatus `json:"status"`
 	Token         string              `json:"token"`

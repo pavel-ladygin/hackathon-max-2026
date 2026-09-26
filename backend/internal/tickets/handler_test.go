@@ -22,12 +22,26 @@ type fakeProvider struct {
 	calls   int
 	userID  uuid.UUID
 	eventID uuid.UUID
+	roomID  uuid.UUID
 }
 
-func (f *fakeProvider) Click(_ context.Context, userID, eventID uuid.UUID) (string, error) {
+func (f *fakeProvider) Click(_ context.Context, userID, eventID uuid.UUID, roomIDs ...uuid.UUID) (string, error) {
 	f.calls++
 	f.userID, f.eventID = userID, eventID
+	if len(roomIDs) > 0 {
+		f.roomID = roomIDs[0]
+	}
 	return f.url, f.err
+}
+
+func TestTicketClickPassesOptionalRoomContextToProvider(t *testing.T) {
+	user, eventID, roomID := uuid.New(), uuid.New(), uuid.New()
+	provider := &fakeProvider{url: "https://tickets.example.test/event"}
+	res := httptest.NewRecorder()
+	ticketTestRouter(provider).ServeHTTP(res, ticketRequest(user, eventID, `{"source":"match","room_id":"`+roomID.String()+`"}`))
+	if res.Code != http.StatusOK || provider.roomID != roomID {
+		t.Fatalf("status/room=%d/%s, want 200/%s body=%s", res.Code, provider.roomID, roomID, res.Body.String())
+	}
 }
 
 func ticketTestRouter(provider Provider) http.Handler {

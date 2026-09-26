@@ -122,14 +122,14 @@ func (s *Service) Set(ctx context.Context, userID, eventID uuid.UUID, saved bool
 			if err != nil || rows == 0 {
 				return err
 			}
-			return s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "unsave", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now()})
+			return s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "event_unsaved", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now(), DeduplicationKey: "unsave/" + eventID.String() + "/" + httpapi.RequestID(ctx)})
 		}
 		rows, err := q.InsertSavedEvent(ctx, platform.InsertSavedEventParams{UserID: userID, EventID: eventID})
 		if err != nil {
 			return err
 		}
 		if rows > 0 {
-			if err := s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "save", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now()}); err != nil {
+			if err := s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: userID, Type: "event_saved", EventID: &eventID, RequestID: httpapi.RequestID(ctx), OccurredAt: s.now(), DeduplicationKey: "save/" + eventID.String() + "/" + httpapi.RequestID(ctx)}); err != nil {
 				return err
 			}
 		}

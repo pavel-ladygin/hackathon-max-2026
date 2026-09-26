@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -80,7 +81,7 @@ func decodeEvent(raw json.RawMessage) (ClientEvent, error) {
 		return ClientEvent{}, ErrInvalid
 	}
 	for key := range fields {
-		if key != "client_event_id" && key != "type" && key != "occurred_at" && key != "event_id" && key != "room_id" && key != "metadata" {
+		if key != "client_event_id" && key != "type" && key != "occurred_at" && key != "event_id" && key != "room_id" && key != "metadata" && key != "properties" && key != "session_id" && key != "platform" && key != "app_version" && key != "entry_point" && key != "event_version" {
 			return ClientEvent{}, ErrInvalid
 		}
 	}
@@ -88,10 +89,16 @@ func decodeEvent(raw json.RawMessage) (ClientEvent, error) {
 		return ClientEvent{}, ErrInvalid
 	}
 	var event ClientEvent
+	event.EventVersion = 1
+	if fields["event_version"] != nil {
+		if json.Unmarshal(fields["event_version"], &event.EventVersion) != nil || event.EventVersion != 1 {
+			return ClientEvent{}, ErrInvalid
+		}
+	}
 	if json.Unmarshal(fields["client_event_id"], &event.ClientEventID) != nil || len(event.ClientEventID) < 1 || len(event.ClientEventID) > 128 {
 		return ClientEvent{}, ErrInvalid
 	}
-	if json.Unmarshal(fields["type"], &event.Type) != nil || (event.Type != "impression" && event.Type != "open" && event.Type != "share") {
+	if json.Unmarshal(fields["type"], &event.Type) != nil || !validClientEventType(event.Type) {
 		return ClientEvent{}, ErrInvalid
 	}
 	var occurred time.Time
@@ -107,11 +114,163 @@ func decodeEvent(raw json.RawMessage) (ClientEvent, error) {
 		return ClientEvent{}, err
 	}
 	if fields["metadata"] != nil {
+		if fields["properties"] != nil {
+			return ClientEvent{}, ErrInvalid
+		}
 		if err := decodeMetadata(fields["metadata"], event.Type, &event); err != nil {
 			return ClientEvent{}, err
 		}
 	}
+	if fields["properties"] != nil {
+		if err := decodeProperties(fields["properties"], event.Type, &event); err != nil {
+			return ClientEvent{}, err
+		}
+	}
+	if event.SessionID, err = nullableUUID(fields["session_id"]); err != nil {
+		return ClientEvent{}, err
+	}
+	if event.Platform, err = optionalString(fields["platform"], 32, map[string]bool{"max_ios": true, "max_android": true, "max_web": true, "max_desktop": true, "browser": true, "unknown": true}); err != nil {
+		return ClientEvent{}, err
+	}
+	if event.AppVersion, err = optionalString(fields["app_version"], 64, nil); err != nil {
+		return ClientEvent{}, err
+	}
+	if event.EntryPoint, err = optionalString(fields["entry_point"], 32, map[string]bool{"feed": true, "home": true, "search": true, "map": true, "saved": true, "room_invite": true, "room": true, "deep_link": true, "unknown": true, "bot": true, "direct": true, "shared_event": true, "recommendation": true}); err != nil {
+		return ClientEvent{}, err
+	}
 	return event, nil
+}
+
+func validClientEventType(value string) bool {
+	switch value {
+	case "impression", "open", "share", "app_opened", "session_started", "onboarding_started", "onboarding_completed", "feed_opened", "event_impression", "event_opened", "search_performed", "filters_opened", "filters_applied", "filters_reset", "map_opened", "map_marker_opened", "room_creation_started", "room_creation_failed", "room_opened", "invite_opened", "invite_shared", "invite_share_failed", "invite_link_opened", "room_join_started", "room_join_failed", "swipe_session_started", "event_swipe_impression", "match_shown", "match_opened", "swipe_pool_exhausted", "ticket_redirect_failed", "client_error", "client_performance":
+		return true
+	default:
+		return false
+	}
+}
+
+func optionalString(raw json.RawMessage, max int, allowed map[string]bool) (pgtype.Text, error) {
+	if raw == nil || bytes.Equal(raw, []byte("null")) {
+		return pgtype.Text{}, nil
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil || len(value) == 0 || len(value) > max || strings.TrimSpace(value) != value || strings.ContainsRune(value, '\x00') || allowed != nil && !allowed[value] {
+		return pgtype.Text{}, ErrInvalid
+	}
+	return pgtype.Text{String: value, Valid: true}, nil
+}
+
+var allowedPropertyKeys = map[string]bool{
+	"position": true, "list_type": true, "event_source": true, "category": true, "has_image": true, "has_price": true, "has_coordinates": true, "source_screen": true, "recommendation_rank": true, "rank": true, "recommendation_score": true, "score": true, "algorithm_version": true, "price_min": true, "price_max": true, "distance_km": true, "query_length": true, "result_count": true, "categories": true, "budget_min": true, "budget_max": true, "date_from": true, "date_to": true, "distance_limit_km": true, "previous_active_filter_count": true, "active_filter_count": true, "free_only": true, "zoom_level": true, "pool_size": true, "candidate_count": true, "round_no": true, "participants_count_after_join": true, "participants_count": true, "error_code": true, "operation": true, "duration_ms": true, "status_code": true, "critical": true, "share_method": true, "invite_status": true, "room_state": true, "step": true, "selected_categories_count": true, "budget_configured": true,
+}
+
+func decodeProperties(raw json.RawMessage, eventType string, event *ClientEvent) error {
+	if len(raw) > 8*1024 {
+		return ErrInvalid
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || fields == nil {
+		return ErrInvalid
+	}
+	for key, value := range fields {
+		if !allowedPropertyKeys[key] || value == nil {
+			return ErrInvalid
+		}
+		if bytes.Equal(value, []byte("null")) {
+			continue
+		}
+		if key == "category" || key == "event_source" || key == "list_type" || key == "source_screen" || key == "algorithm_version" || key == "date_from" || key == "date_to" || key == "error_code" || key == "operation" || key == "share_method" || key == "invite_status" || key == "room_state" || key == "step" {
+			var text string
+			if json.Unmarshal(value, &text) != nil || len(text) > 64 || strings.ContainsRune(text, '\x00') {
+				return ErrInvalid
+			}
+			if key == "operation" && !allowedClientOperation(text) || key == "error_code" && !allowedClientErrorCode(text) {
+				return ErrInvalid
+			}
+			if key == "source_screen" && !oneOf(text, "feed", "direct", "search", "map", "saved", "room", "match", "unknown") || key == "list_type" && !oneOf(text, "feed", "search", "saved", "recommendation", "room") || key == "share_method" && !oneOf(text, "max_share", "native", "clipboard", "unknown") || key == "invite_status" && !oneOf(text, "joinable", "full", "expired") || key == "room_state" && !oneOf(text, "collecting_intents", "ranking", "voting", "matched", "exhausted") || key == "step" && !oneOf(text, "interests", "preferences") {
+				return ErrInvalid
+			}
+			if key == "event_source" && !oneOf(text, "kudago", "timepad", "demo", "unknown") {
+				return ErrInvalid
+			}
+			if key == "category" && !safeCategorySlug(text) {
+				return ErrInvalid
+			}
+			if key == "date_from" || key == "date_to" {
+				if _, err := time.Parse(time.DateOnly, text); err != nil {
+					return ErrInvalid
+				}
+			}
+		} else if key == "categories" {
+			var values []string
+			if json.Unmarshal(value, &values) != nil || len(values) > 20 {
+				return ErrInvalid
+			}
+			for _, item := range values {
+				if !safeCategorySlug(item) {
+					return ErrInvalid
+				}
+			}
+		} else if key == "has_image" || key == "has_price" || key == "has_coordinates" || key == "free_only" || key == "budget_configured" || key == "critical" {
+			var boolean bool
+			if json.Unmarshal(value, &boolean) != nil {
+				return ErrInvalid
+			}
+		} else {
+			var number float64
+			if json.Unmarshal(value, &number) != nil || number < 0 || number > 1_000_000_000 {
+				return ErrInvalid
+			}
+			if key == "duration_ms" && (number > 600000 || number != float64(int64(number))) {
+				return ErrInvalid
+			}
+			if key == "status_code" && (number < 100 || number > 599 || number != float64(int(number))) {
+				return ErrInvalid
+			}
+		}
+	}
+	event.Properties = append([]byte(nil), raw...)
+	return nil
+}
+
+func safeCategorySlug(value string) bool {
+	if len(value) == 0 || len(value) > 40 {
+		return false
+	}
+	for _, character := range value {
+		if !(character >= 'a' && character <= 'z') && !(character >= '0' && character <= '9') && character != '_' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func allowedClientOperation(value string) bool {
+	switch value {
+	case "app_boot", "feed_load", "event_detail_load", "room_create", "room_join", "room_vote":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowedClientErrorCode(value string) bool {
+	switch value {
+	case "network_error", "unauthorized", "not_found", "rate_limited", "server_error", "request_error", "unknown":
+		return true
+	default:
+		return false
+	}
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 func nullableUUID(raw json.RawMessage) (pgtype.UUID, error) {
 	if raw == nil || bytes.Equal(raw, []byte("null")) {

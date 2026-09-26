@@ -350,6 +350,8 @@ export interface components {
         };
         InviteContext: {
             token: string;
+            /** Format: uuid */
+            room_id: string;
             room_name: string;
             inviter: components["schemas"]["PublicParticipant"];
             /** Format: date-time */
@@ -537,13 +539,26 @@ export interface components {
         BehaviorEvent: {
             client_event_id: string;
             /** @enum {string} */
-            type: "impression" | "open" | "share";
+            type: "impression" | "open" | "share" | "app_opened" | "session_started" | "onboarding_started" | "onboarding_completed" | "feed_opened" | "event_impression" | "event_opened" | "search_performed" | "filters_opened" | "filters_applied" | "filters_reset" | "map_opened" | "map_marker_opened" | "room_creation_started" | "room_creation_failed" | "room_opened" | "invite_opened" | "invite_shared" | "invite_share_failed" | "invite_link_opened" | "room_join_started" | "room_join_failed" | "swipe_session_started" | "event_swipe_impression" | "match_shown" | "invite_shared" | "match_opened" | "swipe_pool_exhausted" | "client_error" | "client_performance" | "ticket_redirect_failed";
+            /** @enum {integer} */
+            event_version: 1;
             /** Format: date-time */
             occurred_at: string;
             /** Format: uuid */
             event_id?: string | null;
             /** Format: uuid */
             room_id?: string | null;
+            /** Format: uuid */
+            session_id?: string | null;
+            /** @enum {string|null} */
+            platform?: "max_ios" | "max_android" | "max_web" | "max_desktop" | "browser" | "unknown" | null;
+            app_version?: string | null;
+            /** @enum {string|null} */
+            entry_point?: "feed" | "home" | "search" | "map" | "saved" | "room_invite" | "room" | "deep_link" | "unknown" | "bot" | "direct" | "shared_event" | "recommendation" | null;
+            /** @description Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited. */
+            properties?: {
+                [key: string]: unknown;
+            };
             metadata?: components["schemas"]["BehaviorMetadata"];
         };
         /** @description Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены. */

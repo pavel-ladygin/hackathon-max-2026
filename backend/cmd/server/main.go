@@ -59,6 +59,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		behavior.FlushOperationTelemetry(flushCtx)
+	}()
+	go behavior.RunRetentionPrune(ctx, db, logger)
 	server := httpapi.NewServer(cfg.HTTPAddr, handler)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
@@ -112,6 +118,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
 	poolKey := sha256.Sum256(poolKeyInput)
 	behaviorRecorder := behavior.Recorder{}
+	homeHandler.EnableOperationTelemetry(behavior.DatabaseOperationSink(db, behaviorRecorder))
 	behaviorService, err := behavior.NewService(db)
 	if err != nil {
 		return nil, err

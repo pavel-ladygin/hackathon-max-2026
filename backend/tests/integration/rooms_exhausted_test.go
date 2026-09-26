@@ -361,7 +361,7 @@ func TestB10ExhaustionRetryIsIdempotent(t *testing.T) {
 		t.Fatalf("retry persistence finished=%d states=%d; want 2/2", finished, terminal)
 	}
 	var eventsCount int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='dislike'", f.room).Scan(&eventsCount); err != nil || eventsCount != 2 {
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='event_disliked'", f.room).Scan(&eventsCount); err != nil || eventsCount != 2 {
 		t.Fatalf("behavior events=%d err=%v; want exactly two votes", eventsCount, err)
 	}
 }

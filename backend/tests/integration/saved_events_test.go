@@ -89,7 +89,7 @@ VALUES ($1,'concerts',true)`, eventID); err != nil {
 		t.Fatalf("saved row count after concurrent saves = %d, want 1", savedRows)
 	}
 	var saveSignals int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='save' AND event_id=$2`, users[0], events[0]).Scan(&saveSignals); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='event_saved' AND event_id=$2`, users[0], events[0]).Scan(&saveSignals); err != nil {
 		t.Fatal(err)
 	}
 	if saveSignals != 1 {
@@ -158,7 +158,7 @@ VALUES ($1,'concerts',true)`, eventID); err != nil {
 		t.Fatal(err)
 	}
 	var unsaveSignals int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='unsave' AND event_id=$2`, users[0], events[0]).Scan(&unsaveSignals); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='event_unsaved' AND event_id=$2`, users[0], events[0]).Scan(&unsaveSignals); err != nil {
 		t.Fatal(err)
 	}
 	if unsaveSignals != 1 {
