@@ -40,6 +40,65 @@ paths:
                 migrations: current
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /internal/analytics/dashboard:
+    get:
+      tags:
+      - System
+      operationId: getInternalAnalyticsDashboard
+      security:
+      - analyticsBasicAuth: []
+      summary: Получить агрегированные метрики закрытого дашборда
+      description: Доступ ограничивается Basic Auth на внешнем Nginx. Ответ содержит только агрегаты и кэшируется приложением кратковременно.
+      parameters:
+      - name: days
+        in: query
+        required: false
+        description: Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом.
+        schema:
+          type: integer
+          enum: [7, 30, 90]
+          default: 30
+      responses:
+        '200':
+          description: Агрегированные метрики без идентификаторов пользователей и комнат
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                period_days: 30
+                generated_at: '2026-09-27T12:00:00Z'
+                daily: []
+                summary: {}
+                recommendations: []
+                retention: []
+                guardrails: {}
+                providers: []
+                api_performance: []
+                catalog_quality: []
+                vote_agreement: []
+                pool_diversity: {}
+                repeat_exposure: []
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          description: Ошибка чтения метрик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Превышено время ожидания аналитического запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/max/bootstrap:
     post:
       tags:
@@ -729,6 +788,10 @@ components:
       scheme: bearer
       bearerFormat: opaque-session
       description: Случайный bearer token сессии MAX, действующий 24 часа; хранится на сервере только в виде hash.
+    analyticsBasicAuth:
+      type: http
+      scheme: basic
+      description: Basic Auth на внешнем Nginx; backend endpoint доступен только через защищенный прокси-маршрут.
   parameters:
     RoomId:
       name: roomId

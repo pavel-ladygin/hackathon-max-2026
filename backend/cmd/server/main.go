@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/analytics"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
@@ -138,6 +139,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		return nil, err
 	}
 	ticketHandler := tickets.NewHandler(ticketService)
+	analyticsHandler := analytics.NewHandler(db)
 
 	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)
 	if err != nil {
@@ -165,6 +167,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { behaviorHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { savedHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
+		analyticsHandler.RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)
