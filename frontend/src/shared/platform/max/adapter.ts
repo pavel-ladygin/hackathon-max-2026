@@ -4,11 +4,46 @@ import type {
   MaxPlatformName,
   MaxPlatformSnapshot,
   MaxViewport,
+  GeoLocationDiagnostics,
   GeoLocationResult,
 } from "./types";
 
 const MAX_HOST = "max.ru";
 const getWebApp = (): MaxWebApp | undefined => (typeof window === "undefined" ? undefined : window.WebApp);
+
+const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+const getGeolocationErrorCode = (error: unknown): number | null => {
+  if (typeof error !== "object" || error === null || !("code" in error)) return null;
+  return typeof error.code === "number" ? error.code : null;
+};
+
+const getErrorMessage = (error: unknown): string | null => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return null;
+};
+
+const getLocationPermissionState = async (): Promise<PermissionState | null> => {
+  try {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return null;
+    const permissionQuery = navigator.permissions.query({ name: "geolocation" as PermissionName });
+    const timeout = new Promise<null>((resolve) => globalThis.setTimeout(() => resolve(null), 100));
+    return (await Promise.race([permissionQuery.then(({ state }) => state), timeout])) as PermissionState | null;
+  } catch {
+    return null;
+  }
+};
+
+const reportLocationFailure = (reason: string, diagnostics: object): void => {
+  try {
+    console.warn("Geolocation attempt failed", { reason, ...diagnostics });
+  } catch {
+    // Logging is best-effort and must not affect the location flow.
+  }
+};
 
 const asPositiveNumber = (value: string | number | undefined): number | null => {
   const number = typeof value === "number" ? value : Number(value);
@@ -179,17 +214,91 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
   }
 
   async requestLocation(): Promise<GeoLocationResult> {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return { ok: false, reason: "unsupported" };
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve({ ok: true, position: { lat: coords.latitude, lng: coords.longitude, accuracyM: Number.isFinite(coords.accuracy) ? coords.accuracy : null } }),
-        (error) => {
-          const reason = error.code === 1 ? "permission_denied" : error.code === 3 ? "timeout" : "position_unavailable";
-          resolve({ ok: false, reason });
-        },
-        { enableHighAccuracy: false, timeout: 15_000, maximumAge: 300_000 },
-      );
-    });
+    const startedAt = now();
+    const geolocation = typeof navigator === "undefined" ? undefined : navigator.geolocation;
+    if (!geolocation) {
+      return { ok: false, reason: "unsupported", diagnostics: this.locationDiagnostics(startedAt, null, null, 0) };
+    }
+
+    const attempt = (options: PositionOptions): Promise<GeolocationPosition | GeolocationPositionError> =>
+      new Promise((resolve, reject) => {
+        try {
+          geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            (error) => resolve(error),
+            options,
+          );
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+    let result: GeolocationPosition | GeolocationPositionError | null = null;
+    let thrown: unknown;
+    for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
+      try {
+        result = await attempt(
+          attemptNumber === 1
+            ? { enableHighAccuracy: false, timeout: 15_000, maximumAge: 300_000 }
+            : { enableHighAccuracy: true, timeout: 5_000, maximumAge: 0 },
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      if (result && "coords" in result) {
+        const { coords } = result;
+        return {
+          ok: true,
+          position: {
+            lat: coords.latitude,
+            lng: coords.longitude,
+            accuracyM: Number.isFinite(coords.accuracy) ? coords.accuracy : null,
+          },
+        };
+      }
+
+      const error = result && "code" in result ? result : thrown;
+      const code = getGeolocationErrorCode(error);
+      const message = getErrorMessage(error);
+      const reason = code === 1 ? "permission_denied" : code === 3 ? "timeout" : "position_unavailable";
+      const diagnostics = this.locationDiagnostics(startedAt, code, message, attemptNumber);
+      const permissionState = await getLocationPermissionState();
+      diagnostics.permissionState = permissionState;
+      reportLocationFailure(reason, diagnostics);
+
+      if (reason === "permission_denied" || attemptNumber === 2) {
+        return { ok: false, reason, diagnostics };
+      }
+      result = null;
+      thrown = undefined;
+    }
+    return { ok: false, reason: "position_unavailable", diagnostics: this.locationDiagnostics(startedAt, null, null, 2) };
+  }
+
+  private locationDiagnostics(
+    startedAt: number,
+    code: number | null,
+    message: string | null,
+    attempt: number,
+  ): GeoLocationDiagnostics {
+    let environment: "browser" | "max" = "browser";
+    let platform: MaxPlatformName | null = null;
+    try {
+      environment = this.environment;
+      platform = this.getPlatform();
+    } catch {
+      // Diagnostic collection must never turn a location failure into a rejection.
+    }
+    return {
+      code,
+      message,
+      elapsedMs: Math.max(0, Math.round(now() - startedAt)),
+      environment,
+      platform,
+      secureContext: typeof isSecureContext === "boolean" ? isSecureContext : null,
+      attempt,
+    };
   }
 
   async copyText(value: string): Promise<boolean> {

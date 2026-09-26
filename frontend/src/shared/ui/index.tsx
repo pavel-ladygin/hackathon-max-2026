@@ -41,7 +41,7 @@ export function ChipGroup({ children, label, className = "" }: { children: React
 }
 
 type EventImageProps = ImgHTMLAttributes<HTMLImageElement> & { fallbackSrc?: string };
-export function EventImage({ alt, className = "", width = 400, height = 400, fallbackSrc = "/events/concert-singer.png", onError, src, srcSet, ...props }: EventImageProps) {
+export function EventImage({ alt, className = "", width = 400, height = 400, fallbackSrc = "/events/photo-unavailable.png", onError, src, srcSet, ...props }: EventImageProps) {
   const [failure, setFailure] = useState<{ key: string; status: "fallback" | "placeholder" } | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [progressive, setProgressive] = useState<{ key: string; phase: "loading" | "full"; src?: string } | null>(null);
@@ -76,7 +76,7 @@ export function EventImage({ alt, className = "", width = 400, height = 400, fal
     }
     return () => { cancelled = true; observer?.disconnect(); };
   }, [activeKey, activeSrc, key, previewSrc, props.sizes, srcSet]);
-  if (status === "placeholder") return <span className={`${styles.eventImage} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} />;
+  if (status === "placeholder") return <span className={`${styles.eventImage} ${styles.eventImageUnavailable} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>Фото недоступно</span>;
   return <img ref={imageRef} alt={alt} className={`${styles.eventImage} ${showingPreview ? previewLoadedKey === activeKey ? "" : styles.eventImageLoading : loadedKey === activeKey ? "" : styles.eventImageLoading} ${className}`} width={width} height={height} loading="lazy" {...props} src={displaySrc} srcSet={showingPreview ? undefined : status === "original" && !currentProgress?.src ? srcSet : undefined} onLoad={(event) => {
     if (showingPreview) {
       setPreviewLoadedKey(activeKey);

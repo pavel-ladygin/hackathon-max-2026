@@ -96,3 +96,12 @@ SELECT url, width, height, role FROM event_images WHERE event_id = sqlc.arg('eve
 
 -- name: GetDiscoveryUserCity :one
 SELECT city_id FROM users WHERE id = sqlc.arg('user_id') AND city_id IS NOT NULL;
+
+-- name: GetDiscoveryActiveRoom :one
+SELECT r.id, r.name, r.city_id, r.state
+FROM room_members m
+JOIN rooms r ON r.id = m.room_id
+WHERE m.user_id = sqlc.arg('user_id')
+  AND m.is_active = true
+  AND r.expires_at > now()
+  AND r.state IN ('collecting_intents', 'ranking', 'voting');

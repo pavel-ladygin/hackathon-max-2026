@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../shared/api/errors'
+import { eventImageFallback } from '../../shared/lib/events'
 import { EventPage } from './EventPage'
 
 const mocks = vi.hoisted(() => ({
@@ -42,6 +43,20 @@ describe('EventPage', () => {
     expect(screen.queryByText('Почему вам подходит')).not.toBeInTheDocument()
     const venue = screen.getByText('г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле')
     expect(venue.querySelector('small')).toBeNull()
+  })
+
+  it('keeps the shimmer while an event photo loads and uses the neutral fallback only after an error', () => {
+    mocks.event = { ...mocks.event, data: { ...baseEvent, imageUrl: 'https://media.kudago.com/photo.jpg' } }
+    renderPage()
+
+    const hero = screen.getByRole('img', { name: 'Jazz вечер' })
+    expect(hero).toHaveAttribute('src', 'https://media.kudago.com/photo.jpg')
+    expect(hero.className).toContain('eventImageLoading')
+    expect(hero.style.backgroundImage).toBe('')
+    const fallback = eventImageFallback('concerts')
+
+    fireEvent.error(hero)
+    expect(hero).toHaveAttribute('src', fallback)
   })
 
   it('shows a retry state for non-404 event loading errors', () => {

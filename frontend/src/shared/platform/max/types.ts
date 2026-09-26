@@ -7,9 +7,20 @@ export type MaxViewport = {
 
 export type GeoPosition = { lat: number; lng: number; accuracyM: number | null };
 export type GeoLocationFailure = "permission_denied" | "position_unavailable" | "timeout" | "unsupported";
+/** Failure context for local diagnostics. Deliberately excludes position data. */
+export type GeoLocationDiagnostics = {
+  code: number | null;
+  message: string | null;
+  elapsedMs: number;
+  environment: MaxEnvironment;
+  platform: MaxPlatformName | null;
+  secureContext: boolean | null;
+  permissionState?: PermissionState | null;
+  attempt?: number;
+};
 export type GeoLocationResult =
   | { ok: true; position: GeoPosition }
-  | { ok: false; reason: GeoLocationFailure };
+  | { ok: false; reason: GeoLocationFailure; diagnostics?: GeoLocationDiagnostics };
 
 export type MaxEnvironment = "max" | "browser";
 

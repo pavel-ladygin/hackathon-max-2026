@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { eventHeroImage, eventImage, normalizeEventImageUrl } from './events'
+import { eventHeroImage, eventImage, eventImageFallback, normalizeEventImageUrl } from './events'
 
 const id = '6167e34b-0b30-4a3a-8d5a-3f9bc0cabe26'
 
 describe('Timepad poster URLs', () => {
+	it('uses one neutral no-photo asset for every category', () => {
+		const fallback = eventImageFallback('concerts')
+		expect(fallback).toBe('/events/photo-unavailable.png')
+		for (const category of ['cinema', 'walks', 'food', 'other']) {
+			expect(eventImageFallback(category)).toBe(fallback)
+		}
+	})
+
 	it('uses a small preview of the stored original for cards', () => {
 		const broken = `https://ucare.timepad.ru/${id}/-/preview/308x600/-/format/jpeg/-/format/jpeg/poster_org_418499.jpg/-/preview/308x600/-/format/jpeg/poster_event_4202945.jpg`
 		expect(eventImage(broken, 'concerts')).toBe(`https://ucare.timepad.ru/${id}/-/preview/256x256/`)

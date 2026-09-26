@@ -106,7 +106,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		return nil, err
 	}
 	discoveryService := discovery.NewService(discoveryRepository, cursorCodec)
-	homeHandler := discovery.NewHomeHandler(discovery.NewHomeService(discoveryService, discoveryRepository, preferencesService))
+	homeHandler := discovery.NewHomeHandler(discovery.NewHomeService(discoveryService, discoveryRepository, preferencesService, discoveryRepository))
 	searchHandler := discovery.NewSearchHandler(discoveryService, discoveryRepository)
 	detailHandler := discovery.NewDetailHandler(discoveryService)
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)

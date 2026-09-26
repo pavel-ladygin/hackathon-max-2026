@@ -67,17 +67,18 @@
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
-  border: 2px solid var(--color-paper);
-  background: var(--color-ink);
-  color: white;
-  box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
+  border: 2px solid var(--color-accent, #ef6b6b);
+  background: var(--color-paper, #fffaf5);
+  color: var(--color-accent, #ef6b6b);
+  box-shadow: 0 2px 8px rgb(39 29 21 / 18%);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+  touch-action: manipulation;
 }
-.expandedClose { width: 44px; height: 44px; border-radius: 50%; font-size: 28px; }
-.expandedNext { min-width: 70px; height: 38px; padding: 0 10px; border-radius: 999px; }
-.expandedClose:focus-visible, .expandedNext:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+.expandedClose { width: 44px; height: 44px; border-width: 1px; border-radius: 50%; font-size: 26px; line-height: 1; }
+.expandedNext { min-width: 70px; height: 44px; padding: 0 12px; border-radius: 999px; }
+.expandedClose:focus-visible, .expandedNext:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 
 .overlapClose {
   position: relative;
@@ -127,7 +128,18 @@
   box-shadow: 0 8px 28px rgb(39 29 21 / 20%);
 }
 
+.previewImageButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
 .previewImage {
+  display: block;
   width: 100%;
   height: 100%;
   min-height: 100px;
@@ -138,6 +150,22 @@
 
 .previewContent { min-width: 0; align-self: center; }
 .previewTitle { margin: 0 0 6px; font-size: 1rem; line-height: 1.25; }
+.previewTitleButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent, #ef6b6b);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.previewImageButton:focus-visible, .previewTitleButton:focus-visible {
+  outline: 3px solid var(--color-accent, #ef6b6b);
+  outline-offset: 3px;
+}
 .previewMeta, .previewPrice { margin: 3px 0; color: var(--color-muted); font-size: .875rem; line-height: 1.3; }
 .previewPrice { margin-bottom: 10px; color: var(--color-ink); font-weight: 700; }
 .previewClose {
@@ -196,12 +224,43 @@
 }
 
 .markerImage {
+  grid-area: 1 / 1;
   display: block;
   width: var(--marker-size);
   height: var(--marker-size);
   border-radius: var(--radius-sm);
   object-fit: cover;
   transition: width 180ms ease, height 180ms ease;
+}
+
+.markerImage:not([data-loaded='true']), .markerImage[hidden] { display: none; }
+
+.markerImagePlaceholder {
+  grid-area: 1 / 1;
+  display: grid;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted, #6b625c);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+}
+.markerImagePlaceholder[data-state='loading'] {
+  background: linear-gradient(100deg, #eee8e1 25%, #faf8f5 50%, #eee8e1 75%);
+  background-size: 200% 100%;
+  animation: markerImageLoading 1.4s ease infinite;
+}
+.markerImagePlaceholder[data-state='unavailable'] {
+  padding: 24px 2px 2px;
+  background: #f7f4ef url('/events/photo-unavailable-icon.png') center 3px / 23px 23px no-repeat;
+}
+.markerImagePlaceholder[hidden] { display: none; }
+
+@keyframes markerImageLoading {
+  to { background-position-x: -200%; }
 }
 
 .markerTooltip {
@@ -301,4 +360,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .markerImage { transition: none; }
+  .markerImagePlaceholder[data-state='loading'] { animation: none; }
 }

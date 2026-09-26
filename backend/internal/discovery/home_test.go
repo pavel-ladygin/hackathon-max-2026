@@ -42,13 +42,25 @@ type fakeHomePreferences struct {
 	calls int
 }
 
+type fakeHomeRooms struct {
+	room  ActiveRoom
+	found bool
+	err   error
+	calls int
+}
+
+func (f *fakeHomeRooms) GetActiveRoom(context.Context, uuid.UUID) (ActiveRoom, bool, error) {
+	f.calls++
+	return f.room, f.found, f.err
+}
+
 func (f *fakeHomePreferences) Get(context.Context, uuid.UUID) (preferences.Value, bool, error) {
 	f.calls++
 	return f.value, f.found, f.err
 }
 
 func TestHomeUsesProfileCityAndPreferencesWithoutASecondRecommender(t *testing.T) {
-	user, city := uuid.New(), uuid.New()
+	user, city, roomID := uuid.New(), uuid.New(), uuid.New()
 	var filters []SearchFilter
 	searcher := homeSearchFunc(func(_ context.Context, filter SearchFilter) (Page, error) {
 		filters = append(filters, filter)
@@ -56,7 +68,8 @@ func TestHomeUsesProfileCityAndPreferencesWithoutASecondRecommender(t *testing.T
 	})
 	cities := &fakeHomeCities{city: city}
 	prefs := &fakeHomePreferences{found: true, value: preferences.Value{InterestSlugs: []string{"concerts"}, BudgetMaxMinor: 1500, UsualDayTypes: []string{"weekend"}, UsualTimeSlots: []string{"evening"}}}
-	service := NewHomeService(searcher, cities, prefs)
+	rooms := &fakeHomeRooms{found: true, room: ActiveRoom{ID: roomID, Name: "Active", CityID: city, State: "ranking"}}
+	service := NewHomeService(searcher, cities, prefs, rooms)
 	service.now = func() time.Time { return time.Date(2026, 9, 20, 14, 0, 0, 0, time.UTC) }
 	service.newID = func() uuid.UUID { return uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") }
 
@@ -64,8 +77,8 @@ func TestHomeUsesProfileCityAndPreferencesWithoutASecondRecommender(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cities.calls != 1 || prefs.calls != 1 || len(filters) != 3 {
-		t.Fatalf("city=%d preferences=%d searches=%d", cities.calls, prefs.calls, len(filters))
+	if cities.calls != 1 || prefs.calls != 1 || rooms.calls != 1 || len(filters) != 3 {
+		t.Fatalf("city=%d preferences=%d rooms=%d searches=%d", cities.calls, prefs.calls, rooms.calls, len(filters))
 	}
 	if filters[0].CityID != city || filters[0].Limit != 1 || filters[1].Limit != 3 {
 		t.Fatalf("base filters = %#v %#v", filters[0], filters[1])
@@ -77,12 +90,15 @@ func TestHomeUsesProfileCityAndPreferencesWithoutASecondRecommender(t *testing.T
 	if got := sectionTypes(feed.Sections); len(got) != 3 || got[0] != "hero" || got[1] != "popular" || got[2] != "for_you" {
 		t.Fatalf("sections = %#v", got)
 	}
+	if feed.ActiveRoom == nil || feed.ActiveRoom.ID != roomID || feed.ActiveRoom.Name != "Active" || feed.ActiveRoom.CityID != city || feed.ActiveRoom.State != "ranking" {
+		t.Fatalf("active room = %#v", feed.ActiveRoom)
+	}
 }
 
 func TestHomeNoProfileCityFailsAndMissingPreferencesOmitForYou(t *testing.T) {
 	user, city := uuid.New(), uuid.New()
 	t.Run("profile city absent", func(t *testing.T) {
-		service := NewHomeService(homeSearchFunc(func(context.Context, SearchFilter) (Page, error) { t.Fatal("Search called"); return Page{}, nil }), &fakeHomeCities{err: pgx.ErrNoRows}, &fakeHomePreferences{})
+		service := NewHomeService(homeSearchFunc(func(context.Context, SearchFilter) (Page, error) { t.Fatal("Search called"); return Page{}, nil }), &fakeHomeCities{err: pgx.ErrNoRows}, &fakeHomePreferences{}, &fakeHomeRooms{})
 		if _, err := service.Home(context.Background(), HomeInput{UserID: user}); !errors.Is(err, ErrInvalidHome) {
 			t.Fatalf("error = %v", err)
 		}
@@ -92,10 +108,20 @@ func TestHomeNoProfileCityFailsAndMissingPreferencesOmitForYou(t *testing.T) {
 		service := NewHomeService(homeSearchFunc(func(_ context.Context, filter SearchFilter) (Page, error) {
 			filters = append(filters, filter)
 			return Page{}, nil
-		}), &fakeHomeCities{city: city}, &fakeHomePreferences{})
+		}), &fakeHomeCities{city: city}, &fakeHomePreferences{}, &fakeHomeRooms{})
 		feed, err := service.Home(context.Background(), HomeInput{UserID: user})
 		if err != nil || len(filters) != 2 || len(feed.Sections) != 0 {
 			t.Fatalf("feed=%#v searches=%d error=%v", feed, len(filters), err)
+		}
+	})
+	t.Run("active room lookup error", func(t *testing.T) {
+		sentinel := errors.New("active room unavailable")
+		service := NewHomeService(homeSearchFunc(func(context.Context, SearchFilter) (Page, error) {
+			t.Fatal("Search called after active-room failure")
+			return Page{}, nil
+		}), &fakeHomeCities{city: city}, &fakeHomePreferences{}, &fakeHomeRooms{err: sentinel})
+		if _, err := service.Home(context.Background(), HomeInput{UserID: user}); !errors.Is(err, sentinel) {
+			t.Fatalf("error=%v; want active-room sentinel", err)
 		}
 	})
 }
@@ -109,7 +135,7 @@ func TestHomeNearbySortsDeterministicallyBeforeTrimming(t *testing.T) {
 			return Page{}, nil
 		}
 		return Page{Items: []Card{{ID: first, StartsAt: starts.Add(time.Hour), DistanceMeters: intPtr(1000)}, {ID: second, StartsAt: starts, DistanceMeters: intPtr(200)}, {ID: third, StartsAt: starts.Add(2 * time.Hour), DistanceMeters: intPtr(200)}}}, nil
-	}), &fakeHomeCities{city: city}, &fakeHomePreferences{})
+	}), &fakeHomeCities{city: city}, &fakeHomePreferences{}, &fakeHomeRooms{})
 	feed, err := service.Home(context.Background(), HomeInput{UserID: user, Limit: 2, Location: &Location{Latitude: 55.75, Longitude: 37.61}})
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +191,49 @@ func TestHomeHandlerProtectsPrincipalAndValidatesCoordinates(t *testing.T) {
 		res := serveHome(provider, &user, "/api/v1/feed/home")
 		if res.Code != http.StatusOK || provider.calls != 1 || provider.input.Location != nil {
 			t.Fatalf("status=%d provider=%#v", res.Code, provider)
+		}
+	})
+}
+
+func TestHomeHandlerProjectsActiveRoomAndPreservesNull(t *testing.T) {
+	user, roomID, cityID := uuid.New(), uuid.New(), uuid.New()
+	t.Run("active room", func(t *testing.T) {
+		provider := &fakeHomeProvider{feed: HomeFeed{
+			ID: uuid.New(), GeneratedAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC), Sections: []HomeSection{},
+			ActiveRoom: &ActiveRoom{ID: roomID, Name: "Куда идём?", CityID: cityID, State: "voting"},
+		}}
+		res := serveHome(provider, &user, "/api/v1/feed/home")
+		if res.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+		var body struct {
+			ActiveRoom *struct {
+				ID     uuid.UUID `json:"id"`
+				Name   string    `json:"name"`
+				CityID uuid.UUID `json:"city_id"`
+				State  string    `json:"state"`
+			} `json:"active_room"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ActiveRoom == nil || body.ActiveRoom.ID != roomID || body.ActiveRoom.Name != "Куда идём?" || body.ActiveRoom.CityID != cityID || body.ActiveRoom.State != "voting" {
+			t.Fatalf("active_room=%+v", body.ActiveRoom)
+		}
+	})
+
+	t.Run("no active room", func(t *testing.T) {
+		provider := &fakeHomeProvider{feed: HomeFeed{ID: uuid.New(), GeneratedAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC), Sections: []HomeSection{}}}
+		res := serveHome(provider, &user, "/api/v1/feed/home")
+		if res.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if string(body["active_room"]) != "null" {
+			t.Fatalf("active_room=%s; want null", body["active_room"])
 		}
 	})
 }
