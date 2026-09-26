@@ -29,6 +29,20 @@ type HomePreferencesReader interface {
 	Get(context.Context, uuid.UUID) (preferences.Value, bool, error)
 }
 
+// HomeActiveRoomReader supplies the caller's resumable room without exposing
+// room persistence details to the home-feed service.
+type HomeActiveRoomReader interface {
+	GetActiveRoom(context.Context, uuid.UUID) (ActiveRoom, bool, error)
+}
+
+// ActiveRoom is the minimal public projection needed by the home screen.
+type ActiveRoom struct {
+	ID     uuid.UUID
+	Name   string
+	CityID uuid.UUID
+	State  string
+}
+
 // HomeInput is the normalized, request-only home-feed input.
 type HomeInput struct {
 	UserID   uuid.UUID
@@ -46,6 +60,7 @@ type HomeSection struct {
 type HomeFeed struct {
 	ID          uuid.UUID
 	GeneratedAt time.Time
+	ActiveRoom  *ActiveRoom
 	Sections    []HomeSection
 }
 
@@ -55,16 +70,17 @@ type HomeService struct {
 	searcher    HomeSearcher
 	cities      HomeCityReader
 	preferences HomePreferencesReader
+	rooms       HomeActiveRoomReader
 	now         func() time.Time
 	newID       func() uuid.UUID
 }
 
-func NewHomeService(searcher HomeSearcher, cities HomeCityReader, preferencesReader HomePreferencesReader) *HomeService {
-	return &HomeService{searcher: searcher, cities: cities, preferences: preferencesReader, now: time.Now, newID: uuid.New}
+func NewHomeService(searcher HomeSearcher, cities HomeCityReader, preferencesReader HomePreferencesReader, rooms HomeActiveRoomReader) *HomeService {
+	return &HomeService{searcher: searcher, cities: cities, preferences: preferencesReader, rooms: rooms, now: time.Now, newID: uuid.New}
 }
 
 func (s *HomeService) Home(ctx context.Context, input HomeInput) (HomeFeed, error) {
-	if s.searcher == nil || s.cities == nil || s.preferences == nil || input.UserID == uuid.Nil || input.Limit < 0 || input.Limit > maxLimit || input.Location != nil && !validLocation(*input.Location) {
+	if s.searcher == nil || s.cities == nil || s.preferences == nil || s.rooms == nil || input.UserID == uuid.Nil || input.Limit < 0 || input.Limit > maxLimit || input.Location != nil && !validLocation(*input.Location) {
 		return HomeFeed{}, ErrInvalidHome
 	}
 	if input.Limit == 0 {
@@ -76,6 +92,10 @@ func (s *HomeService) Home(ctx context.Context, input HomeInput) (HomeFeed, erro
 		return HomeFeed{}, err
 	}
 	preference, hasPreferences, err := s.preferences.Get(ctx, input.UserID)
+	if err != nil {
+		return HomeFeed{}, err
+	}
+	activeRoom, hasActiveRoom, err := s.rooms.GetActiveRoom(ctx, input.UserID)
 	if err != nil {
 		return HomeFeed{}, err
 	}
@@ -118,7 +138,11 @@ func (s *HomeService) Home(ctx context.Context, input HomeInput) (HomeFeed, erro
 			sections = append(sections, HomeSection{Type: "nearby", Title: "Рядом с вами", Items: items})
 		}
 	}
-	return HomeFeed{ID: s.newID(), GeneratedAt: s.now().UTC(), Sections: sections}, nil
+	feed := HomeFeed{ID: s.newID(), GeneratedAt: s.now().UTC(), Sections: sections}
+	if hasActiveRoom {
+		feed.ActiveRoom = &activeRoom
+	}
+	return feed, nil
 }
 
 func (s *HomeService) city(ctx context.Context, input HomeInput) (uuid.UUID, error) {

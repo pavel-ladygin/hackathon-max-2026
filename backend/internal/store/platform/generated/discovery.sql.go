@@ -80,6 +80,35 @@ func (q *Queries) CountDiscoveryEventCards(ctx context.Context, arg CountDiscove
 	return column_1, err
 }
 
+const getDiscoveryActiveRoom = `-- name: GetDiscoveryActiveRoom :one
+SELECT r.id, r.name, r.city_id, r.state
+FROM room_members m
+JOIN rooms r ON r.id = m.room_id
+WHERE m.user_id = $1
+  AND m.is_active = true
+  AND r.expires_at > now()
+  AND r.state IN ('collecting_intents', 'ranking', 'voting')
+`
+
+type GetDiscoveryActiveRoomRow struct {
+	ID     uuid.UUID
+	Name   string
+	CityID uuid.UUID
+	State  string
+}
+
+func (q *Queries) GetDiscoveryActiveRoom(ctx context.Context, userID uuid.UUID) (GetDiscoveryActiveRoomRow, error) {
+	row := q.db.QueryRow(ctx, getDiscoveryActiveRoom, userID)
+	var i GetDiscoveryActiveRoomRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CityID,
+		&i.State,
+	)
+	return i, err
+}
+
 const getDiscoveryEventDetail = `-- name: GetDiscoveryEventDetail :one
 SELECT e.id, e.title, e.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary) AS category_slug,
