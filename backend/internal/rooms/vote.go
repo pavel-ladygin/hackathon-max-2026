@@ -2,7 +2,9 @@ package rooms
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -121,7 +123,8 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if int(pool.Version) != request.PoolVersion {
 			return stalePoolVersionError{Current: int(pool.Version)}
 		}
-		if _, err := repo.Queries.GetRoomPoolEvent(ctx, roomsql.GetRoomPoolEventParams{PoolID: pool.ID, EventID: eventID}); errors.Is(err, pgx.ErrNoRows) {
+		poolEvent, err := repo.Queries.GetRoomPoolEvent(ctx, roomsql.GetRoomPoolEventParams{PoolID: pool.ID, EventID: eventID})
+		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRoomNotFound
 		} else if err != nil {
 			return err
@@ -165,7 +168,15 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if inserted != 1 {
 			return ErrVoteAlreadyCast
 		}
-		if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: string(request.Vote), EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time}); err != nil {
+		voteType := "event_disliked"
+		if request.Vote == api.Like {
+			voteType = "event_liked"
+		}
+		voteProperties, err := json.Marshal(map[string]any{"position": poolEvent.Position, "recommendation_rank": int(poolEvent.Position) + 1, "recommendation_score": poolEvent.GroupScore})
+		if err != nil {
+			return err
+		}
+		if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: voteType, EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time, Properties: voteProperties, DeduplicationKey: fmt.Sprintf("room/%s/vote/%s/%s", room.ID, eventID, principal.UserID)}); err != nil {
 			return err
 		}
 		if request.Vote == api.Like {
@@ -200,7 +211,7 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 				if _, err := repo.Queries.ClearRoomIntentCoordinates(ctx, room.ID); err != nil {
 					return err
 				}
-				if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "match", EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time}); err != nil {
+				if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "match_created", EventID: &eventID, RoomID: &room.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: now.Time, DeduplicationKey: fmt.Sprintf("room/%s/match/%s", room.ID, eventID)}); err != nil {
 					return err
 				}
 				return nil

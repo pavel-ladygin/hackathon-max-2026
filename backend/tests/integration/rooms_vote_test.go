@@ -92,7 +92,7 @@ func TestB8VoteInsertIsImmutableAndIdempotent(t *testing.T) {
 		t.Fatalf("stored vote=%q err=%v; want immutable like", stored.Vote, err)
 	}
 	var behaviors int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type IN ('like','dislike')", f.room).Scan(&behaviors); err != nil {
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type IN ('event_liked','event_disliked')", f.room).Scan(&behaviors); err != nil {
 		t.Fatal(err)
 	}
 	if behaviors != 0 {
@@ -153,7 +153,7 @@ func TestB8ServiceVoteIdempotencyAndExhaustion(t *testing.T) {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
 	var behaviors int
-	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='dislike'", f.room).Scan(&behaviors); err != nil || behaviors != 2 {
+	if err := db.QueryRow(context.Background(), "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='event_disliked'", f.room).Scan(&behaviors); err != nil || behaviors != 2 {
 		t.Fatalf("behaviors=%d err=%v", behaviors, err)
 	}
 }

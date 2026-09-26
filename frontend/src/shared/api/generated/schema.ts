@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/analytics/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Получить агрегированные метрики закрытого дашборда
+         * @description Доступ ограничивается Basic Auth на внешнем Nginx. Ответ содержит только агрегаты и кэшируется приложением кратковременно.
+         */
+        get: operations["getInternalAnalyticsDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/max/bootstrap": {
         parameters: {
             query?: never;
@@ -350,6 +370,8 @@ export interface components {
         };
         InviteContext: {
             token: string;
+            /** Format: uuid */
+            room_id: string;
             room_name: string;
             inviter: components["schemas"]["PublicParticipant"];
             /** Format: date-time */
@@ -537,13 +559,26 @@ export interface components {
         BehaviorEvent: {
             client_event_id: string;
             /** @enum {string} */
-            type: "impression" | "open" | "share";
+            type: "impression" | "open" | "share" | "app_opened" | "session_started" | "onboarding_started" | "onboarding_completed" | "feed_opened" | "event_impression" | "event_opened" | "search_performed" | "filters_opened" | "filters_applied" | "filters_reset" | "map_opened" | "map_marker_opened" | "room_creation_started" | "room_creation_failed" | "room_opened" | "invite_opened" | "invite_shared" | "invite_share_failed" | "invite_link_opened" | "room_join_started" | "room_join_failed" | "swipe_session_started" | "event_swipe_impression" | "match_shown" | "invite_shared" | "match_opened" | "swipe_pool_exhausted" | "client_error" | "client_performance" | "ticket_redirect_failed";
+            /** @enum {integer} */
+            event_version: 1;
             /** Format: date-time */
             occurred_at: string;
             /** Format: uuid */
             event_id?: string | null;
             /** Format: uuid */
             room_id?: string | null;
+            /** Format: uuid */
+            session_id?: string | null;
+            /** @enum {string|null} */
+            platform?: "max_ios" | "max_android" | "max_web" | "max_desktop" | "browser" | "unknown" | null;
+            app_version?: string | null;
+            /** @enum {string|null} */
+            entry_point?: "feed" | "home" | "search" | "map" | "saved" | "room_invite" | "room" | "deep_link" | "unknown" | "bot" | "direct" | "shared_event" | "recommendation" | null;
+            /** @description Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited. */
+            properties?: {
+                [key: string]: unknown;
+            };
             metadata?: components["schemas"]["BehaviorMetadata"];
         };
         /** @description Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены. */
@@ -872,6 +907,69 @@ export interface operations {
                 };
             };
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getInternalAnalyticsDashboard: {
+        parameters: {
+            query?: {
+                /** @description Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом. */
+                days?: 7 | 30 | 90;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Агрегированные метрики без идентификаторов пользователей и комнат */
+            200: {
+                headers: {
+                    /** @example no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "period_days": 30,
+                     *       "generated_at": "2026-09-27T12:00:00Z",
+                     *       "daily": [],
+                     *       "summary": {},
+                     *       "recommendations": [],
+                     *       "retention": [],
+                     *       "guardrails": {},
+                     *       "providers": [],
+                     *       "api_performance": [],
+                     *       "catalog_quality": [],
+                     *       "vote_agreement": [],
+                     *       "pool_diversity": {},
+                     *       "repeat_exposure": []
+                     *     }
+                     */
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description Ошибка чтения метрик */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Превышено время ожидания аналитического запроса */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bootstrapMaxSession: {

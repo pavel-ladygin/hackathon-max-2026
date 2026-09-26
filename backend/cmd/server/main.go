@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/analytics"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
@@ -59,6 +60,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		behavior.FlushOperationTelemetry(flushCtx)
+	}()
+	go behavior.RunRetentionPrune(ctx, db, logger)
 	server := httpapi.NewServer(cfg.HTTPAddr, handler)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
@@ -112,6 +119,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	poolKeyInput := append([]byte("rooms-pool-tie-break\x00"), cfg.InviteEncryptionKey...)
 	poolKey := sha256.Sum256(poolKeyInput)
 	behaviorRecorder := behavior.Recorder{}
+	homeHandler.EnableOperationTelemetry(behavior.DatabaseOperationSink(db, behaviorRecorder))
 	behaviorService, err := behavior.NewService(db)
 	if err != nil {
 		return nil, err
@@ -131,6 +139,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		return nil, err
 	}
 	ticketHandler := tickets.NewHandler(ticketService)
+	analyticsHandler := analytics.NewHandler(db)
 
 	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)
 	if err != nil {
@@ -158,6 +167,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { behaviorHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { savedHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
+		analyticsHandler.RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)

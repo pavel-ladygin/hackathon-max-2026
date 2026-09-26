@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
@@ -20,11 +21,12 @@ const createRequestLimit = 16 * 1024
 // RegisterRoutes mounts create-room. Authentication middleware is installed by
 // the application around this feature router.
 func (s *Service) RegisterRoutes(r chi.Router) {
-	r.Post(createRoute, s.CreateRoom)
-	r.Post("/api/v1/room-invites/{token}/join", s.JoinRoomByInvite)
+	sink := behavior.DatabaseOperationSink(s.pool, s.recorder)
+	r.With(behavior.OperationMiddleware("room_create", sink)).Post(createRoute, s.CreateRoom)
+	r.With(behavior.OperationMiddleware("room_join", sink)).Post("/api/v1/room-invites/{token}/join", s.JoinRoomByInvite)
 	r.Get("/api/v1/rooms/{roomId}", s.GetRoom)
 	r.Get("/api/v1/rooms/{roomId}/events", s.GetRoomEvents)
-	r.Put("/api/v1/rooms/{roomId}/events/{eventId}/vote", s.VoteForRoomEvent)
+	r.With(behavior.OperationMiddleware("room_vote", sink)).Put("/api/v1/rooms/{roomId}/events/{eventId}/vote", s.VoteForRoomEvent)
 	r.Put("/api/v1/rooms/{roomId}/intent/me", s.ReplaceMyRoomIntent)
 }
 

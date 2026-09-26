@@ -12,6 +12,7 @@ import (
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/tickets"
 )
 
 // TestB9TwoClientMatchEndToEnd exercises the complete database-backed room
@@ -95,6 +96,20 @@ func TestB9TwoClientMatchEndToEnd(t *testing.T) {
 			if err != nil || match.Event.Id != event || match.Id == uuid.Nil || len(match.Participants) != 2 {
 				t.Fatalf("match response=%+v err=%v; want the selected event and both participants", match, err)
 			}
+			ticketService, err := tickets.NewService(db, behavior.Recorder{}, []string{"tickets.example"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ticketService.Click(ctx, f.member, event, f.room); err != nil {
+				t.Fatalf("matched ticket click: %v", err)
+			}
+			var ticketRoomID *uuid.UUID
+			if err := db.QueryRow(ctx, `SELECT room_id FROM behavior_events WHERE user_id=$1 AND event_id=$2 AND type='ticket_click'`, f.member, event).Scan(&ticketRoomID); err != nil {
+				t.Fatal(err)
+			}
+			if ticketRoomID == nil || *ticketRoomID != f.room {
+				t.Fatalf("ticket click room_id=%v, want matched room %s", ticketRoomID, f.room)
+			}
 
 			for _, user := range []uuid.UUID{f.creator, f.member} {
 				reloaded, err := svc.Get(ctx, contracts.Principal{UserID: user}, f.room)
@@ -123,7 +138,7 @@ func TestB9TwoClientMatchEndToEnd(t *testing.T) {
 			if err := db.QueryRow(ctx, "SELECT count(*) FROM room_matches WHERE room_id=$1", f.room).Scan(&matches); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match'", f.room).Scan(&terminalEvents); err != nil {
+			if err := db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='match_created'", f.room).Scan(&terminalEvents); err != nil {
 				t.Fatal(err)
 			}
 			if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1 AND is_active", f.room).Scan(&activeMembers); err != nil {

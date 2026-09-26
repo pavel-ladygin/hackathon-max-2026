@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,8 +10,8 @@ import (
 )
 
 // BehaviorRecorder writes a server-authoritative event using the caller's
-// executor. Backend B MUST pass its current pgx.Tx so the action and behavior
-// record commit or roll back together. Implementations must not begin or commit
+// transaction. Implementations must isolate analytics write failures so they
+// cannot abort the surrounding product operation, and must not begin or commit
 // another transaction or bypass the supplied executor through their own pool.
 type BehaviorRecorder interface {
 	Record(ctx context.Context, db store.DBTX, event ServerBehaviorEvent) error
@@ -19,11 +20,13 @@ type BehaviorRecorder interface {
 // ServerBehaviorEvent excludes client-supplied arbitrary metadata and PII.
 // Origin is always "server" and is assigned by the recorder implementation.
 type ServerBehaviorEvent struct {
-	ID         uuid.UUID
-	UserID     uuid.UUID
-	Type       string // room_create, room_join, intent_submit, like, dislike, match, save, unsave, ticket_click.
-	EventID    *uuid.UUID
-	RoomID     *uuid.UUID
-	RequestID  string
-	OccurredAt time.Time
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Type             string
+	EventID          *uuid.UUID
+	RoomID           *uuid.UUID
+	RequestID        string
+	OccurredAt       time.Time
+	Properties       json.RawMessage
+	DeduplicationKey string
 }

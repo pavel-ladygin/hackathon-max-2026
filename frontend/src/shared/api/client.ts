@@ -1,7 +1,7 @@
 import { mapPreferences, mapRoom, mapUser } from './mapper'
 import type { BootstrapRequestDto, InviteContextDto, MapBounds, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
 import { ApiError, normalizeApiError } from './errors'
-import { createHttpDiscoveryApi, type DiscoverySearchParams } from './discovery'
+import { createHttpDiscoveryApi, type AnalyticsEvent, type DiscoverySearchParams } from './discovery'
 
 export interface ApiClientOptions { baseUrl?: string; fetchImpl?: typeof fetch; getToken?: () => string | null }
 let inMemoryAccessToken: string | null = null
@@ -23,7 +23,7 @@ export class ApiClient {
   async searchEvents(params: Record<string, string | number | boolean | string[] | undefined> = {}) { return this.discovery.searchEvents(params) }
   async getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>) { return this.discovery.getMapEvents(params) }
   async getEvent(eventId: string) { return this.discovery.getEvent(eventId) }
-  async recordBehavior(events: Array<{ client_event_id: string; type: 'impression' | 'open' | 'share'; occurred_at: string; event_id?: string | null; room_id?: string | null; metadata?: Record<string, unknown> }>) { return this.discovery.recordBehavior(events) }
+  async recordBehavior(events: AnalyticsEvent[]) { return this.discovery.recordBehavior(events) }
   async setSaved(eventId: string, saved: boolean) { return this.discovery.setSaved(eventId, saved) }
   async getSaved(params: { tab?: 'saved' | 'matches'; limit?: number; cursor?: string } = {}) { return this.discovery.getSaved(params) }
   async createRoom(input: { name: string; city_id: string }, idempotencyKey = crypto.randomUUID()): Promise<{ room: ReturnType<typeof mapRoom>; invite: any }> { const x = await this.request<any>('/rooms', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) }); return { room: mapRoom(x.room), invite: x.invite } }

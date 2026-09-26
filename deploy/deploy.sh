@@ -12,6 +12,7 @@ IMAGE_PREFIX=${IMAGE_PREFIX:-ghcr.io/pavel-ladygin/hackathon-max-2026}
 test "$#" -eq 1 || { echo "usage: $0 <40-character-commit-sha>" >&2; exit 2; }
 release_sha=$1
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit SHA" >&2; exit 2; }
+test -s /etc/nginx/auth/worknet-analytics.htpasswd || { echo "missing or empty /etc/nginx/auth/worknet-analytics.htpasswd" >&2; exit 1; }
 
 cd "$APP_DIR"
 test -f "$ENV_FILE" || { echo "missing $APP_DIR/$ENV_FILE" >&2; exit 1; }

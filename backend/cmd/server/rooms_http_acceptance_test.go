@@ -132,7 +132,7 @@ func TestHTTPRoomTwoClientMatchAcceptance(t *testing.T) {
 
 	participant := bootstrap(maxBase+1, "Participant", created.Invite.Token)
 	participantID = participant.User.ID
-	if participant.InviteContext == nil || participant.InviteContext.Token != created.Invite.Token || participant.InviteContext.RoomName != "HTTP two-client room" || participant.InviteContext.Status != "joinable" {
+	if participant.InviteContext == nil || participant.InviteContext.Token != created.Invite.Token || participant.InviteContext.RoomID != created.Room.ID || participant.InviteContext.RoomName != "HTTP two-client room" || participant.InviteContext.Status != "joinable" {
 		t.Fatalf("invite bootstrap context=%+v; want joinable context for the created room", participant.InviteContext)
 	}
 	join := request(http.MethodPost, "/api/v1/room-invites/"+url.PathEscape(created.Invite.Token)+"/join", participant.AccessToken, nil, "http-acceptance-join")
@@ -236,9 +236,10 @@ type bootstrapHTTPResponse struct {
 		ID uuid.UUID `json:"id"`
 	} `json:"user"`
 	InviteContext *struct {
-		Token    string `json:"token"`
-		RoomName string `json:"room_name"`
-		Status   string `json:"status"`
+		Token    string    `json:"token"`
+		RoomID   uuid.UUID `json:"room_id"`
+		RoomName string    `json:"room_name"`
+		Status   string    `json:"status"`
 	} `json:"invite_context"`
 }
 

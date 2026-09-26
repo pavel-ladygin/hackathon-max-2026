@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type readinessFunc func(context.Context) error
@@ -70,5 +72,23 @@ func TestRecoveryReturnsSafeInternalEnvelopeAndLogsCorrelationID(t *testing.T) {
 	}
 	if strings.Contains(res.Body.String(), "secret-panic") || strings.Contains(logs.String(), "secret-panic") || !strings.Contains(logs.String(), "req-safe") || !strings.Contains(logs.String(), "http handler panic") {
 		t.Fatalf("response/logs leaked or missed panic correlation: body=%q logs=%q", res.Body.String(), logs.String())
+	}
+}
+
+func TestOperationalTelemetryUsesBoundedRouteLabels(t *testing.T) {
+	var logs bytes.Buffer
+	r := NewRouter(nil, testLogger(&logs), func(r chi.Router) {
+		r.Post("/api/v1/room-invites/{token}/join", func(w http.ResponseWriter, _ *http.Request) {
+			WriteJSON(w, http.StatusConflict, map[string]string{"code": "ROOM_FULL"})
+		})
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/room-invites/secret-token-value/join?secret=query-value", nil)
+	response := httptest.NewRecorder()
+	r.ServeHTTP(response, request)
+	if response.Code != http.StatusConflict || !strings.Contains(logs.String(), `"operation":"room_join"`) || !strings.Contains(logs.String(), `"status":409`) {
+		t.Fatalf("status/logs=%d/%s, want room_join conflict telemetry", response.Code, logs.String())
+	}
+	if strings.Contains(logs.String(), "secret-token-value") || strings.Contains(logs.String(), "query-value") {
+		t.Fatalf("operational telemetry leaked request content: %s", logs.String())
 	}
 }

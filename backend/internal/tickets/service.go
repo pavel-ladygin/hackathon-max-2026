@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -52,12 +53,27 @@ func NewService(db *store.Pool, recorder contracts.BehaviorRecorder, allowlist [
 }
 
 // Click returns a checked external URL and records the completed server action.
-// Room context deliberately is not accepted here: this Backend A capability does
-// not own or validate room membership, and ticket behavior contains no private
-// room data.
-func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID) (string, error) {
+// Optional room context is attached only when the event is the room's match and
+// the requesting user is a member; membership need not still be active.
+func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID, roomIDs ...uuid.UUID) (string, error) {
 	if userID == uuid.Nil || eventID == uuid.Nil {
 		return "", ErrInvalid
+	}
+	var matchedRoomID *uuid.UUID
+	if len(roomIDs) > 0 && roomIDs[0] != uuid.Nil {
+		roomID := roomIDs[0]
+		var memberHasMatch bool
+		err := s.db.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1
+			FROM room_matches match
+			JOIN room_members member ON member.room_id = match.room_id
+			WHERE match.room_id = $1 AND match.event_id = $2 AND member.user_id = $3
+		)`, roomID, eventID, userID).Scan(&memberHasMatch)
+		if err != nil {
+			slog.Default().Warn("ticket room context validation failed", "request_id", httpapi.RequestID(ctx), "error", err)
+		} else if memberHasMatch {
+			matchedRoomID = &roomID
+		}
 	}
 
 	var externalURL string
@@ -79,7 +95,9 @@ func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID) (string,
 		externalURL = availability.TicketUrl.String
 		return s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{
 			ID: uuid.New(), UserID: userID, Type: "ticket_click", EventID: &eventID,
+			RoomID:    matchedRoomID,
 			RequestID: httpapi.RequestID(ctx), OccurredAt: s.now(),
+			DeduplicationKey: "ticket/" + eventID.String() + "/" + httpapi.RequestID(ctx),
 		})
 	})
 	if err != nil {

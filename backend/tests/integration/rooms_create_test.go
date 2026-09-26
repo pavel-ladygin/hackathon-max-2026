@@ -227,7 +227,7 @@ func TestCreateRoomRetiresOnlyRestartableExhaustedRoomAndRollsBackOnRecorderFail
 	if err == nil {
 		t.Fatal("recorder failure unexpectedly committed")
 	}
-	for _, query := range []string{"SELECT count(*) FROM rooms WHERE creator_user_id=$1 AND name='rollback'", "SELECT count(*) FROM idempotency_records WHERE user_id=$1 AND key='rollback-key'", "SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='room_create'"} {
+	for _, query := range []string{"SELECT count(*) FROM rooms WHERE creator_user_id=$1 AND name='rollback'", "SELECT count(*) FROM idempotency_records WHERE user_id=$1 AND key='rollback-key'", "SELECT count(*) FROM behavior_events WHERE user_id=$1 AND type='room_created'"} {
 		var count int
 		if err := db.QueryRow(ctx, query, failingUser).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("rollback query %q = %d, %v", query, count, err)
@@ -382,7 +382,7 @@ func newCreateService(t *testing.T, db *store.Pool, recorder contracts.BehaviorR
 func assertCreateRows(t *testing.T, db *store.Pool, user, room uuid.UUID, members, invites, behavior int) {
 	t.Helper()
 	ctx := context.Background()
-	for query, want := range map[string]int{"SELECT count(*) FROM room_members WHERE room_id=$1": members, "SELECT count(*) FROM room_invites WHERE room_id=$1": invites, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_create'": behavior} {
+	for query, want := range map[string]int{"SELECT count(*) FROM room_members WHERE room_id=$1": members, "SELECT count(*) FROM room_invites WHERE room_id=$1": invites, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND user_id=$2 AND type='room_created'": behavior} {
 		var got int
 		var err error
 		if strings.Contains(query, "$2") {

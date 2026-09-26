@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
@@ -146,11 +147,23 @@ func TestBehaviorRecorderPersistsAndValidatesServerEvents(t *testing.T) {
 	recorder := behavior.Recorder{}
 	eventID := event
 	serverEvent := contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: user, Type: "save", EventID: &eventID, RequestID: "request-1", OccurredAt: time.Now().UTC()}
-	if err := recorder.Record(ctx, db, serverEvent); err != nil {
+	invalidEvent := contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: user, Type: "unknown", OccurredAt: time.Now().UTC()}
+	// Recorder uses a savepoint so analytics write errors can be isolated from
+	// the surrounding product transaction.
+	if err := db.InTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		if err := recorder.Record(ctx, tx, serverEvent); err != nil {
+			return err
+		}
+		return recorder.Record(ctx, tx, invalidEvent)
+	}); err != nil {
+		t.Fatalf("recording behavior events failed: %v", err)
+	}
+	var rejectedRows int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM behavior_events WHERE id=$1`, invalidEvent.ID).Scan(&rejectedRows); err != nil {
 		t.Fatal(err)
 	}
-	if err := recorder.Record(ctx, db, contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: user, Type: "unknown", OccurredAt: time.Now().UTC()}); err == nil {
-		t.Fatal("invalid server event accepted")
+	if rejectedRows != 0 {
+		t.Fatal("invalid server event was persisted")
 	}
 	var origin, typ string
 	if err := db.QueryRow(ctx, `SELECT origin,type FROM behavior_events WHERE id=$1`, serverEvent.ID).Scan(&origin, &typ); err != nil {

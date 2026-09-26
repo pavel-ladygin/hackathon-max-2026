@@ -8,6 +8,7 @@ import { createEventMarkerElement } from './eventMarker'
 import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
 import { MapAreaCache, paddedViewportBounds } from './mapResults'
+import { track } from '../../shared/analytics/client'
 
 const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
@@ -25,9 +26,6 @@ type MapFilters = {
   price_max_minor?: number
   free_only?: boolean
   city_id?: string
-  lat?: number
-  lng?: number
-  distance_m?: number
 }
 type MapEvent = { kind: 'event'; id: string; longitude: number; latitude: number; event: EventCard }
 type MapCluster = { kind: 'cluster'; id: string; longitude: number; latitude: number; west: number; south: number; east: number; north: number; count: number; members: MapEvent[] }
@@ -110,7 +108,7 @@ function mapItemSignature(item: MapItem) {
   return JSON.stringify(item)
 }
 
-export function CatalogMap({ filters, initialCenter, userLocation }: { filters: MapFilters; initialCenter?: [number, number]; userLocation?: { latitude: number; longitude: number } }) {
+export function CatalogMap({ filters }: { filters: MapFilters }) {
   const filtersKey = JSON.stringify(filters)
   const navigate = useNavigate()
   const mapNode = useRef<HTMLDivElement>(null)
@@ -122,11 +120,7 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
   const sequence = useRef(0)
   const pendingArea = useRef<string | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const centerLng = initialCenter?.[0]
-  const centerLat = initialCenter?.[1]
-  const userLatitude = userLocation?.latitude
-  const userLongitude = userLocation?.longitude
-  const initial = useMemo(() => centerLng === undefined || centerLat === undefined ? MOSCOW_CENTER : [centerLng, centerLat] as [number, number], [centerLat, centerLng])
+  const initial = MOSCOW_CENTER
   const [camera, setCamera] = useState<YandexCamera>({ center: initial, zoom: 11 })
   const cameraRef = useRef<YandexCamera>({ center: initial, zoom: 11 })
   const [viewportSize, setViewportSize] = useState({ width: 700, height: 500 })
@@ -157,6 +151,7 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
     setSelectedEventId(event?.id ?? null)
     setSelectedEvent(event)
     setSelectedEventFilterKey(filtersKey)
+    if (event) track('map_marker_opened', { eventId: event.id, properties: { zoom_level: Math.round(cameraRef.current.zoom) } })
   }, [filtersKey])
 
   const requestArea = useCallback(async (nextCamera: YandexCamera, size = viewportSize, force = false) => {
@@ -224,10 +219,13 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
       nextMap.addChild(new YMapListener({ onUpdate: (event: YandexMapUpdateEvent) => {
         const nextCamera = readCamera(event)
         if (!nextCamera) return
+        // Keep the latest camera synchronously. Readiness/resize effects can
+        // run before the idle debounce and must not schedule a request from
+        // the previous camera while this update is pending.
+        cameraRef.current = nextCamera
+        setCamera(nextCamera)
         if (idleTimer.current) clearTimeout(idleTimer.current)
         idleTimer.current = setTimeout(() => {
-          cameraRef.current = nextCamera
-          setCamera(nextCamera)
           requestAreaRef.current(nextCamera)
         }, MAP_IDLE_MS)
       } }))
@@ -280,17 +278,6 @@ export function CatalogMap({ filters, initialCenter, userLocation }: { filters: 
       markers.current.set(key, marker)
     }
   }, [integerZoom, mapReady, openCluster, selectEvent, selectedEventId, visibleItems])
-
-  useEffect(() => {
-    if (!mapReady || !map.current || !mapApi.current || userLatitude === undefined || userLongitude === undefined) return
-    const element = document.createElement('div')
-    element.className = styles.userLocation
-    element.setAttribute('role', 'img')
-    element.setAttribute('aria-label', 'Моё местоположение')
-    const child = new mapApi.current.YMapMarker({ coordinates: [userLongitude, userLatitude] }, element)
-    map.current.addChild(child)
-    return () => { map.current?.removeChild(child) }
-  }, [mapReady, userLatitude, userLongitude])
 
   useEffect(() => {
     if (!mapReady || !map.current || !mapApi.current) return

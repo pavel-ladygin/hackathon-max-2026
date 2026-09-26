@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import type { CategorySlug, TimeSlot } from '../../shared/api/types'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { Button, Chip, ChipGroup, PageContent, PageShell } from '../../shared/ui/index'
 import styles from '../pages.module.css'
+import { track } from '../../shared/analytics/client'
 
 const options: Array<{ slug: CategorySlug; label: string; icon: string }> = [
   { slug: 'concerts', label: 'Концерты', icon: '♫' },
@@ -41,6 +42,7 @@ export function OnboardingPage() {
   const budget = useWatch({ control: form.control, name: 'budget' })
   const usual = useWatch({ control: form.control, name: 'usual' })
   const times = useWatch({ control: form.control, name: 'times' })
+  useEffect(() => { track('onboarding_started') }, [step])
   const save = useMutation({
     mutationFn: (values: ProfileForm) => apiClient.replacePreferences({
       city_id: stored?.cityId ?? bootstrap.data?.user.cityId ?? 'a0f625ee-2154-5a45-8afe-37adf955ec24',
@@ -50,6 +52,7 @@ export function OnboardingPage() {
       usual_time_slots: values.times,
     }),
     onSuccess: async () => {
+      track('onboarding_completed')
       await queryClient.refetchQueries({ queryKey: ['bootstrap'] })
       navigate('/', { replace: true })
     },

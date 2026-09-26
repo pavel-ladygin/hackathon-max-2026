@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
@@ -9,7 +9,7 @@ import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
 import { RoomEventDate } from '../../features/rooms/RoomEventDate'
-import { relaxedIntent } from '../../features/rooms/relaxation'
+import { availableRelaxations } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import { withMinimumDuration } from '../../shared/lib/async'
@@ -21,6 +21,7 @@ import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, EventImage, PageContent, PageShell, PrivacyNote, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 import intentStyles from './intent.module.css'
+import { track, trackFailure } from '../../shared/analytics/client'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
@@ -34,10 +35,14 @@ export function NewRoomPage() {
   const bootstrap = useBootstrap()
   const [createSuccess, setCreateSuccess] = useState(false)
   const form = useForm<RoomForm>({ resolver: zodResolver(roomSchema), defaultValues: { name: 'Куда идём в субботу?' } })
+  useEffect(() => { track('room_creation_started') }, [])
   const create = useMutation({
     mutationFn: (values: RoomForm) => apiClient.createRoom({ name: values.name.trim(), city_id: bootstrap.data?.preferences?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID }),
     onSuccess: async ({ room }) => { setCreateSuccess(true); await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350)); navigate(`/rooms/${room.id}/invite`) },
-    onError: (error) => { if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true }) },
+    onError: (error) => {
+      trackFailure('room_creation_failed', error)
+      if (error instanceof ApiError && error.fieldErrors.name) form.setError('name', { message: error.fieldErrors.name }, { shouldFocus: true })
+    },
   })
   return (
     <PageShell><TopBar title="Новая комната" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
@@ -57,6 +62,8 @@ export function InvitePage() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const room = useRoom(roomId)
+  const loadedRoomId = room.data?.id
+  useEffect(() => { if (loadedRoomId) track('invite_opened', { roomId: loadedRoomId }) }, [loadedRoomId])
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sharing' | 'shared' | 'share-error' | 'copied' | 'copy-error'>('idle')
   if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <Empty title="Комната не найдена" description={room.isError ? roomErrorMessage(room.error) : undefined} action={<Button onClick={() => navigate('/')}>На главную</Button>} />
@@ -67,6 +74,8 @@ export function InvitePage() {
     setInviteStatus('sharing')
     const ok = await maxPlatform.shareInvite({ text: `Присоединяйся к комнате «${room.data.name}»`, link: maxLink })
     setInviteStatus(ok ? 'shared' : 'share-error')
+    if (ok) track('invite_shared', { roomId: room.data.id })
+    else trackFailure('invite_share_failed', new Error('Invite sharing failed'), { roomId: room.data.id })
   }
   const copy = async () => {
     if (!rawUrl) return
@@ -91,6 +100,8 @@ export function JoinPage() {
   const bootstrap = useBootstrap()
   const inviteContext = bootstrap.data?.inviteContext
   const context = inviteContext?.token === inviteToken ? inviteContext : null
+  const inviteStatus = context?.status
+  useEffect(() => { if (inviteStatus) track('invite_link_opened', { roomId: context?.room_id }) }, [context?.room_id, inviteStatus])
   const queryClient = useQueryClient()
   const join = useMutation({ mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
@@ -103,14 +114,14 @@ export function JoinPage() {
       queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
     ])
     navigate(`/rooms/${room.id}/intent`, { replace: true })
-  } })
+  }, onError: (error) => trackFailure('room_join_failed', error, { roomId: context?.room_id }) })
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
       <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
       <PrivacyNote />{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => join.mutate()}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
+      <div className={styles.footer}><Button disabled={join.isPending || context?.status === 'expired' || context?.status === 'full'} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { track('room_join_started', { roomId: context?.room_id }); join.mutate() }}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
     </PageContent></PageShell>
   )
 }
@@ -118,6 +129,8 @@ export function JoinPage() {
 export function RoomFlowPage() {
   const { roomId, roomScreen } = useParams()
   const room = useRoom(roomId)
+  const loadedRoomId = room.data?.id
+  useEffect(() => { if (loadedRoomId) track('room_opened', { roomId: loadedRoomId }) }, [loadedRoomId])
   if (room.isPending) return <ScreenSkeleton variant="room" label="Восстанавливаем комнату…" />
   if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
@@ -135,7 +148,6 @@ const intentSchema = z.object({
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
   category_slugs: z.array(z.enum(['concerts', 'cinema', 'theatre', 'standup', 'exhibitions', 'sports', 'food', 'parties', 'festivals', 'walks', 'other'])).min(1),
   budget: z.coerce.number().min(0).max(1_000_000),
-  radius: z.coerce.number().min(100).max(50_000),
   free_text: z.string().max(300),
 })
 type IntentForm = z.infer<typeof intentSchema>
@@ -150,13 +162,12 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
-  const radius = useWatch({ control: form.control, name: 'radius' })
   const save = useMutation({
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: (error) => {
       if (!(error instanceof ApiError)) return
-      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', radius_m: 'radius', free_text: 'free_text' }
+      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', free_text: 'free_text' }
       for (const [field, message] of Object.entries(error.fieldErrors)) if (mapping[field]) form.setError(mapping[field], { message })
     },
   })
@@ -169,7 +180,6 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
         <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
         <label className={intentStyles.rangeField} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
-        <label className={intentStyles.rangeField} htmlFor="room-radius">Радиус · до {(radius / 1000).toFixed(0)} км<input id="room-radius" className={styles.range} type="range" min="100" max="50000" step="500" aria-invalid={Boolean(form.formState.errors.radius)} {...form.register('radius')} />{form.formState.errors.radius ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.radius.message}</span> : null}</label>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {Object.keys(form.formState.errors).length ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}
         {save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
@@ -196,6 +206,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const events = useRoomEvents(room.id, true)
+  const swipeSessionTracked = useRef(false)
   const [pendingVote, setPendingVote] = useState<VoteValue | null>(null)
   const [matchPreview, setMatchPreview] = useState(false)
   const dragX = useMotionValue(0)
@@ -220,6 +231,34 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
     },
     onError: async (error) => { setPendingVote(null); dragX.set(0); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
+  const item = events.data?.items[0]
+  const itemEventId = item?.event.id
+  const itemPosition = item?.position
+  const itemCategory = item?.event.category_slug
+  const itemHasImage = Boolean(item?.event.imageUrl)
+  const itemHasPrice = item?.event.priceFromMinor !== null && item?.event.priceFromMinor !== undefined
+  const poolSize = room.pool?.total ?? events.data?.total ?? 0
+  useEffect(() => {
+    if (!events.data || swipeSessionTracked.current) return
+    swipeSessionTracked.current = true
+    track('swipe_session_started', { roomId: room.id, properties: { pool_size: room.pool?.total ?? events.data.total } })
+  }, [events.data, room.id, room.pool?.total])
+  useEffect(() => {
+    if (!itemEventId || itemPosition === undefined || !itemCategory) return
+    track('event_swipe_impression', { roomId: room.id, eventId: itemEventId, properties: {
+      position: itemPosition,
+      recommendation_rank: itemPosition + 1,
+      pool_size: poolSize,
+      category: itemCategory,
+      has_image: itemHasImage,
+      has_price: itemHasPrice,
+    } })
+  }, [itemCategory, itemEventId, itemHasImage, itemHasPrice, itemPosition, poolSize, room.id])
+  useEffect(() => {
+    if (events.data && (room.pool?.room_exhausted || room.state === 'exhausted')) {
+      track('swipe_pool_exhausted', { roomId: room.id })
+    }
+  }, [events.data, room.id, room.pool?.room_exhausted, room.pool?.voted_by_me, room.state])
   if (events.isPending) return <ScreenSkeleton variant="room" label="Загружаем общий пул…" />
   if (events.isError) {
     if (isRoomError(events.error, 'POOL_EXHAUSTED')) return <WaitingScreen room={room} />
@@ -227,7 +266,6 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   }
   const votedByMe = room.pool?.voted_by_me ?? 0
   const poolTotal = room.pool?.total ?? events.data.total
-  const item = events.data.items[0]
   if (!item) return <WaitingScreen room={room} />
   const cast = (value: VoteValue) => { if (!vote.isPending) { setPendingVote(value); vote.mutate({ eventId: item.event.id, value }) } }
   return (
@@ -252,13 +290,20 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
 function MatchScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const event = useEventDetail(room.match?.event_id)
-  const ticket = useMutation({ mutationFn: () => withMinimumDuration(apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), 120), onSuccess: ({ external_url }) => void maxPlatform.openTicketLink(external_url) })
+  const loadedMatchEventId = event.data?.id
+  const matchedEventId = room.match?.event_id
+  const matchId = room.match?.id
+  useEffect(() => { if (loadedMatchEventId && matchedEventId) track('match_shown', { roomId: room.id, eventId: matchedEventId }) }, [loadedMatchEventId, matchId, matchedEventId, room.id])
+  const ticket = useMutation({ mutationFn: async () => {
+    const { external_url } = await withMinimumDuration(apiClient.recordTicketClick(room.match!.event_id, { source: 'match', room_id: room.id }), 120)
+    if (!await maxPlatform.openTicketLink(external_url)) throw new Error('Ticket link could not be opened')
+  }, onError: (error) => trackFailure('ticket_redirect_failed', error, { eventId: room.match?.event_id, roomId: room.id }) })
   if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем ваш мэтч…" />
   if (event.isError) return <Empty title="Мэтч найден, но событие не загрузилось" />
   return (
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <Suspense fallback={<ScreenSkeleton variant="event" inline label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
-      <div className={styles.footer}><Button onClick={() => navigate(`/events/${event.data.id}`)}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>К билетам</Button></div>
+      <div className={styles.footer}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>К билетам</Button></div>
       {ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>
   )
@@ -267,9 +312,13 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
 function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState('budget')
-  const restart = useMutation({ mutationFn: () => apiClient.replaceMyIntent(room.id, relaxedIntent(room.myIntent, selected)), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
-  const suggestions = [{ id: 'budget', title: 'Увеличить бюджет до 3 500 ₽', meta: '+8 подходящих событий' }, { id: 'date', title: 'Добавить пятницу вечером', meta: '+5 событий' }, { id: 'radius', title: 'Увеличить радиус до 10 км', meta: '+7 событий' }, { id: 'category', title: 'Добавить выставки', meta: '+4 события' }]
+  const [selected, setSelected] = useState<string | null>(null)
+  const suggestions = availableRelaxations(room.myIntent)
+  const selectedSuggestion = suggestions.find((item) => item.id === selected) ?? suggestions[0]
+  const restart = useMutation({ mutationFn: () => {
+    if (!selectedSuggestion) throw new Error('No room intent change selected')
+    return apiClient.replaceMyIntent(room.id, selectedSuggestion.intent)
+  }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
   if (!room.allowed_actions.includes('restart_with_new_intent')) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
@@ -281,12 +330,11 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   }
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Можно немного расширить только ваши условия и запустить новый приватный раунд.</p>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что ограничило подборку</h2><div className={styles.reason}><strong>Бюджет и время</strong><p>Пересечение получилось небольшим, а часть подходящих событий немного дороже.</p></div><div className={styles.reason}><strong>Категории и расстояние</strong><p>В выбранном радиусе мало событий с общими интересами.</p></div></section>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selected === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{item.meta}</small></span><span aria-hidden="true">{selected === item.id ? '✓' : '○'}</span></button>)}</section>
-      <PrivacyNote>Это только общие причины — ответы второго участника не раскрываются.</PrivacyNote>
+      <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Сейчас нет событий по выбранным условиям. Можно изменить свои условия и запустить новый приватный раунд.</p>
+      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selectedSuggestion?.id === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selectedSuggestion?.id === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong></span><span aria-hidden="true">{selectedSuggestion?.id === item.id ? '✓' : '○'}</span></button>)}{suggestions.length === 0 ? <p className={styles.subtitle}>Больше нечего изменить в текущих условиях. Попробуйте позже или создайте новую комнату.</p> : null}</section>
+      <PrivacyNote>Ответы второго участника не раскрываются.</PrivacyNote>
       {restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
-      <div className={styles.footer}><Button disabled={restart.isPending} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => restart.mutate()}>Применить и обновить подборку</Button></div>
+      <div className={styles.footer}><Button disabled={restart.isPending || !selectedSuggestion} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => { if (selectedSuggestion) restart.mutate() }}>Применить и обновить подборку</Button></div>
     </PageContent></PageShell>
   )
 }
@@ -304,7 +352,7 @@ function expectedScreen(room: RoomSnapshot) {
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
-  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: values.radius, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
+  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: values.budget * 100, radius_m: null, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }
@@ -321,9 +369,8 @@ function intentDefaults(room: RoomSnapshot, fallbackDate: string): IntentForm {
     time_slots: intent.time_slots,
     category_slugs: intent.category_slugs,
     budget: Math.round(intent.budget_max_minor / 100),
-    radius: intent.radius_m ?? 5_000,
     free_text: intent.free_text ?? '',
-  } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, radius: 5_000, free_text: '' }
+  } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, free_text: '' }
 }
 
 function maxAppUrl(token: string) {

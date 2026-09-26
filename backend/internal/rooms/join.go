@@ -178,7 +178,7 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 			if err != nil {
 				return err
 			}
-			if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_join", RoomID: &target.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: clock}); err != nil {
+			if err := s.recorder.Record(ctx, repo.DBTX(), contracts.ServerBehaviorEvent{ID: uuid.New(), UserID: principal.UserID, Type: "room_joined", RoomID: &target.ID, RequestID: httpapi.RequestID(ctx), OccurredAt: clock, DeduplicationKey: "room/" + target.ID.String() + "/joined/" + principal.UserID.String()}); err != nil {
 				return err
 			}
 			return s.finishJoinResponse(ctx, repo, principal.UserID, key, requestHash, target, targetMembership, clock, invite.ExpiresAt.Time, &response)

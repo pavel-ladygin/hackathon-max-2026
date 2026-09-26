@@ -40,8 +40,8 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := migrations.Up(ctx, db); err != nil {
-		logger.Error("apply migrations failed")
-		return fmt.Errorf("apply migrations failed")
+		logger.Error("apply migrations failed", "error", err)
+		return fmt.Errorf("apply migrations failed: %w", err)
 	}
 	logger.Info("migrations applied")
 	return nil

@@ -2,14 +2,16 @@ package behavior
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
-	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
 var ErrInvalid = errors.New("invalid behavior batch")
@@ -23,6 +25,12 @@ type ClientEvent struct {
 	Surface       pgtype.Text
 	Position      pgtype.Int4
 	RequestID     pgtype.Text
+	SessionID     pgtype.UUID
+	Platform      pgtype.Text
+	AppVersion    pgtype.Text
+	EntryPoint    pgtype.Text
+	Properties    []byte
+	EventVersion  int32
 }
 type Result struct{ Accepted, Duplicates, Rejected int }
 type Service struct{ db *store.Pool }
@@ -34,6 +42,40 @@ func NewService(db *store.Pool) (*Service, error) {
 		return nil, errors.New("behavior service database is required")
 	}
 	return &Service{db: db}, nil
+}
+
+// RunRetentionPrune calls the migration-owned pruning function at startup and
+// every day. Each call is bounded and failures never affect API availability.
+func RunRetentionPrune(ctx context.Context, db *store.Pool, logger *slog.Logger) {
+	if db == nil {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	prune := func() {
+		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		var deleted int64
+		if err := db.QueryRow(callCtx, "SELECT analytics_prune_behavior_events()").Scan(&deleted); err != nil {
+			logger.Error("analytics retention prune failed", "error", err)
+			return
+		}
+		if deleted > 0 {
+			logger.Info("analytics retention prune completed", "deleted_events", deleted)
+		}
+	}
+	prune()
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			prune()
+		}
+	}
 }
 
 // LoadBehavioralCategoryCounts returns deterministic per-user aggregates from
@@ -79,8 +121,19 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, events []ClientE
 	}
 	result := Result{}
 	err := s.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		q := platform.New(tx)
 		for _, event := range events {
+			properties := event.Properties
+			if len(properties) == 0 {
+				properties = []byte(`{}`)
+			}
+			eventVersion := event.EventVersion
+			if eventVersion == 0 {
+				eventVersion = 1
+			}
+			var propertyFields map[string]json.RawMessage
+			if eventVersion != 1 || json.Unmarshal(properties, &propertyFields) != nil || propertyFields == nil {
+				return ErrInvalid
+			}
 			if event.EventID.Valid {
 				var exists bool
 				if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM events WHERE id = $1)", uuid.UUID(event.EventID.Bytes)).Scan(&exists); err != nil {
@@ -90,11 +143,23 @@ func (s *Service) Ingest(ctx context.Context, userID uuid.UUID, events []ClientE
 					return ErrInvalid
 				}
 			}
-			rows, err := q.InsertClientBehaviorEvent(ctx, platform.InsertClientBehaviorEventParams{ID: uuid.New(), UserID: userID, Type: event.Type, EventID: event.EventID, RoomID: event.RoomID, Surface: event.Surface, Position: event.Position, RequestID: event.RequestID, ClientEventID: pgtype.Text{String: event.ClientEventID, Valid: true}, OccurredAt: event.OccurredAt})
+			// Use the transaction directly because the event envelope has fields
+			// newer than the generated sqlc query. The unique client event ID and
+			// the canonical deduplication key make retries idempotent.
+			rows, err := tx.Exec(ctx, `INSERT INTO behavior_events
+				(id, user_id, origin, type, event_id, room_id, surface, position,
+				 request_id, client_event_id, occurred_at, event_version, session_id,
+				 platform, app_version, entry_point, properties, deduplication_key)
+				VALUES ($1, $2, 'client', $3, $4, $5, $6, $7, $8, $9, $10, $11,
+				 $12, $13, $14, $15, $16::jsonb, $9)
+				ON CONFLICT DO NOTHING`, uuid.New(), userID, event.Type, event.EventID,
+				event.RoomID, event.Surface, event.Position, event.RequestID,
+				pgtype.Text{String: event.ClientEventID, Valid: true}, event.OccurredAt,
+				eventVersion, event.SessionID, event.Platform, event.AppVersion, event.EntryPoint, string(properties))
 			if err != nil {
 				return err
 			}
-			if rows == 0 {
+			if rows.RowsAffected() == 0 {
 				result.Duplicates++
 			} else {
 				result.Accepted++

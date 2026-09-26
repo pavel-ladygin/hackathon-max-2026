@@ -40,6 +40,65 @@ paths:
                 migrations: current
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /internal/analytics/dashboard:
+    get:
+      tags:
+      - System
+      operationId: getInternalAnalyticsDashboard
+      security:
+      - analyticsBasicAuth: []
+      summary: Получить агрегированные метрики закрытого дашборда
+      description: Доступ ограничивается Basic Auth на внешнем Nginx. Ответ содержит только агрегаты и кэшируется приложением кратковременно.
+      parameters:
+      - name: days
+        in: query
+        required: false
+        description: Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом.
+        schema:
+          type: integer
+          enum: [7, 30, 90]
+          default: 30
+      responses:
+        '200':
+          description: Агрегированные метрики без идентификаторов пользователей и комнат
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                period_days: 30
+                generated_at: '2026-09-27T12:00:00Z'
+                daily: []
+                summary: {}
+                recommendations: []
+                retention: []
+                guardrails: {}
+                providers: []
+                api_performance: []
+                catalog_quality: []
+                vote_agreement: []
+                pool_diversity: {}
+                repeat_exposure: []
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          description: Ошибка чтения метрик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Превышено время ожидания аналитического запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/max/bootstrap:
     post:
       tags:
@@ -729,6 +788,10 @@ components:
       scheme: bearer
       bearerFormat: opaque-session
       description: Случайный bearer token сессии MAX, действующий 24 часа; хранится на сервере только в виде hash.
+    analyticsBasicAuth:
+      type: http
+      scheme: basic
+      description: Basic Auth на внешнем Nginx; backend endpoint доступен только через защищенный прокси-маршрут.
   parameters:
     RoomId:
       name: roomId
@@ -919,6 +982,7 @@ components:
       type: object
       required:
       - token
+      - room_id
       - room_name
       - inviter
       - expires_at
@@ -927,6 +991,9 @@ components:
       properties:
         token:
           type: string
+        room_id:
+          type: string
+          format: uuid
         room_name:
           type: string
         inviter:
@@ -1411,6 +1478,7 @@ components:
       required:
       - client_event_id
       - type
+      - event_version
       - occurred_at
       properties:
         client_event_id:
@@ -1423,6 +1491,40 @@ components:
           - impression
           - open
           - share
+          - app_opened
+          - session_started
+          - onboarding_started
+          - onboarding_completed
+          - feed_opened
+          - event_impression
+          - event_opened
+          - search_performed
+          - filters_opened
+          - filters_applied
+          - filters_reset
+          - map_opened
+          - map_marker_opened
+          - room_creation_started
+          - room_creation_failed
+          - room_opened
+          - invite_opened
+          - invite_shared
+          - invite_share_failed
+          - invite_link_opened
+          - room_join_started
+          - room_join_failed
+          - swipe_session_started
+          - event_swipe_impression
+          - match_shown
+          - invite_shared
+          - match_opened
+          - swipe_pool_exhausted
+          - client_error
+          - client_performance
+          - ticket_redirect_failed
+        event_version:
+          type: integer
+          enum: [1]
         occurred_at:
           type: string
           format: date-time
@@ -1436,6 +1538,30 @@ components:
           - string
           - 'null'
           format: uuid
+        session_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        platform:
+          type:
+          - string
+          - 'null'
+          enum: [max_ios, max_android, max_web, max_desktop, browser, unknown, null]
+        app_version:
+          type:
+          - string
+          - 'null'
+          maxLength: 64
+        entry_point:
+          type:
+          - string
+          - 'null'
+          enum: [feed, home, search, map, saved, room_invite, room, deep_link, unknown, bot, direct, shared_event, recommendation, null]
+        properties:
+          type: object
+          description: Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited.
+          additionalProperties: true
         metadata:
           $ref: '#/components/schemas/BehaviorMetadata'
     BehaviorMetadata:

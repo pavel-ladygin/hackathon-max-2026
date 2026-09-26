@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPage } from './CatalogPage'
-import { maxPlatform } from '../../shared/platform/max/adapter'
 
 const searchCalls: Array<Record<string, unknown>> = []
 const defaultResult = {
@@ -25,7 +24,7 @@ vi.mock('../../features/discovery/queries', () => ({
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
-vi.mock('./CatalogMap', () => ({ CatalogMap: ({ filters, userLocation }: { filters: Record<string, unknown>; userLocation?: { latitude: number; longitude: number } }) => <div aria-label="map-placeholder" data-filters={JSON.stringify(filters)} data-user-location={JSON.stringify(userLocation)} /> }))
+vi.mock('./CatalogMap', () => ({ CatalogMap: ({ filters }: { filters: Record<string, unknown> }) => <div aria-label="map-placeholder" data-filters={JSON.stringify(filters)} /> }))
 
 function renderCatalog() {
   return render(<MemoryRouter><CatalogPage /></MemoryRouter>)
@@ -127,7 +126,10 @@ describe('CatalogPage search', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('jazz')
     expect(screen.getByRole('button', { name: 'Фильтры' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Очистить фильтры' })).not.toBeInTheDocument()
-    expect(searchCalls.at(-1)).toMatchObject({ q: 'jazz', category_slugs: undefined, free_only: undefined, date_from: undefined, date_to: undefined, price_max_minor: undefined, distance_m: undefined })
+    expect(searchCalls.at(-1)).toMatchObject({ q: 'jazz', category_slugs: undefined, free_only: undefined, date_from: undefined, date_to: undefined, price_max_minor: undefined })
+    expect(searchCalls.at(-1)).not.toHaveProperty('distance_m')
+    expect(searchCalls.at(-1)).not.toHaveProperty('lat')
+    expect(searchCalls.at(-1)).not.toHaveProperty('lng')
   })
 
   it('renders event skeleton cards during the initial load', () => {
@@ -170,44 +172,19 @@ describe('CatalogPage search', () => {
     expect(screen.queryByRole('button', { name: 'Показать ещё' })).not.toBeInTheDocument()
   })
 
-  it('explains a denied location permission without exposing coordinates', async () => {
-    vi.spyOn(maxPlatform, 'requestLocation').mockResolvedValue({ ok: false, reason: 'permission_denied' })
+  it('does not request location and keeps map available without geographic filters', async () => {
     renderCatalog()
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
+    expect(screen.queryByRole('button', { name: 'Найти рядом' })).not.toBeInTheDocument()
+    expect(searchCalls.at(-1)).not.toHaveProperty('distance_m')
+    expect(searchCalls.at(-1)).not.toHaveProperty('lat')
+    expect(searchCalls.at(-1)).not.toHaveProperty('lng')
 
-    expect(screen.getByRole('status')).toHaveTextContent('Доступ к геолокации запрещён')
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
-    expect(searchCalls.at(-1)).toMatchObject({ lat: undefined, lng: undefined })
-  })
-
-  it('offers a retry for a timeout and clears the error when a later attempt succeeds', async () => {
-    const requestLocation = vi.spyOn(maxPlatform, 'requestLocation')
-      .mockResolvedValueOnce({ ok: false, reason: 'timeout' })
-      .mockResolvedValueOnce({ ok: true, position: { lat: 55.75, lng: 37.61, accuracyM: 30 } })
-    renderCatalog()
-
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
-    expect(screen.getByRole('status')).toHaveTextContent('попробуйте ещё раз')
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить' })) })
-
-    expect(requestLocation).toHaveBeenCalledTimes(2)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Рядом · 10 км' })).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('keeps the current view and applies the 10 km radius and user marker to the map after locating', async () => {
-    vi.spyOn(maxPlatform, 'requestLocation').mockResolvedValue({ ok: true, position: { lat: 55.75, lng: 37.61, accuracyM: 30 } })
-    renderCatalog()
-
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Найти рядом' })) })
-
-    expect(screen.getByRole('tab', { name: 'Список' })).toHaveAttribute('aria-selected', 'true')
-    expect(searchCalls.at(-1)).toMatchObject({ lat: 55.75, lng: 37.61, distance_m: 10_000 })
-
-    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Карта' })) })
+    fireEvent.click(screen.getByRole('tab', { name: 'Карта' }))
     const map = screen.getByLabelText('map-placeholder')
-    expect(JSON.parse(map.getAttribute('data-filters') ?? '{}')).toMatchObject({ lat: 55.75, lng: 37.61, distance_m: 10_000 })
-    expect(JSON.parse(map.getAttribute('data-user-location') ?? 'null')).toEqual({ latitude: 55.75, longitude: 37.61 })
+    const filters = JSON.parse(map.getAttribute('data-filters') ?? '{}') as Record<string, unknown>
+    expect(filters).not.toHaveProperty('distance_m')
+    expect(filters).not.toHaveProperty('lat')
+    expect(filters).not.toHaveProperty('lng')
   })
 })

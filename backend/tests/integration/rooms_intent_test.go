@@ -142,7 +142,7 @@ func TestReplaceIntentUpsertPrivacyTransitionAndBehavior(t *testing.T) {
 		t.Fatalf("peer snapshot leaked creator intent: %s", raw)
 	}
 	var events int
-	if err := f.db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='intent_submit'", f.room).Scan(&events); err != nil || events != 3 {
+	if err := f.db.QueryRow(ctx, "SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_intent_submitted'", f.room).Scan(&events); err != nil || events != 3 {
 		t.Fatalf("intent behavior count=%d err=%v; want 3", events, err)
 	}
 	for _, user := range []uuid.UUID{f.creator, f.member} {
@@ -200,7 +200,7 @@ func TestReplaceIntentRecorderFailureRollsBack(t *testing.T) {
 	}
 	for _, query := range []string{
 		"SELECT count(*) FROM room_intents WHERE room_id=$1",
-		"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='intent_submit'",
+		"SELECT count(*) FROM behavior_events WHERE room_id=$1 AND type='room_intent_submitted'",
 		"SELECT count(*) FROM room_member_round_state WHERE room_id=$1 AND ready",
 	} {
 		var count int
