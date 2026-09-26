@@ -219,10 +219,13 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
       nextMap.addChild(new YMapListener({ onUpdate: (event: YandexMapUpdateEvent) => {
         const nextCamera = readCamera(event)
         if (!nextCamera) return
+        // Keep the latest camera synchronously. Readiness/resize effects can
+        // run before the idle debounce and must not schedule a request from
+        // the previous camera while this update is pending.
+        cameraRef.current = nextCamera
+        setCamera(nextCamera)
         if (idleTimer.current) clearTimeout(idleTimer.current)
         idleTimer.current = setTimeout(() => {
-          cameraRef.current = nextCamera
-          setCamera(nextCamera)
           requestAreaRef.current(nextCamera)
         }, MAP_IDLE_MS)
       } }))

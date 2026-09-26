@@ -261,14 +261,21 @@ describe('CatalogMap event preview integration', () => {
 
   it('opens a server cluster at maximum zoom without another request', async () => {
     const members = ['a', 'b'].map((id) => ({ kind: 'event' as const, id, longitude: 37.61, latitude: 55.75, event: event(id, `Событие ${id}`) }))
-    const cluster = { kind: 'cluster', id: 'stale', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 2, members }
-    getMapEvents.mockResolvedValue([cluster])
+    const cluster = { kind: 'cluster', id: 'zoom-22', longitude: 37.61, latitude: 55.75, west: 37.6, south: 55.74, east: 37.62, north: 55.76, count: 2, members }
+    getMapEvents.mockImplementation(async (params) => params.zoom === 22
+      ? [cluster]
+      : [{ kind: 'event' as const, id: 'initial', longitude: 37.61, latitude: 55.75, event: event('initial', 'Начальное событие') }])
     render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
     await waitFor(() => expect(listenerRef.current).toBeTypeOf('function'))
+    // Wait for map readiness and the initial area request to complete before
+    // changing the camera, so this assertion is independent of setup timing.
+    expect(await screen.findByRole('button', { name: 'Открыть событие «Начальное событие»' })).toBeInTheDocument()
+    await waitFor(() => expect(getMapEvents.mock.calls.some(([params]) => params.zoom === 11)).toBe(true))
+
     listenerRef.current?.({ location: { center: [37.61, 55.75], zoom: 22 }, mapInAction: false })
-    const staleMarker = await screen.findByRole('button', { name: 'Показать 2 событий' }, { timeout: 2500 })
+    const zoom22Marker = await screen.findByRole('button', { name: 'Показать 2 событий' }, { timeout: 2500 })
     await waitFor(() => expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(1))
-    fireEvent.click(staleMarker)
+    fireEvent.click(zoom22Marker)
     expect(await screen.findByRole('group', { name: 'Кластер: 2 событий' })).toBeInTheDocument()
     expect(getMapEvents.mock.calls.filter(([params]) => params.zoom === 22)).toHaveLength(1)
   })
