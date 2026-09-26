@@ -227,7 +227,10 @@ func roomHardBudget(ctx context.Context, repo *Repository, room roomsql.Room, st
 }
 
 func roomEventAvailable(a contracts.Availability, hardBudget int32, now time.Time) bool {
-	return a.Exists && a.Status == "published" && a.StartsAt.After(now) && a.TicketAvailable && a.TicketURL != nil && *a.TicketURL != "" && a.PriceFromMinor != nil && hardBudget >= 0 && *a.PriceFromMinor <= hardBudget
+	if !a.Exists || a.Status != "published" || !a.StartsAt.After(now) || !a.TicketAvailable || a.TicketURL == nil || *a.TicketURL == "" || hardBudget < 0 {
+		return false
+	}
+	return a.PriceFromMinor == nil || *a.PriceFromMinor >= 0 && *a.PriceFromMinor <= hardBudget
 }
 
 func roomEventCard(row roomsql.GetRoomEventCardsRow) api.EventCard {
