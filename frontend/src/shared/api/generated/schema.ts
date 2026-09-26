@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/analytics/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Получить агрегированные метрики закрытого дашборда
+         * @description Доступ ограничивается Basic Auth на внешнем Nginx. Ответ содержит только агрегаты и кэшируется приложением кратковременно.
+         */
+        get: operations["getInternalAnalyticsDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/max/bootstrap": {
         parameters: {
             query?: never;
@@ -887,6 +907,69 @@ export interface operations {
                 };
             };
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getInternalAnalyticsDashboard: {
+        parameters: {
+            query?: {
+                /** @description Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом. */
+                days?: 7 | 30 | 90;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Агрегированные метрики без идентификаторов пользователей и комнат */
+            200: {
+                headers: {
+                    /** @example no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "period_days": 30,
+                     *       "generated_at": "2026-09-27T12:00:00Z",
+                     *       "daily": [],
+                     *       "summary": {},
+                     *       "recommendations": [],
+                     *       "retention": [],
+                     *       "guardrails": {},
+                     *       "providers": [],
+                     *       "api_performance": [],
+                     *       "catalog_quality": [],
+                     *       "vote_agreement": [],
+                     *       "pool_diversity": {},
+                     *       "repeat_exposure": []
+                     *     }
+                     */
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description Ошибка чтения метрик */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Превышено время ожидания аналитического запроса */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bootstrapMaxSession: {

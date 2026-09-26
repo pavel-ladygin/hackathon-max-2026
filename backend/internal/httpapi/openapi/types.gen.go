@@ -13,53 +13,213 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for BehaviorEventEntryPoint.
+const (
+	BehaviorEventEntryPointBot            BehaviorEventEntryPoint = "bot"
+	BehaviorEventEntryPointDeepLink       BehaviorEventEntryPoint = "deep_link"
+	BehaviorEventEntryPointDirect         BehaviorEventEntryPoint = "direct"
+	BehaviorEventEntryPointFeed           BehaviorEventEntryPoint = "feed"
+	BehaviorEventEntryPointHome           BehaviorEventEntryPoint = "home"
+	BehaviorEventEntryPointLessThannil    BehaviorEventEntryPoint = "<nil>"
+	BehaviorEventEntryPointMap            BehaviorEventEntryPoint = "map"
+	BehaviorEventEntryPointRecommendation BehaviorEventEntryPoint = "recommendation"
+	BehaviorEventEntryPointRoom           BehaviorEventEntryPoint = "room"
+	BehaviorEventEntryPointRoomInvite     BehaviorEventEntryPoint = "room_invite"
+	BehaviorEventEntryPointSaved          BehaviorEventEntryPoint = "saved"
+	BehaviorEventEntryPointSearch         BehaviorEventEntryPoint = "search"
+	BehaviorEventEntryPointSharedEvent    BehaviorEventEntryPoint = "shared_event"
+	BehaviorEventEntryPointUnknown        BehaviorEventEntryPoint = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the BehaviorEventEntryPoint enum.
+func (e BehaviorEventEntryPoint) Valid() bool {
+	switch e {
+	case BehaviorEventEntryPointBot:
+		return true
+	case BehaviorEventEntryPointDeepLink:
+		return true
+	case BehaviorEventEntryPointDirect:
+		return true
+	case BehaviorEventEntryPointFeed:
+		return true
+	case BehaviorEventEntryPointHome:
+		return true
+	case BehaviorEventEntryPointLessThannil:
+		return true
+	case BehaviorEventEntryPointMap:
+		return true
+	case BehaviorEventEntryPointRecommendation:
+		return true
+	case BehaviorEventEntryPointRoom:
+		return true
+	case BehaviorEventEntryPointRoomInvite:
+		return true
+	case BehaviorEventEntryPointSaved:
+		return true
+	case BehaviorEventEntryPointSearch:
+		return true
+	case BehaviorEventEntryPointSharedEvent:
+		return true
+	case BehaviorEventEntryPointUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BehaviorEventEventVersion.
+const (
+	N1 BehaviorEventEventVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the BehaviorEventEventVersion enum.
+func (e BehaviorEventEventVersion) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BehaviorEventPlatform.
+const (
+	BehaviorEventPlatformBrowser     BehaviorEventPlatform = "browser"
+	BehaviorEventPlatformLessThannil BehaviorEventPlatform = "<nil>"
+	BehaviorEventPlatformMaxAndroid  BehaviorEventPlatform = "max_android"
+	BehaviorEventPlatformMaxDesktop  BehaviorEventPlatform = "max_desktop"
+	BehaviorEventPlatformMaxIos      BehaviorEventPlatform = "max_ios"
+	BehaviorEventPlatformMaxWeb      BehaviorEventPlatform = "max_web"
+	BehaviorEventPlatformUnknown     BehaviorEventPlatform = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the BehaviorEventPlatform enum.
+func (e BehaviorEventPlatform) Valid() bool {
+	switch e {
+	case BehaviorEventPlatformBrowser:
+		return true
+	case BehaviorEventPlatformLessThannil:
+		return true
+	case BehaviorEventPlatformMaxAndroid:
+		return true
+	case BehaviorEventPlatformMaxDesktop:
+		return true
+	case BehaviorEventPlatformMaxIos:
+		return true
+	case BehaviorEventPlatformMaxWeb:
+		return true
+	case BehaviorEventPlatformUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BehaviorEventType.
 const (
-	Impression           BehaviorEventType = "impression"
-	Open                 BehaviorEventType = "open"
-	Share                BehaviorEventType = "share"
 	AppOpened            BehaviorEventType = "app_opened"
-	SessionStarted       BehaviorEventType = "session_started"
-	OnboardingStarted    BehaviorEventType = "onboarding_started"
-	OnboardingCompleted  BehaviorEventType = "onboarding_completed"
-	FeedOpened           BehaviorEventType = "feed_opened"
-	EventImpression      BehaviorEventType = "event_impression"
-	EventOpened          BehaviorEventType = "event_opened"
-	SearchPerformed      BehaviorEventType = "search_performed"
-	FiltersOpened        BehaviorEventType = "filters_opened"
-	FiltersApplied       BehaviorEventType = "filters_applied"
-	FiltersReset         BehaviorEventType = "filters_reset"
-	MapOpened            BehaviorEventType = "map_opened"
-	MapMarkerOpened      BehaviorEventType = "map_marker_opened"
-	RoomCreationStarted  BehaviorEventType = "room_creation_started"
-	RoomCreationFailed   BehaviorEventType = "room_creation_failed"
-	RoomOpened           BehaviorEventType = "room_opened"
-	InviteOpened         BehaviorEventType = "invite_opened"
-	InviteShared         BehaviorEventType = "invite_shared"
-	InviteShareFailed    BehaviorEventType = "invite_share_failed"
-	InviteLinkOpened     BehaviorEventType = "invite_link_opened"
-	RoomJoinStarted      BehaviorEventType = "room_join_started"
-	RoomJoinFailed       BehaviorEventType = "room_join_failed"
-	SwipeSessionStarted  BehaviorEventType = "swipe_session_started"
-	EventSwipeImpression BehaviorEventType = "event_swipe_impression"
-	MatchShown           BehaviorEventType = "match_shown"
-	MatchOpened          BehaviorEventType = "match_opened"
-	SwipePoolExhausted   BehaviorEventType = "swipe_pool_exhausted"
 	ClientError          BehaviorEventType = "client_error"
 	ClientPerformance    BehaviorEventType = "client_performance"
+	EventImpression      BehaviorEventType = "event_impression"
+	EventOpened          BehaviorEventType = "event_opened"
+	EventSwipeImpression BehaviorEventType = "event_swipe_impression"
+	FeedOpened           BehaviorEventType = "feed_opened"
+	FiltersApplied       BehaviorEventType = "filters_applied"
+	FiltersOpened        BehaviorEventType = "filters_opened"
+	FiltersReset         BehaviorEventType = "filters_reset"
+	Impression           BehaviorEventType = "impression"
+	InviteLinkOpened     BehaviorEventType = "invite_link_opened"
+	InviteOpened         BehaviorEventType = "invite_opened"
+	InviteShareFailed    BehaviorEventType = "invite_share_failed"
+	InviteShared         BehaviorEventType = "invite_shared"
+	MapMarkerOpened      BehaviorEventType = "map_marker_opened"
+	MapOpened            BehaviorEventType = "map_opened"
+	MatchOpened          BehaviorEventType = "match_opened"
+	MatchShown           BehaviorEventType = "match_shown"
+	OnboardingCompleted  BehaviorEventType = "onboarding_completed"
+	OnboardingStarted    BehaviorEventType = "onboarding_started"
+	Open                 BehaviorEventType = "open"
+	RoomCreationFailed   BehaviorEventType = "room_creation_failed"
+	RoomCreationStarted  BehaviorEventType = "room_creation_started"
+	RoomJoinFailed       BehaviorEventType = "room_join_failed"
+	RoomJoinStarted      BehaviorEventType = "room_join_started"
+	RoomOpened           BehaviorEventType = "room_opened"
+	SearchPerformed      BehaviorEventType = "search_performed"
+	SessionStarted       BehaviorEventType = "session_started"
+	Share                BehaviorEventType = "share"
+	SwipePoolExhausted   BehaviorEventType = "swipe_pool_exhausted"
+	SwipeSessionStarted  BehaviorEventType = "swipe_session_started"
 	TicketRedirectFailed BehaviorEventType = "ticket_redirect_failed"
 )
 
 // Valid indicates whether the value is a known member of the BehaviorEventType enum.
 func (e BehaviorEventType) Valid() bool {
 	switch e {
-	case Impression, Open, Share, AppOpened, SessionStarted, OnboardingStarted,
-		OnboardingCompleted, FeedOpened, EventImpression, EventOpened, SearchPerformed,
-		FiltersOpened, FiltersApplied, FiltersReset,
-		MapOpened, MapMarkerOpened, RoomCreationStarted, RoomCreationFailed, RoomOpened, InviteOpened,
-		InviteShared, InviteShareFailed, InviteLinkOpened, RoomJoinStarted, RoomJoinFailed, SwipeSessionStarted,
-		EventSwipeImpression, MatchShown, MatchOpened, SwipePoolExhausted,
-		ClientError, ClientPerformance, TicketRedirectFailed:
+	case AppOpened:
+		return true
+	case ClientError:
+		return true
+	case ClientPerformance:
+		return true
+	case EventImpression:
+		return true
+	case EventOpened:
+		return true
+	case EventSwipeImpression:
+		return true
+	case FeedOpened:
+		return true
+	case FiltersApplied:
+		return true
+	case FiltersOpened:
+		return true
+	case FiltersReset:
+		return true
+	case Impression:
+		return true
+	case InviteLinkOpened:
+		return true
+	case InviteOpened:
+		return true
+	case InviteShareFailed:
+		return true
+	case InviteShared:
+		return true
+	case MapMarkerOpened:
+		return true
+	case MapOpened:
+		return true
+	case MatchOpened:
+		return true
+	case MatchShown:
+		return true
+	case OnboardingCompleted:
+		return true
+	case OnboardingStarted:
+		return true
+	case Open:
+		return true
+	case RoomCreationFailed:
+		return true
+	case RoomCreationStarted:
+		return true
+	case RoomJoinFailed:
+		return true
+	case RoomJoinStarted:
+		return true
+	case RoomOpened:
+		return true
+	case SearchPerformed:
+		return true
+	case SessionStarted:
+		return true
+	case Share:
+		return true
+	case SwipePoolExhausted:
+		return true
+	case SwipeSessionStarted:
+		return true
+	case TicketRedirectFailed:
 		return true
 	default:
 		return false
@@ -260,31 +420,31 @@ func (e EventCardCurrency) Valid() bool {
 
 // Defines values for EventDetailAgeRating.
 const (
-	LessThannil EventDetailAgeRating = "<nil>"
-	N0          EventDetailAgeRating = "0+"
-	N12         EventDetailAgeRating = "12+"
-	N16         EventDetailAgeRating = "16+"
-	N18         EventDetailAgeRating = "18+"
-	N6          EventDetailAgeRating = "6+"
-	Unknown     EventDetailAgeRating = "unknown"
+	EventDetailAgeRatingLessThannil EventDetailAgeRating = "<nil>"
+	EventDetailAgeRatingN0          EventDetailAgeRating = "0+"
+	EventDetailAgeRatingN12         EventDetailAgeRating = "12+"
+	EventDetailAgeRatingN16         EventDetailAgeRating = "16+"
+	EventDetailAgeRatingN18         EventDetailAgeRating = "18+"
+	EventDetailAgeRatingN6          EventDetailAgeRating = "6+"
+	EventDetailAgeRatingUnknown     EventDetailAgeRating = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the EventDetailAgeRating enum.
 func (e EventDetailAgeRating) Valid() bool {
 	switch e {
-	case LessThannil:
+	case EventDetailAgeRatingLessThannil:
 		return true
-	case N0:
+	case EventDetailAgeRatingN0:
 		return true
-	case N12:
+	case EventDetailAgeRatingN12:
 		return true
-	case N16:
+	case EventDetailAgeRatingN16:
 		return true
-	case N18:
+	case EventDetailAgeRatingN18:
 		return true
-	case N6:
+	case EventDetailAgeRatingN6:
 		return true
-	case Unknown:
+	case EventDetailAgeRatingUnknown:
 		return true
 	default:
 		return false
@@ -741,6 +901,27 @@ func (e VoteValue) Valid() bool {
 	}
 }
 
+// Defines values for GetInternalAnalyticsDashboardParamsDays.
+const (
+	N30 GetInternalAnalyticsDashboardParamsDays = 30
+	N7  GetInternalAnalyticsDashboardParamsDays = 7
+	N90 GetInternalAnalyticsDashboardParamsDays = 90
+)
+
+// Valid indicates whether the value is a known member of the GetInternalAnalyticsDashboardParamsDays enum.
+func (e GetInternalAnalyticsDashboardParamsDays) Valid() bool {
+	switch e {
+	case N30:
+		return true
+	case N7:
+		return true
+	case N90:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetMySavedEventsParamsTab.
 const (
 	GetMySavedEventsParamsTabMatches GetMySavedEventsParamsTab = "matches"
@@ -773,21 +954,32 @@ type BehaviorBatchResponse struct {
 
 // BehaviorEvent defines model for BehaviorEvent.
 type BehaviorEvent struct {
-	ClientEventId string                                `json:"client_event_id"`
-	EventVersion  int                                   `json:"event_version"`
-	EventId       nullable.Nullable[openapi_types.UUID] `json:"event_id,omitempty"`
-	SessionId     nullable.Nullable[openapi_types.UUID] `json:"session_id,omitempty"`
-	Platform      nullable.Nullable[string]             `json:"platform,omitempty"`
-	AppVersion    nullable.Nullable[string]             `json:"app_version,omitempty"`
-	EntryPoint    nullable.Nullable[string]             `json:"entry_point,omitempty"`
-	Properties    map[string]interface{}                `json:"properties,omitempty"`
+	AppVersion    nullable.Nullable[string]                  `json:"app_version,omitempty"`
+	ClientEventId string                                     `json:"client_event_id"`
+	EntryPoint    nullable.Nullable[BehaviorEventEntryPoint] `json:"entry_point,omitempty"`
+	EventId       nullable.Nullable[openapi_types.UUID]      `json:"event_id,omitempty"`
+	EventVersion  BehaviorEventEventVersion                  `json:"event_version"`
 
 	// Metadata Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены.
-	Metadata   *BehaviorMetadata                     `json:"metadata,omitempty"`
-	OccurredAt time.Time                             `json:"occurred_at"`
+	Metadata   *BehaviorMetadata                        `json:"metadata,omitempty"`
+	OccurredAt time.Time                                `json:"occurred_at"`
+	Platform   nullable.Nullable[BehaviorEventPlatform] `json:"platform,omitempty"`
+
+	// Properties Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited.
+	Properties *map[string]interface{}               `json:"properties,omitempty"`
 	RoomId     nullable.Nullable[openapi_types.UUID] `json:"room_id,omitempty"`
+	SessionId  nullable.Nullable[openapi_types.UUID] `json:"session_id,omitempty"`
 	Type       BehaviorEventType                     `json:"type"`
 }
+
+// BehaviorEventEntryPoint defines model for BehaviorEvent.EntryPoint.
+type BehaviorEventEntryPoint string
+
+// BehaviorEventEventVersion defines model for BehaviorEvent.EventVersion.
+type BehaviorEventEventVersion int
+
+// BehaviorEventPlatform defines model for BehaviorEvent.Platform.
+type BehaviorEventPlatform string
 
 // BehaviorEventType defines model for BehaviorEvent.Type.
 type BehaviorEventType string
@@ -1446,6 +1638,15 @@ type GetHomeFeedParams struct {
 	Lng   *float32 `form:"lng,omitempty" json:"lng,omitempty"`
 	Limit *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetInternalAnalyticsDashboardParams defines parameters for GetInternalAnalyticsDashboard.
+type GetInternalAnalyticsDashboardParams struct {
+	// Days Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом.
+	Days *GetInternalAnalyticsDashboardParamsDays `form:"days,omitempty" json:"days,omitempty"`
+}
+
+// GetInternalAnalyticsDashboardParamsDays defines parameters for GetInternalAnalyticsDashboard.
+type GetInternalAnalyticsDashboardParamsDays int
 
 // GetMySavedEventsParams defines parameters for GetMySavedEvents.
 type GetMySavedEventsParams struct {

@@ -41,6 +41,7 @@ CREATE INDEX behavior_events_room_time_idx
 
 -- Call from the deployment's daily maintenance scheduler. Kept as an explicit
 -- function because this schema does not assume pg_cron is installed.
+-- +goose StatementBegin
 CREATE FUNCTION analytics_prune_behavior_events() RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE deleted_count bigint;
@@ -50,6 +51,7 @@ BEGIN
     RETURN deleted_count;
 END;
 $$;
+-- +goose StatementEnd
 
 -- Canonical event names allow existing recommendation events to participate
 -- in product metrics without rewriting historical rows.
