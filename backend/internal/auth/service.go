@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,10 +65,11 @@ func NewServiceWithTrustedProxyCIDRs(db *store.Pool, botToken string, maxAge tim
 }
 
 type bootstrapResult struct {
-	token       string
-	user        platform.User
-	preferences *preferences.Value
-	invite      *api.InviteContext
+	token         string
+	user          platform.User
+	preferences   *preferences.Value
+	invite        *api.InviteContext
+	sharedEventID *uuid.UUID
 }
 
 func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (bootstrapResult, error) {
@@ -77,6 +79,14 @@ func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (boot
 	}
 	if hint != nil && *hint != claims.startParam {
 		return bootstrapResult{}, errInvalidRequest
+	}
+	var sharedEventID *uuid.UUID
+	if strings.HasPrefix(claims.startParam, "event_") {
+		eventID, err := parseSharedEventStartParam(claims.startParam)
+		if err != nil {
+			return bootstrapResult{}, errInvalidRequest
+		}
+		sharedEventID = &eventID
 	}
 	var random [32]byte
 	if _, err := rand.Read(random[:]); err != nil {
@@ -88,14 +98,30 @@ func (s *Service) bootstrap(ctx context.Context, raw string, hint *string) (boot
 	if err != nil {
 		return bootstrapResult{}, err
 	}
-	result := bootstrapResult{token: token, user: profile.user, preferences: profile.preferences}
-	if claims.startParam != "" && s.inviteResolver != nil {
+	result := bootstrapResult{token: token, user: profile.user, preferences: profile.preferences, sharedEventID: sharedEventID}
+	if sharedEventID == nil && claims.startParam != "" && s.inviteResolver != nil {
 		result.invite, err = s.inviteResolver.ResolveInviteContext(ctx, profile.user.ID, claims.startParam)
 		if err != nil {
 			return bootstrapResult{}, err
 		}
 	}
 	return result, nil
+}
+
+func parseSharedEventStartParam(startParam string) (uuid.UUID, error) {
+	const prefix = "event_"
+	if !strings.HasPrefix(startParam, prefix) {
+		return uuid.Nil, errInvalidRequest
+	}
+	value := strings.TrimPrefix(startParam, prefix)
+	if len(value) != 36 {
+		return uuid.Nil, errInvalidRequest
+	}
+	eventID, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil, errInvalidRequest
+	}
+	return eventID, nil
 }
 
 // Authenticate accepts only application tokens and never returns MAX identity.

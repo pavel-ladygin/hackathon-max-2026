@@ -40,4 +40,18 @@ describe('API client', () => {
     expect(String(fetchImpl.mock.calls[2][0])).toBe('/api/v1/feed/home')
     expect(feed.feed_id).toBe('feed-real')
   })
+
+  it('returns the server-validated shared event ID from bootstrap', async () => {
+    const eventId = '6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1'
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({
+      access_token: 'real-access-token',
+      user: { id: 'user-1', display_name: 'Иван', avatar_url: null, city_id: null, locale: 'ru' },
+      onboarding_state: 'complete', preferences: null, invite_context: null, shared_event_id: eventId,
+    }))
+    const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl })
+
+    const bootstrap = await client.bootstrap({ init_data: 'signed-max-data', start_param: `event_${eventId}` })
+
+    expect(bootstrap.sharedEventId).toBe(eventId)
+  })
 })

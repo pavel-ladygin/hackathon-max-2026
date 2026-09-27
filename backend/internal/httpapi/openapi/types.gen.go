@@ -1007,6 +1007,7 @@ type BootstrapResponse struct {
 	AccessToken     string                                 `json:"access_token"`
 	ExpiresIn       int                                    `json:"expires_in"`
 	InviteContext   nullable.Nullable[InviteContext]       `json:"invite_context"`
+	SharedEventId   nullable.Nullable[openapi_types.UUID]  `json:"shared_event_id"`
 	OnboardingState BootstrapResponseOnboardingState       `json:"onboarding_state"`
 	Preferences     nullable.Nullable[PreferencesResponse] `json:"preferences"`
 	TokenType       BootstrapResponseTokenType             `json:"token_type"`

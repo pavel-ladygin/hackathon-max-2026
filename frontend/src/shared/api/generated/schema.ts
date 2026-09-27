@@ -390,6 +390,8 @@ export interface components {
             onboarding_state: "new" | "complete";
             preferences: components["schemas"]["PreferencesResponse"] | null;
             invite_context: components["schemas"]["InviteContext"] | null;
+            /** Format: uuid */
+            shared_event_id: string | null;
         };
         User: {
             /** Format: uuid */

@@ -56,6 +56,9 @@ func TestBootstrapRouterValidResponseContainsRequiredNullFields(t *testing.T) {
 	if value, ok := body["invite_context"]; !ok || value != nil {
 		t.Fatalf("invite_context must be explicit null: %#v", value)
 	}
+	if value, ok := body["shared_event_id"]; !ok || value != nil {
+		t.Fatalf("shared_event_id must be explicit null: %#v", value)
+	}
 }
 
 func TestBootstrapReturnsPersistedPreferences(t *testing.T) {

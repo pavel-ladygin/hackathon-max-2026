@@ -107,8 +107,8 @@ paths:
       security: []
       summary: Проверить MAX init data и открыть пользовательскую сессию
       description: Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только
-        из проверенной строки и возвращает безопасный invite_context. Отдельное поле start_param — необязательный hint, который
-        сверяется с подписанным значением. Не сохраняйте raw init data.
+        из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; прочие параметры разрешаются как invite_context.
+        Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
       requestBody:
         required: true
         content:
@@ -954,6 +954,7 @@ components:
       - onboarding_state
       - preferences
       - invite_context
+      - shared_event_id
       properties:
         access_token:
           type: string
@@ -979,6 +980,11 @@ components:
         invite_context:
           anyOf:
           - $ref: '#/components/schemas/InviteContext'
+          - type: 'null'
+        shared_event_id:
+          anyOf:
+          - type: string
+            format: uuid
           - type: 'null'
     User:
       type: object

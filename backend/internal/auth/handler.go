@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/oapi-codegen/nullable"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
@@ -68,12 +69,16 @@ func (s *Service) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		User: user, OnboardingState: api.BootstrapResponseOnboardingState(result.user.OnboardingState),
 		Preferences:   nullable.NewNullNullable[api.PreferencesResponse](),
 		InviteContext: nullable.NewNullNullable[api.InviteContext](),
+		SharedEventId: nullable.NewNullNullable[openapi_types.UUID](),
 	}
 	if result.preferences != nil {
 		response.Preferences = nullable.NewNullableWithValue(preferencesResponse(*result.preferences))
 	}
 	if result.invite != nil {
 		response.InviteContext = nullable.NewNullableWithValue(*result.invite)
+	}
+	if result.sharedEventID != nil {
+		response.SharedEventId = nullable.NewNullableWithValue(*result.sharedEventID)
 	}
 	httpapi.WriteJSON(w, http.StatusOK, response)
 }

@@ -7,6 +7,7 @@ import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
 import { skeletonVariant } from './skeletonVariant'
 import { trackAppOpen, trackClientError, trackPerformance } from '../shared/analytics/client'
+import { getOpenInMaxStartParam } from './sharedEventLink'
 
 const HomePage = lazy(() => import('../pages/home/HomePage').then((m) => ({ default: m.HomePage })))
 const EventPage = lazy(() => import('../pages/event/EventPage').then((m) => ({ default: m.EventPage })))
@@ -49,8 +50,7 @@ function AppRoutes() {
     bootFailure.current = null
   }, [bootstrap.data, bootstrap.error, bootstrap.isError, location.pathname])
   const inviteContext = bootstrap.data?.inviteContext
-  const inviteToken = location.pathname.match(/^\/join\/([^/]+)$/)?.[1]
-  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={inviteToken ? decodeInviteToken(inviteToken) : null} />
+  if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={getOpenInMaxStartParam(location.pathname)} />
   if (bootstrap.isPending) return <ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
 
@@ -63,6 +63,10 @@ function AppRoutes() {
   }
   if (location.pathname === '/' && inviteContext?.token && !inviteContext.already_joined) {
     return <Navigate to={`/join/${encodeURIComponent(inviteContext.token)}`} replace />
+  }
+  const sharedEventId = bootstrap.data.sharedEventId
+  if (location.pathname === '/' && sharedEventId) {
+    return <Navigate to={`/events/${encodeURIComponent(sharedEventId)}`} replace />
   }
 
   return (
@@ -86,10 +90,6 @@ function AppRoutes() {
     </Routes>
     </Suspense>
   )
-}
-
-function decodeInviteToken(token: string) {
-  try { return decodeURIComponent(token) } catch { return token }
 }
 
 export function App() {
