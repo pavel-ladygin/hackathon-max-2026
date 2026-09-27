@@ -32,7 +32,11 @@ type Pool struct {
 
 // Open creates a PostgreSQL pool and verifies that the database is reachable.
 func Open(ctx context.Context, databaseURL string) (*Pool, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	config, err := applicationPoolConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres pool config: %w", err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
@@ -43,6 +47,19 @@ func Open(ctx context.Context, databaseURL string) (*Pool, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 	return &Pool{Pool: pool}, nil
+}
+
+func applicationPoolConfig(databaseURL string) (*pgxpool.Config, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	// The analytics dashboard query causes PostgreSQL to spend far longer
+	// compiling JIT functions than executing the query. Disable JIT only for
+	// application connections; migration and administrative sessions retain
+	// the database's configured default.
+	config.ConnConfig.RuntimeParams["jit"] = "off"
+	return config, nil
 }
 
 // Ping verifies database connectivity with a short bounded timeout.

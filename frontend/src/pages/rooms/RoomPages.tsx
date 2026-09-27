@@ -207,7 +207,6 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const queryClient = useQueryClient()
   const events = useRoomEvents(room.id, true)
   const swipeSessionTracked = useRef(false)
-  const [pendingVote, setPendingVote] = useState<VoteValue | null>(null)
   const [matchPreview, setMatchPreview] = useState(false)
   const dragX = useMotionValue(0)
   const rotation = useTransform(dragX, [-260, 0, 260], [-10, 0, 10])
@@ -227,9 +226,8 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
         queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
       ])
       dragX.set(0)
-      setPendingVote(null)
     },
-    onError: async (error) => { setPendingVote(null); dragX.set(0); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
+    onError: async (error) => { dragX.set(0); if (isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
   })
   const item = events.data?.items[0]
   const itemEventId = item?.event.id
@@ -267,12 +265,12 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const votedByMe = room.pool?.voted_by_me ?? 0
   const poolTotal = room.pool?.total ?? events.data.total
   if (!item) return <WaitingScreen room={room} />
-  const cast = (value: VoteValue) => { if (!vote.isPending) { setPendingVote(value); vote.mutate({ eventId: item.event.id, value }) } }
+  const cast = (value: VoteValue) => { if (!vote.isPending) vote.mutate({ eventId: item.event.id, value }) }
   return (
     <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} right={<span>{Math.min(votedByMe + 1, poolTotal)} / {poolTotal}</span>} /><PageContent className={styles.poolWrap}>
       <p className={`${styles.subtitle} ${styles.center}`}>Один и тот же пул, независимые оценки</p>
       <AnimatePresence mode="wait">
-        <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9, x: pendingVote === 'like' ? 560 : -560, rotate: pendingVote === 'like' ? 12 : -12 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
+        <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
           <motion.span aria-hidden="true" style={{ opacity: likeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #e77888', borderRadius: 18, color: '#c74d63', padding: 12, fontWeight: 800 }}>ХОЧУ ПОЙТИ</motion.span>
           <motion.span aria-hidden="true" style={{ opacity: dislikeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #b8aaa0', borderRadius: 18, color: '#776a60', padding: 12, fontWeight: 800 }}>НЕ ПОДХОДИТ</motion.span>
           <EventImage className={styles.poolImage} src={eventImage(item.event.imageUrl, item.event.category_slug, 768)} fallbackSrc={eventImageFallback(item.event.category_slug)} alt={item.event.title} />

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -95,5 +96,18 @@ func TestDashboardDatabaseFailureDoesNotCache(t *testing.T) {
 	}
 	if db.calls != 2 || len(h.cache) != 0 {
 		t.Fatalf("failed query cached: calls=%d keys=%d", db.calls, len(h.cache))
+	}
+}
+
+func TestDashboardDeadlineReturnsGatewayTimeout(t *testing.T) {
+	db := &fakeDB{err: context.DeadlineExceeded}
+	h := NewHandler(db)
+	rec := httptest.NewRecorder()
+	h.GetDashboard(rec, httptest.NewRequest("GET", "/api/v1/internal/analytics/dashboard?days=7", nil))
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status=%d body=%s; want gateway timeout", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("missing no-store response header")
 	}
 }

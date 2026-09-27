@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	queryTimeout = 4 * time.Second
+	queryTimeout = 20 * time.Second
 	cacheTTL     = 30 * time.Second
 )
 
@@ -69,6 +70,7 @@ func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	var payload []byte
 	if err := h.db.QueryRow(ctx, dashboardQuery, days).Scan(&payload); err != nil {
+		slog.Error("analytics dashboard query failed", "request_id", httpapi.RequestID(r.Context()), "period_days", days, "error", err)
 		status := http.StatusInternalServerError
 		if errors.Is(err, context.DeadlineExceeded) {
 			status = http.StatusGatewayTimeout
