@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../shared/api/errors'
 import { eventImageFallback } from '../../shared/lib/events'
@@ -24,9 +24,9 @@ const baseEvent = {
   id: '6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1', title: 'Jazz вечер', subtitle: 'Живой концерт', category_slug: 'concerts', starts_at: '2026-09-23T16:00:00Z', timezone: 'Europe/Moscow', date_label: 'Сегодня, 19:00', venue_name: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', venue: { id: 'venue-1', name: 'Клуб', address: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', metro: null, district: null }, distance_m: null, distance_label: null, price_from_minor: null, currency: 'RUB', price_label: 'Бесплатно', image_url: null, imageUrl: null, saved: false, reasons: [], description: '   ', endsAt: null, ticketAvailable: true, status: 'published', age_rating: null, dataProvenance: { source: 'demo', source_updated_at: null, is_demo: false }, images: [],
 }
 
-function renderPage() {
+function renderPage(sharedEventEntry = false, onLeaveSharedEvent?: () => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/events/event-1']}><EventPage /></MemoryRouter></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[{ pathname: `/events/${baseEvent.id}`, state: sharedEventEntry ? { sharedEventEntry: true } : null }]}><Routes><Route path="/" element={<p>Главная страница</p>} /><Route path="/events/:eventId" element={<EventPage onLeaveSharedEvent={onLeaveSharedEvent} />} /></Routes></MemoryRouter></QueryClientProvider>)
 }
 
 describe('EventPage', () => {
@@ -128,5 +128,15 @@ describe('EventPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
     await waitFor(() => expect(mocks.shareInvite).toHaveBeenCalledTimes(2))
     expect(await screen.findByRole('status')).toHaveTextContent('Ссылка на событие отправлена')
+  })
+
+  it('returns to the home page from an event opened through a shared link', () => {
+    const onLeaveSharedEvent = vi.fn()
+    renderPage(true, onLeaveSharedEvent)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+
+    expect(screen.getByText('Главная страница')).toBeInTheDocument()
+    expect(onLeaveSharedEvent).toHaveBeenCalledOnce()
   })
 })
