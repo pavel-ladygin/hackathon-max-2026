@@ -125,7 +125,7 @@ func TestB10OneThenBothFinishAndReconnect(t *testing.T) {
 func TestRoomCloseIsIdempotentRetiresBothMembersAndLeavesUnreadNotice(t *testing.T) {
 	db := openTestDB(t)
 	f, pool, events := seedB8VotingPool(t, db, 1)
-	svc := newCreateService(t, db, behavior.Recorder{})
+	svc := newVoteService(t, db, behavior.Recorder{})
 	ctx := context.Background()
 	if err := svc.Close(ctx, contracts.Principal{UserID: f.creator}, f.room); err != nil {
 		t.Fatalf("close room: %v", err)
