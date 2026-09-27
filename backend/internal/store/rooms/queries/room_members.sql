@@ -58,3 +58,12 @@ RETURNING *;
 UPDATE room_members
 SET is_active = false
 WHERE room_id = $1 AND is_active = true;
+
+-- name: GetRoomCloseNotice :one
+SELECT n.room_id, r.name AS room_name, r.closed_by, closer.display_name AS closed_by_display_name, r.closed_at
+FROM room_close_notices n
+JOIN rooms r ON r.id = n.room_id
+JOIN users closer ON closer.id = r.closed_by
+WHERE n.recipient_user_id = $1 AND n.acknowledged_at IS NULL
+ORDER BY n.created_at DESC
+LIMIT 1;

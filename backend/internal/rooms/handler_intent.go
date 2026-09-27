@@ -103,6 +103,8 @@ func writeIntentError(w http.ResponseWriter, r *http.Request, err error) {
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROUND_LIMIT_REACHED", Message: "Round limit reached"}
 	case errors.Is(err, ErrIntentLocked):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "INTENT_LOCKED", Message: "Room intent is locked"}
+	case errors.Is(err, ErrRoomClosed):
+		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROOM_CLOSED", Message: "Room is closed"}
 	}
 	httpapi.WriteError(w, httpapi.RequestID(r.Context()), apiError)
 }

@@ -14,6 +14,27 @@ release_sha=$1
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit SHA" >&2; exit 2; }
 test -s /etc/nginx/auth/worknet-analytics.htpasswd || { echo "missing or empty /etc/nginx/auth/worknet-analytics.htpasswd" >&2; exit 1; }
 
+analytics_auth_is_enforced() {
+  local path status
+  for path in \
+    "/internal/analytics" \
+    "/api/v1/internal/analytics/dashboard?days=7"; do
+    status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+      --connect-timeout 5 --max-time 15 "$PUBLIC_URL$path" || true)
+    if [[ "$status" != "401" ]]; then
+      echo "analytics access guard failed: unauthenticated $PUBLIC_URL$path returned HTTP ${status:-unknown}, expected 401" >&2
+      return 1
+    fi
+  done
+}
+
+# Fail before migrations, backups, or image changes if the public endpoints are
+# reachable without the Nginx Basic Auth challenge.
+analytics_auth_is_enforced || {
+  echo "deployment aborted; configure Nginx Basic Auth for both analytics paths" >&2
+  exit 1
+}
+
 cd "$APP_DIR"
 test -f "$ENV_FILE" || { echo "missing $APP_DIR/$ENV_FILE" >&2; exit 1; }
 
@@ -47,7 +68,8 @@ healthy=false
 for attempt in $(seq 1 30); do
   if curl --fail --silent --show-error "$PUBLIC_URL/api/v1/health/ready" >/dev/null \
     && curl --fail --silent --show-error "$PUBLIC_URL/" >/dev/null \
-    && curl --fail --silent --show-error "$PUBLIC_URL/open/nonexistent-spa-route" >/dev/null; then
+    && curl --fail --silent --show-error "$PUBLIC_URL/open/nonexistent-spa-route" >/dev/null \
+    && analytics_auth_is_enforced; then
     healthy=true
     break
   fi

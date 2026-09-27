@@ -1,0 +1,17 @@
+.roomActions { display: grid; gap: 5px; width: min(280px, 36vw); flex: 0 0 auto; }
+.roomActions > button { width: 100%; }
+.endLink { min-height: 38px; border: 0; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.notice { margin: 14px 0 22px; padding: 16px; border-radius: var(--radius-lg); background: var(--color-warm); font-size: 13px; line-height: 1.5; }
+.notice strong { display: block; }
+.notice p { margin: 5px 0 9px; }
+.notice button { display: block; min-height: 36px; margin-left: auto; border: 0; background: transparent; color: var(--color-ink); font: inherit; font-weight: 700; }
+.notice span { display: block; color: #b42318; }
+.dialogBackdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(0 0 0 / 52%); }
+.dialog { width: min(100%, 420px); padding: 22px; border-radius: var(--radius-xl); background: var(--color-canvas); box-shadow: var(--shadow-float); }
+.dialog h2 { margin: 8px 0; font-size: 24px; }
+.dialog > p:not(:first-child) { color: var(--color-muted); font-size: 13px; line-height: 1.5; }
+.dialog .error { color: #b42318 !important; }
+.confirmEnd, .cancelEnd { width: 100%; min-height: 48px; margin-top: 8px; border-radius: var(--radius-md); font: inherit; font-size: 13px; font-weight: 750; }
+.confirmEnd { border: 1px solid #ddc6c1; background: #fff; color: #a23e36; }
+.cancelEnd { border: 0; background: #eeebe6; color: var(--color-ink); }
+@media (max-width: 600px) { .roomActions { width: min(155px, 42vw); } }

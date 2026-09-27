@@ -274,6 +274,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Завершить комнату для обоих участников */
+        post: operations["closeRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/close-notice/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Подтвердить просмотр уведомления о закрытии комнаты */
+        post: operations["acknowledgeRoomCloseNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/intent/me": {
         parameters: {
             query?: never;
@@ -511,6 +545,20 @@ export interface components {
                 items: components["schemas"]["EventCard"][];
             }[];
             active_room?: components["schemas"]["RoomSummary"] | null;
+            room_closed_notice?: components["schemas"]["RoomClosedNotice"] | null;
+        };
+        RoomClosedNotice: {
+            /** Format: uuid */
+            room_id: string;
+            room_name: string;
+            closed_by: components["schemas"]["ClosedBy"];
+            /** Format: date-time */
+            closed_at: string;
+        };
+        ClosedBy: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
         };
         EventSearchResponse: {
             items: components["schemas"]["EventCard"][];
@@ -640,7 +688,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        RoomState: "collecting_intents" | "ranking" | "voting" | "matched" | "exhausted";
+        RoomState: "collecting_intents" | "ranking" | "voting" | "matched" | "exhausted" | "closed";
         RoomSummary: {
             /** Format: uuid */
             id: string;
@@ -684,6 +732,9 @@ export interface components {
              * @description Invite и room истекают через 48 часов
              */
             expires_at: string;
+            closed_by?: components["schemas"]["ClosedBy"] | null;
+            /** Format: date-time */
+            closed_at?: string | null;
         };
         RoomIntentRequest: {
             dates: string[];
@@ -1409,6 +1460,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RoomSnapshot"];
                 };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    closeRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Закрытая комната; повторный вызов идемпотентен */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomSnapshot"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    acknowledgeRoomCloseNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Уведомление подтверждено или уже отсутствует */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];

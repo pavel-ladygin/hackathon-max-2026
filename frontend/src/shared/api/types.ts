@@ -2,7 +2,7 @@ export type CategorySlug = 'concerts' | 'cinema' | 'theatre' | 'standup' | 'exhi
 export type DayType = 'weekday' | 'weekend'
 export type TimeSlot = 'morning' | 'day' | 'evening' | 'night'
 export type VoteValue = 'like' | 'dislike'
-export type RoomState = 'collecting_intents' | 'ranking' | 'voting' | 'matched' | 'exhausted'
+export type RoomState = 'collecting_intents' | 'ranking' | 'voting' | 'matched' | 'exhausted' | 'closed'
 
 export interface UserDto { id: string; display_name: string; avatar_url: string | null; city_id: string | null; locale: string }
 export interface PreferencesDto { city_id: string; interest_slugs: CategorySlug[]; budget_max_minor: number; usual_day_types: DayType[]; usual_time_slots: TimeSlot[]; version: number; updated_at: string }
@@ -17,12 +17,13 @@ export interface InviteContextDto { token: string; room_id: string; room_name: s
 export interface MyIntentDto { dates: string[]; day_types: DayType[]; time_slots: TimeSlot[]; category_slugs: CategorySlug[]; budget_max_minor: number; radius_m: number | null; exclusion_slugs: string[]; location: { lat: number; lng: number } | null; free_text: string | null; version: number; round_no: number; submitted_at: string }
 export interface PoolSummaryDto { version: number; round_no: number; state: 'ranking' | 'ready' | 'exhausted'; total: number; is_small?: boolean; voted_by_me: number; my_pool_finished: boolean; room_exhausted: boolean; retry_after_seconds: number | null; exhaustion_reasons: { code: string; text: string }[] }
 export interface MatchSummaryDto { id: string; room_id: string; event_id: string; matched_at: string; participants: PublicParticipantDto[] }
-export interface RoomSnapshotDto { id: string; name: string; city_id: string; state: RoomState; round_no: number; version: number; participants: PublicParticipantDto[]; my_intent: MyIntentDto | null; pool: PoolSummaryDto | null; match: MatchSummaryDto | null; invite: RoomInviteDto | null; allowed_actions: string[]; created_at: string; expires_at: string }
+export interface RoomSnapshotDto { id: string; name: string; city_id: string; state: RoomState; round_no: number; version: number; participants: PublicParticipantDto[]; my_intent: MyIntentDto | null; pool: PoolSummaryDto | null; match: MatchSummaryDto | null; invite: RoomInviteDto | null; allowed_actions: string[]; created_at: string; expires_at: string; closed_by?: { id: string; display_name: string } | null; closed_at?: string | null }
 export interface RoomEventDto { cursor: string; position: number; event: EventCardDto }
 export interface RoomEventsResponseDto { room_id: string; pool_version: number; round_no: number; items: RoomEventDto[]; next_cursor: string | null; total: number }
 export interface MatchDto { id: string; matched_at: string; event: EventCardDto; participants: PublicParticipantDto[] }
 export interface HomeFeedSectionDto { type: 'hero' | 'popular' | 'for_you' | 'nearby'; title: string; items: EventCardDto[] }
-export interface HomeFeedResponseDto { feed_id: string; generated_at: string; sections: HomeFeedSectionDto[]; active_room: { id: string; name: string; city_id: string; state: RoomState } | null }
+export interface RoomClosedNoticeDto { room_id: string; room_name: string; closed_by: { id: string; display_name: string }; closed_at: string }
+export interface HomeFeedResponseDto { feed_id: string; generated_at: string; sections: HomeFeedSectionDto[]; active_room: { id: string; name: string; city_id: string; state: RoomState } | null; room_closed_notice?: RoomClosedNoticeDto | null }
 export interface EventSearchResponseDto { items: EventCardDto[]; applied_filters: Record<string, unknown>; total_estimate: number; next_cursor: string | null }
 export interface MapBounds { west: number; south: number; east: number; north: number }
 export type EventMapPointDto = { kind: 'event'; id: string; longitude: number; latitude: number; event: EventCardDto }

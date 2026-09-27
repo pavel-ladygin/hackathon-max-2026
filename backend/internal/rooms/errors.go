@@ -21,4 +21,5 @@ var (
 	ErrStalePoolVersion    = errors.New("stale room pool version")
 	ErrVoteAlreadyCast     = errors.New("room event vote already cast")
 	ErrEventUnavailable    = errors.New("room event unavailable")
+	ErrRoomClosed          = errors.New("room is closed")
 )

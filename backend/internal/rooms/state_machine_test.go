@@ -18,6 +18,10 @@ func TestCanTransition(t *testing.T) {
 		{RoomStateVoting, RoomStateVoting, false},
 		{RoomStateCollectingIntents, RoomStateMatched, false},
 		{RoomStateExhausted, RoomStateVoting, false},
+		{RoomStateCollectingIntents, RoomStateClosed, true},
+		{RoomStateVoting, RoomStateClosed, true},
+		{RoomStateMatched, RoomStateClosed, true},
+		{RoomStateClosed, RoomStateClosed, false},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.from)+"_to_"+string(tt.to), func(t *testing.T) {

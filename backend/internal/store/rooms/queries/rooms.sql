@@ -20,6 +20,26 @@ UPDATE rooms
 SET state = $2, version = version + 1
 WHERE id = $1;
 
+-- name: CloseRoom :execrows
+UPDATE rooms
+SET state = 'closed', closed_by = $2, closed_at = clock_timestamp(), version = version + 1
+WHERE id = $1 AND state <> 'closed';
+
+-- name: GetRoomClosureActor :one
+SELECT r.closed_by, r.closed_at, u.display_name
+FROM rooms r JOIN users u ON u.id = r.closed_by
+WHERE r.id = $1 AND r.state = 'closed';
+
+-- name: InsertRoomCloseNotice :exec
+INSERT INTO room_close_notices (room_id, recipient_user_id)
+VALUES ($1, $2)
+ON CONFLICT (room_id, recipient_user_id) DO NOTHING;
+
+-- name: AcknowledgeRoomCloseNotice :execrows
+UPDATE room_close_notices
+SET acknowledged_at = COALESCE(acknowledged_at, clock_timestamp())
+WHERE room_id = $1 AND recipient_user_id = $2;
+
 -- name: MarkRoomMatched :execrows
 -- The caller must have locked the room and verified the active pool/mutual like.
 -- The state predicate keeps this transition terminal and idempotent under retries.

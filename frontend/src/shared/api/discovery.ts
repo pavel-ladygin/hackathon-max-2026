@@ -23,7 +23,7 @@ export interface DiscoverySearchParams {
 }
 
 export interface DiscoveryApi {
-  getHomeFeed(params?: Record<string, string | number | undefined>): Promise<{ feed_id: string; generated_at: string; sections: Array<Omit<HomeFeedResponseDto['sections'][number], 'items'> & { items: Event[] }>; activeRoom: HomeFeedResponseDto['active_room'] }>
+  getHomeFeed(params?: Record<string, string | number | undefined>): Promise<{ feed_id: string; generated_at: string; sections: Array<Omit<HomeFeedResponseDto['sections'][number], 'items'> & { items: Event[] }>; activeRoom: HomeFeedResponseDto['active_room']; roomClosedNotice: HomeFeedResponseDto['room_closed_notice'] }>
   searchEvents(params?: DiscoverySearchParams): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number; nextCursor: string | null }>
   getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>): Promise<Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event } | (Omit<Extract<EventMapItemDto, { kind: 'cluster' }>, 'members'> & { members: Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event }> })>>
   getEvent(eventId: string): Promise<Detail>
@@ -52,7 +52,7 @@ export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {
     async getHomeFeed(params = {}) {
       const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
       const response = await request<HomeFeedResponseDto>(`/feed/home${query.size ? `?${query}` : ''}`)
-      return { ...response, sections: response.sections.map((section) => ({ ...section, items: section.items.map(mapEvent) })), activeRoom: response.active_room }
+      return { ...response, sections: response.sections.map((section) => ({ ...section, items: section.items.map(mapEvent) })), activeRoom: response.active_room, roomClosedNotice: response.room_closed_notice }
     },
     async searchEvents(params = {}) {
       const query = new URLSearchParams()

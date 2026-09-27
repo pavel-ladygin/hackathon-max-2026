@@ -13,11 +13,15 @@ const (
 	RoomStateVoting            = openapi.RoomStateVoting
 	RoomStateMatched           = openapi.RoomStateMatched
 	RoomStateExhausted         = openapi.RoomStateExhausted
+	RoomStateClosed            = openapi.RoomStateClosed
 )
 
 // CanTransition reports whether a distinct direct lifecycle transition is
 // permitted. Matched is terminal; restart logic owns exhausted -> collecting.
 func CanTransition(from, to RoomState) bool {
+	if to == RoomStateClosed {
+		return from == RoomStateCollectingIntents || from == RoomStateRanking || from == RoomStateVoting || from == RoomStateMatched || from == RoomStateExhausted
+	}
 	switch from {
 	case RoomStateCollectingIntents:
 		return to == RoomStateRanking

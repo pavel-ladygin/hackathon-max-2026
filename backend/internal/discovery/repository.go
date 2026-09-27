@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
+	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
 )
 
 // Repository executes generated, read-only discovery projections.
@@ -33,6 +34,17 @@ func (r *Repository) GetActiveRoom(ctx context.Context, userID uuid.UUID) (Activ
 		return ActiveRoom{}, false, err
 	}
 	return ActiveRoom{ID: row.ID, Name: row.Name, CityID: row.CityID, State: row.State}, true, nil
+}
+
+func (r *Repository) GetRoomCloseNotice(ctx context.Context, userID uuid.UUID) (*RoomClosedNotice, error) {
+	row, err := roomsql.New(r.db).GetRoomCloseNotice(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &RoomClosedNotice{RoomID: row.RoomID, RoomName: row.RoomName, ClosedByID: uuid.UUID(row.ClosedBy.Bytes), ClosedByDisplayName: row.ClosedByDisplayName, ClosedAt: row.ClosedAt.Time}, nil
 }
 
 // UserCity returns the profile city used when discovery has no explicit city.

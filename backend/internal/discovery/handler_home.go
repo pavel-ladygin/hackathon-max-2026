@@ -96,7 +96,7 @@ func homeInput(r *http.Request, userID uuid.UUID) (HomeInput, error) {
 }
 
 func homeResponse(feed HomeFeed) api.HomeFeedResponse {
-	response := api.HomeFeedResponse{FeedId: feed.ID, GeneratedAt: feed.GeneratedAt, ActiveRoom: nullable.NewNullNullable[api.RoomSummary](), Sections: make([]struct {
+	response := api.HomeFeedResponse{FeedId: feed.ID, GeneratedAt: feed.GeneratedAt, ActiveRoom: nullable.NewNullNullable[api.RoomSummary](), RoomClosedNotice: nullable.NewNullNullable[api.RoomClosedNotice](), Sections: make([]struct {
 		Items []api.EventCard                  `json:"items"`
 		Title string                           `json:"title"`
 		Type  api.HomeFeedResponseSectionsType `json:"type"`
@@ -104,6 +104,13 @@ func homeResponse(feed HomeFeed) api.HomeFeedResponse {
 	if feed.ActiveRoom != nil {
 		response.ActiveRoom = nullable.NewNullableWithValue(api.RoomSummary{
 			Id: feed.ActiveRoom.ID, Name: feed.ActiveRoom.Name, CityId: feed.ActiveRoom.CityID, State: api.RoomState(feed.ActiveRoom.State),
+		})
+	}
+	if feed.RoomClosedNotice != nil {
+		n := feed.RoomClosedNotice
+		response.RoomClosedNotice = nullable.NewNullableWithValue(api.RoomClosedNotice{
+			RoomId: n.RoomID, RoomName: n.RoomName,
+			ClosedBy: api.ClosedBy{Id: n.ClosedByID, DisplayName: n.ClosedByDisplayName}, ClosedAt: n.ClosedAt,
 		})
 	}
 	for _, section := range feed.Sections {

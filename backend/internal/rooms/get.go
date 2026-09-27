@@ -41,7 +41,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 		if err != nil {
 			return err
 		}
-		if !room.ExpiresAt.Time.After(now.Time) {
+		if !room.ExpiresAt.Time.After(now.Time) && room.State != string(RoomStateClosed) {
 			return ErrRoomNotFound
 		}
 
@@ -50,6 +50,14 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 			return err
 		}
 		snapshot = baseRoomSnapshot(room, participants)
+		if room.State == string(RoomStateClosed) {
+			closed, err := repo.Queries.GetRoomClosureActor(ctx, room.ID)
+			if err != nil {
+				return err
+			}
+			snapshot.ClosedBy = nullable.NewNullableWithValue(api.ClosedBy{Id: closed.ClosedBy.Bytes, DisplayName: closed.DisplayName})
+			snapshot.ClosedAt = nullable.NewNullableWithValue(closed.ClosedAt.Time)
+		}
 
 		intent, err := repo.Queries.GetRoomIntent(ctx, roomsql.GetRoomIntentParams{RoomID: room.ID, UserID: principal.UserID, RoundNo: room.RoundNo})
 		if err == nil {
@@ -97,7 +105,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 		}
 
 		inviteAvailable := false
-		if membership.Role == "creator" {
+		if membership.Role == "creator" && room.State != string(RoomStateClosed) {
 			invite, err := repo.Queries.GetRoomInviteForCreator(ctx, roomsql.GetRoomInviteForCreatorParams{RoomID: room.ID, CreatedBy: principal.UserID})
 			if err == nil {
 				material, err := s.invites.Recover(room.ID, invite.TokenCiphertext, invite.EncryptionKeyVersion, invite.ExpiresAt.Time)

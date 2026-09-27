@@ -72,6 +72,8 @@ func writeRoomVoteError(w http.ResponseWriter, r *http.Request, err error) {
 		apiError = httpapi.Error{Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "Room event not found"}
 	case errors.Is(err, ErrAlreadyMatched):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ALREADY_MATCHED", Message: "Room is already matched"}
+	case errors.Is(err, ErrRoomClosed):
+		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROOM_CLOSED", Message: "Room is closed"}
 	case errors.Is(err, ErrPoolNotReady):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "POOL_NOT_READY", Message: "Room pool is not ready"}
 	case errors.Is(err, ErrPoolExhausted):

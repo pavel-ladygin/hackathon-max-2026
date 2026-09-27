@@ -62,6 +62,9 @@ func (s *Service) ReplaceIntent(ctx context.Context, principal contracts.Princip
 		if !room.ExpiresAt.Time.After(now) {
 			return ErrRoomNotFound
 		}
+		if RoomState(room.State) == RoomStateClosed {
+			return ErrRoomClosed
+		}
 		if RoomState(room.State) == RoomStateMatched {
 			return ErrAlreadyMatched
 		}
