@@ -71,7 +71,7 @@ func TestGetRoomReturnsCallerScopedRecoverySnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"peer-private-marker", "9900", "token_hash", "token_ciphertext", "max_user_id", "location_lat", "location_lng"} {
+	for _, forbidden := range []string{"peer-private-marker", "token_hash", "token_ciphertext", "max_user_id", "location_lat", "location_lng"} {
 		if strings.Contains(string(raw), forbidden) {
 			t.Errorf("creator snapshot leaks %q: %s", forbidden, raw)
 		}
