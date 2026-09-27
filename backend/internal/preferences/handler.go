@@ -22,14 +22,20 @@ type Replacer interface {
 	Replace(context.Context, uuid.UUID, Input) (Value, error)
 }
 
+type NotificationPreferenceUpdater interface {
+	SetDailyNotificationsEnabled(context.Context, uuid.UUID, bool) (bool, error)
+}
+
 // Handler exposes the authenticated preferences endpoint.
 type Handler struct {
-	replacer Replacer
+	replacer      Replacer
+	notifications NotificationPreferenceUpdater
 }
 
 // NewHandler constructs the preferences HTTP transport.
 func NewHandler(replacer Replacer) *Handler {
-	return &Handler{replacer: replacer}
+	updater, _ := replacer.(NotificationPreferenceUpdater)
+	return &Handler{replacer: replacer, notifications: updater}
 }
 
 // RegisterRoutes mounts the protected preferences endpoint. The supplied middleware
@@ -37,6 +43,7 @@ func NewHandler(replacer Replacer) *Handler {
 // its context.
 func (h *Handler) RegisterRoutes(r chi.Router, authenticate func(http.Handler) http.Handler) {
 	r.With(authenticate).Put("/api/v1/me/preferences", h.Replace)
+	r.With(authenticate).Patch("/api/v1/me/notification-preferences", h.UpdateNotifications)
 }
 
 // Replace fully replaces the authenticated user's persistent preferences.
@@ -72,6 +79,42 @@ func (h *Handler) Replace(w http.ResponseWriter, r *http.Request) {
 		Version:        value.Version,
 		UpdatedAt:      value.UpdatedAt,
 	})
+}
+
+func (h *Handler) UpdateNotifications(w http.ResponseWriter, r *http.Request) {
+	principal, ok := contracts.PrincipalFromContext(r.Context())
+	if !ok {
+		writePreferencesError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Authentication required")
+		return
+	}
+	if h.notifications == nil {
+		writePreferencesError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+		return
+	}
+	var request struct {
+		DailyNotificationsEnabled *bool `json:"daily_notifications_enabled"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || request.DailyNotificationsEnabled == nil {
+		writePreferencesError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid notification preferences request")
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		writePreferencesError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid notification preferences request")
+		return
+	}
+	enabled, err := h.notifications.SetDailyNotificationsEnabled(r.Context(), principal.UserID, *request.DailyNotificationsEnabled)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writePreferencesError(w, r, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
+		writePreferencesError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, api.NotificationPreferencesResponse{DailyNotificationsEnabled: enabled})
 }
 
 type preferencesRequest struct {

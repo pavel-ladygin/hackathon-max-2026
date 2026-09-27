@@ -6,6 +6,7 @@ export type RoomState = 'collecting_intents' | 'ranking' | 'voting' | 'matched' 
 
 export interface UserDto { id: string; display_name: string; avatar_url: string | null; city_id: string | null; locale: string }
 export interface PreferencesDto { city_id: string; interest_slugs: CategorySlug[]; budget_max_minor: number; usual_day_types: DayType[]; usual_time_slots: TimeSlot[]; version: number; updated_at: string }
+export interface NotificationPreferencesDto { daily_notifications_enabled: boolean }
 export interface RecommendationReasonDto { code: string; text: string }
 export interface EventCardDto { id: string; title: string; subtitle: string | null; category_slug: CategorySlug; starts_at: string; timezone: string; date_label: string; venue_name: string; latitude?: number | null; longitude?: number | null; other_occurrences_count?: number; distance_m: number | null; distance_label: string | null; price_from_minor: number | null; currency: 'RUB'; price_label: string; image_url: string | null; saved: boolean; reasons: RecommendationReasonDto[] }
 export interface VenueDto { id: string; name: string; address: string; latitude?: number | null; longitude?: number | null; metro: string | null; district: string | null }
@@ -36,6 +37,7 @@ export interface VoteResponseDto { accepted_vote: VoteValue; pool_version: numbe
 
 export interface BootstrapRequestDto { init_data: string; start_param?: string | null }
 export interface PreferencesRequestDto { city_id: string; interest_slugs: CategorySlug[]; budget_max_minor: number; usual_day_types: DayType[]; usual_time_slots: TimeSlot[] }
+export interface NotificationPreferencesRequestDto { daily_notifications_enabled: boolean }
 export interface RoomIntentRequestDto { dates: string[]; day_types: DayType[]; time_slots: TimeSlot[]; category_slugs: CategorySlug[]; budget_max_minor: number; radius_m: number | null; exclusion_slugs: string[]; location: { lat: number; lng: number } | null; free_text: string | null }
 export interface ApiErrorBody { error: { code: string; message: string; request_id: string; details?: Record<string, unknown> } }
 

@@ -52,7 +52,7 @@ export interface paths {
         put?: never;
         /**
          * Проверить MAX init data и открыть пользовательскую сессию
-         * @description Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только из проверенной строки и возвращает безопасный invite_context. Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
+         * @description Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; прочие параметры разрешаются как invite_context. Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
          */
         post: operations["bootstrapMaxSession"];
         delete?: never;
@@ -79,6 +79,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Изменить подписку на ежедневные уведомления */
+        patch: operations["updateMyNotificationPreferences"];
         trace?: never;
     };
     "/feed/home": {
@@ -389,8 +406,8 @@ export interface components {
             /** @enum {string} */
             onboarding_state: "new" | "complete";
             preferences: components["schemas"]["PreferencesResponse"] | null;
+            daily_notifications_enabled: boolean;
             invite_context: components["schemas"]["InviteContext"] | null;
-            /** Format: uuid */
             shared_event_id: string | null;
         };
         User: {
@@ -448,6 +465,12 @@ export interface components {
             version: number;
             /** Format: date-time */
             updated_at: string;
+        };
+        NotificationPreferencesRequest: {
+            daily_notifications_enabled: boolean;
+        };
+        NotificationPreferencesResponse: {
+            daily_notifications_enabled: boolean;
         };
         /** @enum {string} */
         CategorySlug: "concerts" | "cinema" | "theatre" | "standup" | "exhibitions" | "sports" | "food" | "parties" | "festivals" | "walks" | "other";
@@ -1095,6 +1118,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferencesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMyNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description Текущее состояние подписки */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferencesResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];

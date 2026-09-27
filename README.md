@@ -257,7 +257,7 @@ HTTP-контрактом на 24 часа. Свежесть init-data оста�
 
 Создайте `/opt/worknet/.env.production` непосредственно на сервере с правами `0600`.
 Файл должен содержать как минимум `POSTGRES_PASSWORD`, `MAX_BOT_TOKEN`,
-`INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` и `MAX_DEEP_LINK_TEMPLATE`.
+`MAX_APP_URL`, `INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` и `MAX_DEEP_LINK_TEMPLATE`.
 Сгенерируйте стабильный ключ приглашений один раз командой `openssl rand -base64 32`;
 оба URL-шаблона должны содержать `{token}` ровно один раз. Для текущего продакшена:
 
@@ -265,7 +265,16 @@ HTTP-контрактом на 24 часа. Свежесть init-data оста�
 INVITE_ENCRYPTION_KEY_VERSION=1
 INVITE_URL_TEMPLATE=https://worknet.team/join/{token}
 MAX_DEEP_LINK_TEMPLATE=https://max.ru/t255_hakaton_max_bot?startapp={token}
+MAX_APP_URL=https://max.ru/t255_hakaton_max_bot
 ```
+
+Сервис `daily-notifications` отправляет подписавшимся пользователям одно сообщение
+ежедневно в 12:00 по Москве. `MAX_APP_URL` задаёт публичную ссылку или имя бота для
+кнопки `open_app`. Временные сетевые ошибки и ответы 5xx MAX отмечаются как
+неопределённые и автоматически не повторяются: Bot API не предоставляет ключ
+идемпотентности, поэтому повтор мог бы доставить дубликат. Подтверждённый ответ 429
+повторяется с учётом `Retry-After`; незавершённая запись `sending` после аварийного
+завершения также не переотправляется автоматически.
 
 Также можно задать `POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`,
 `MAX_INIT_DATA_MAX_AGE` и `TRUSTED_PROXY_CIDRS`. Никогда не коммитьте этот файл.

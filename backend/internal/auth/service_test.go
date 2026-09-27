@@ -17,12 +17,13 @@ import (
 )
 
 type fakeAuthRepo struct {
-	user            platform.User
-	preferences     *preferences.Value
-	bootstrapHashes [][]byte
-	byHash          map[[32]byte]platform.GetAuthSessionRow
-	bootstrapErr    error
-	sessionErr      error
+	user                      platform.User
+	preferences               *preferences.Value
+	dailyNotificationsEnabled bool
+	bootstrapHashes           [][]byte
+	byHash                    map[[32]byte]platform.GetAuthSessionRow
+	bootstrapErr              error
+	sessionErr                error
 }
 
 func validOpaqueToken() string { return base64.RawURLEncoding.EncodeToString(make([]byte, 32)) }
@@ -32,7 +33,7 @@ func (f *fakeAuthRepo) bootstrap(_ context.Context, _ identity, hash []byte, _ t
 		return bootstrapProfile{}, f.bootstrapErr
 	}
 	f.bootstrapHashes = append(f.bootstrapHashes, append([]byte(nil), hash...))
-	return bootstrapProfile{user: f.user, preferences: f.preferences}, nil
+	return bootstrapProfile{user: f.user, preferences: f.preferences, dailyNotificationsEnabled: f.dailyNotificationsEnabled}, nil
 }
 func (f *fakeAuthRepo) session(_ context.Context, hash []byte) (platform.GetAuthSessionRow, error) {
 	if f.sessionErr != nil {

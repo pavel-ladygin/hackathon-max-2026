@@ -1004,14 +1004,15 @@ type BootstrapRequest struct {
 
 // BootstrapResponse defines model for BootstrapResponse.
 type BootstrapResponse struct {
-	AccessToken     string                                 `json:"access_token"`
-	ExpiresIn       int                                    `json:"expires_in"`
-	InviteContext   nullable.Nullable[InviteContext]       `json:"invite_context"`
-	SharedEventId   nullable.Nullable[openapi_types.UUID]  `json:"shared_event_id"`
-	OnboardingState BootstrapResponseOnboardingState       `json:"onboarding_state"`
-	Preferences     nullable.Nullable[PreferencesResponse] `json:"preferences"`
-	TokenType       BootstrapResponseTokenType             `json:"token_type"`
-	User            User                                   `json:"user"`
+	AccessToken               string                                 `json:"access_token"`
+	DailyNotificationsEnabled bool                                   `json:"daily_notifications_enabled"`
+	ExpiresIn                 int                                    `json:"expires_in"`
+	InviteContext             nullable.Nullable[InviteContext]       `json:"invite_context"`
+	SharedEventId             nullable.Nullable[openapi_types.UUID]  `json:"shared_event_id"`
+	OnboardingState           BootstrapResponseOnboardingState       `json:"onboarding_state"`
+	Preferences               nullable.Nullable[PreferencesResponse] `json:"preferences"`
+	TokenType                 BootstrapResponseTokenType             `json:"token_type"`
+	User                      User                                   `json:"user"`
 }
 
 // BootstrapResponseOnboardingState defines model for BootstrapResponse.OnboardingState.
@@ -1366,6 +1367,16 @@ type PreferencesResponse struct {
 	UsualDayTypes  []DayType          `json:"usual_day_types"`
 	UsualTimeSlots []TimeSlot         `json:"usual_time_slots"`
 	Version        int                `json:"version"`
+}
+
+// NotificationPreferencesRequest defines model for NotificationPreferencesRequest.
+type NotificationPreferencesRequest struct {
+	DailyNotificationsEnabled bool `json:"daily_notifications_enabled"`
+}
+
+// NotificationPreferencesResponse defines model for NotificationPreferencesResponse.
+type NotificationPreferencesResponse struct {
+	DailyNotificationsEnabled bool `json:"daily_notifications_enabled"`
 }
 
 // PublicParticipant defines model for PublicParticipant.

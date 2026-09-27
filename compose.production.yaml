@@ -78,6 +78,21 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
+  daily-notifications:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    command: ["/app/daily-notifications"]
+    environment:
+      <<: *backend_environment
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?MAX_BOT_TOKEN is required}
+      MAX_APP_URL: ${MAX_APP_URL:?MAX_APP_URL is required; set it to the public MAX bot URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
   timepad-image-recovery:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
     command: ["/app/backfill-timepad-posters", "--continuous", "--apply", "--limit", "50"]

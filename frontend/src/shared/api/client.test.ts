@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { ApiClient } from './client'
 
 describe('API client', () => {
+  it('updates notification preferences through the authenticated endpoint', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ daily_notifications_enabled: true }))
+    const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl, getToken: () => 'token-1' })
+
+    await expect(client.updateNotificationPreferences({ daily_notifications_enabled: true })).resolves.toEqual({ daily_notifications_enabled: true })
+
+    expect(String(fetchImpl.mock.calls[0][0])).toBe('/api/v1/me/notification-preferences')
+    expect(fetchImpl.mock.calls[0][1]?.method).toBe('PATCH')
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual({ daily_notifications_enabled: true })
+    expect(new Headers(fetchImpl.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer token-1')
+  })
+
   it('uses the authenticated HTTP API for discovery', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
@@ -11,6 +23,7 @@ describe('API client', () => {
           user: { id: 'user-1', display_name: 'Иван', avatar_url: null, city_id: null, locale: 'ru' },
           onboarding_state: 'new',
           preferences: null,
+          daily_notifications_enabled: false,
           invite_context: null,
         })
       }
@@ -23,7 +36,8 @@ describe('API client', () => {
     })
     const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl })
 
-    await client.bootstrap({ init_data: 'signed-max-data', start_param: null })
+    const bootstrap = await client.bootstrap({ init_data: 'signed-max-data', start_param: null })
+    expect(bootstrap.dailyNotificationsEnabled).toBe(false)
     await client.replacePreferences({
       city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24',
       interest_slugs: ['concerts'],
@@ -46,12 +60,13 @@ describe('API client', () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({
       access_token: 'real-access-token',
       user: { id: 'user-1', display_name: 'Иван', avatar_url: null, city_id: null, locale: 'ru' },
-      onboarding_state: 'complete', preferences: null, invite_context: null, shared_event_id: eventId,
+      onboarding_state: 'complete', preferences: null, daily_notifications_enabled: true, invite_context: null, shared_event_id: eventId,
     }))
     const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl })
 
     const bootstrap = await client.bootstrap({ init_data: 'signed-max-data', start_param: `event_${eventId}` })
 
     expect(bootstrap.sharedEventId).toBe(eventId)
+    expect(bootstrap.dailyNotificationsEnabled).toBe(true)
   })
 })

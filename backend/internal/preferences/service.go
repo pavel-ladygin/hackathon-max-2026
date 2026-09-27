@@ -29,18 +29,29 @@ type Input struct {
 
 // Value is a persisted preference set.
 type Value struct {
-	CityID         uuid.UUID
-	InterestSlugs  []string
-	BudgetMaxMinor int
-	UsualDayTypes  []string
-	UsualTimeSlots []string
-	Version        int
-	UpdatedAt      time.Time
+	CityID                    uuid.UUID
+	InterestSlugs             []string
+	BudgetMaxMinor            int
+	UsualDayTypes             []string
+	UsualTimeSlots            []string
+	Version                   int
+	UpdatedAt                 time.Time
+	DailyNotificationsEnabled bool
 }
 
 type repository interface {
 	get(context.Context, uuid.UUID) (Value, bool, error)
 	replace(context.Context, uuid.UUID, Input) (Value, error)
+	setDailyNotificationsEnabled(context.Context, uuid.UUID, bool) (bool, error)
+}
+
+// SetDailyNotificationsEnabled updates the bot notification subscription independently
+// from the replace-all discovery preferences operation.
+func (s *Service) SetDailyNotificationsEnabled(ctx context.Context, userID uuid.UUID, enabled bool) (bool, error) {
+	if userID == uuid.Nil {
+		return false, ErrInvalid
+	}
+	return s.repo.setDailyNotificationsEnabled(ctx, userID, enabled)
 }
 
 // Service validates and atomically replaces permanent preferences.

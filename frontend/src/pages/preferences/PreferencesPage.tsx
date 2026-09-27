@@ -26,10 +26,21 @@ export function PreferencesPage() {
   const client = useQueryClient()
   const initial = bootstrap.data?.preferences
   const [interests, setInterests] = useState<CategorySlug[]>(() => initial?.interestSlugs ?? ['concerts'])
+  const [dailyNotificationsOverride, setDailyNotificationsOverride] = useState<boolean | null>(null)
+  const dailyNotificationsEnabled = dailyNotificationsOverride ?? bootstrap.data?.dailyNotificationsEnabled ?? false
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { budget: (initial?.budgetMaxMinor ?? 350_000) / 100, days: initial?.usualDayTypes ?? ['weekend'], times: initial?.usualTimeSlots ?? ['evening'] } })
   const budget = useWatch({ control: form.control, name: 'budget' })
   const days = useWatch({ control: form.control, name: 'days' })
   const times = useWatch({ control: form.control, name: 'times' })
+  const saveNotifications = useMutation({
+    mutationFn: (enabled: boolean) => apiClient.updateNotificationPreferences({ daily_notifications_enabled: enabled }),
+    onMutate: (enabled) => setDailyNotificationsOverride(enabled),
+    onSuccess: (result) => {
+      setDailyNotificationsOverride(result.daily_notifications_enabled)
+      client.setQueriesData({ queryKey: ['bootstrap'] }, (data: typeof bootstrap.data) => data ? { ...data, dailyNotificationsEnabled: result.daily_notifications_enabled } : data)
+    },
+    onError: () => setDailyNotificationsOverride(null),
+  })
   const save = useMutation({
     mutationFn: (values: FormValues) => apiClient.replacePreferences({ city_id: initial?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID, interest_slugs: interests, budget_max_minor: values.budget * 100, usual_day_types: values.days, usual_time_slots: values.times }),
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ['bootstrap'] }); await client.invalidateQueries({ queryKey: ['home-feed'] }); navigate('/') },
@@ -45,6 +56,16 @@ export function PreferencesPage() {
   const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>
     <h1 className={styles.title}>Настройте афишу</h1><p className={styles.subtitle}>Эти параметры влияют на персональные рекомендации. Условия отдельной встречи задаются приватно в комнате.</p>
+    <section className={styles.formStack} aria-busy={saveNotifications.isPending}>
+      <label className={styles.fieldLabel} htmlFor="preferences-daily-notifications">
+        <span>Ежедневные идеи от бота</span>
+        <input id="preferences-daily-notifications" type="checkbox" role="switch" checked={dailyNotificationsEnabled} disabled={saveNotifications.isPending} onChange={(event) => { saveNotifications.reset(); saveNotifications.mutate(event.currentTarget.checked) }} />
+        <span className={styles.subtitle}>Одно короткое сообщение в день в 12:00 по Москве. Вы можете отключить его в любой момент.</span>
+      </label>
+      {saveNotifications.isPending ? <p role="status">Сохраняем подписку…</p> : null}
+      {saveNotifications.isSuccess ? <p role="status">Настройка сохранена.</p> : null}
+      {saveNotifications.isError ? <p className={styles.error} role="alert">Не удалось сохранить настройку уведомлений. Попробуйте ещё раз.</p> : null}
+    </section>
     <form className={styles.formStack} aria-busy={save.isPending} onSubmit={form.handleSubmit((values) => interests.length > 0 && save.mutate(values))}>
       <fieldset className={styles.fieldLabel} aria-invalid={interests.length === 0}><legend>Интересы</legend><ChipGroup>{categories.map(([value, label]) => <Chip key={value} selected={interests.includes(value)} onClick={() => setInterests((current) => toggle(current, value))}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-interests-error">{interests.length === 0 ? 'Выберите хотя бы один интерес.' : null}</FieldError></fieldset>
       <label className={styles.fieldLabel} htmlFor="preferences-budget">Бюджет · до {budget.toLocaleString('ru-RU')} ₽<input id="preferences-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} /><FieldError id="preferences-budget-error">{form.formState.errors.budget?.message}</FieldError></label>

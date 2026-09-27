@@ -70,6 +70,7 @@ func TestBootstrapReturnsPersistedPreferences(t *testing.T) {
 		BudgetMaxMinor: 350000, UsualDayTypes: []string{}, UsualTimeSlots: []string{"evening"},
 		Version: 2, UpdatedAt: time.Unix(1_700_000_123, 0).UTC(),
 	}
+	repo.dailyNotificationsEnabled = true
 	router := httpapi.NewRouter(nil, slog.Default(), s.RegisterRoutes)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/max/bootstrap", strings.NewReader(`{"init_data":"`+raw+`"}`))
 	res := httptest.NewRecorder()
@@ -78,13 +79,14 @@ func TestBootstrapReturnsPersistedPreferences(t *testing.T) {
 		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
 	}
 	var body struct {
-		OnboardingState string                      `json:"onboarding_state"`
-		Preferences     *preferencesResponseForTest `json:"preferences"`
+		OnboardingState           string                      `json:"onboarding_state"`
+		DailyNotificationsEnabled bool                        `json:"daily_notifications_enabled"`
+		Preferences               *preferencesResponseForTest `json:"preferences"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.OnboardingState != "complete" || body.Preferences == nil || body.Preferences.Version != 2 || body.Preferences.CityID != "22222222-2222-4222-8222-222222222222" {
+	if body.OnboardingState != "complete" || !body.DailyNotificationsEnabled || body.Preferences == nil || body.Preferences.Version != 2 || body.Preferences.CityID != "22222222-2222-4222-8222-222222222222" {
 		t.Fatalf("bootstrap preferences mismatch: %s", res.Body.String())
 	}
 	if len(body.Preferences.InterestSlugs) != 2 || len(body.Preferences.UsualDayTypes) != 0 || len(body.Preferences.UsualTimeSlots) != 1 {

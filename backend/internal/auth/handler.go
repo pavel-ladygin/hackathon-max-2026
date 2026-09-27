@@ -67,9 +67,10 @@ func (s *Service) Bootstrap(w http.ResponseWriter, r *http.Request) {
 	response := api.BootstrapResponse{
 		AccessToken: result.token, TokenType: "Bearer", ExpiresIn: int(SessionTTL.Seconds()),
 		User: user, OnboardingState: api.BootstrapResponseOnboardingState(result.user.OnboardingState),
-		Preferences:   nullable.NewNullNullable[api.PreferencesResponse](),
-		InviteContext: nullable.NewNullNullable[api.InviteContext](),
-		SharedEventId: nullable.NewNullNullable[openapi_types.UUID](),
+		DailyNotificationsEnabled: result.dailyNotificationsEnabled,
+		Preferences:               nullable.NewNullNullable[api.PreferencesResponse](),
+		InviteContext:             nullable.NewNullNullable[api.InviteContext](),
+		SharedEventId:             nullable.NewNullNullable[openapi_types.UUID](),
 	}
 	if result.preferences != nil {
 		response.Preferences = nullable.NewNullableWithValue(preferencesResponse(*result.preferences))

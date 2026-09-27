@@ -166,6 +166,31 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /me/notification-preferences:
+    patch:
+      tags:
+      - Preferences
+      operationId: updateMyNotificationPreferences
+      summary: Изменить подписку на ежедневные уведомления
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesRequest'
+      responses:
+        '200':
+          description: Текущее состояние подписки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
   /feed/home:
     get:
       tags:
@@ -953,6 +978,7 @@ components:
       - user
       - onboarding_state
       - preferences
+      - daily_notifications_enabled
       - invite_context
       - shared_event_id
       properties:
@@ -977,6 +1003,8 @@ components:
           anyOf:
           - $ref: '#/components/schemas/PreferencesResponse'
           - type: 'null'
+        daily_notifications_enabled:
+          type: boolean
         invite_context:
           anyOf:
           - $ref: '#/components/schemas/InviteContext'
@@ -1143,6 +1171,22 @@ components:
         updated_at:
           type: string
           format: date-time
+    NotificationPreferencesRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - daily_notifications_enabled
+      properties:
+        daily_notifications_enabled:
+          type: boolean
+    NotificationPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - daily_notifications_enabled
+      properties:
+        daily_notifications_enabled:
+          type: boolean
     CategorySlug:
       type: string
       enum:

@@ -6,6 +6,7 @@ JOIN user_preferences AS p ON p.user_id = u.id
 JOIN cities AS c ON c.id = u.city_id
 WHERE u.id = $1;
 
+
 -- name: ListUserPreferenceCategories :many
 SELECT category_slug
 FROM user_category_preferences
