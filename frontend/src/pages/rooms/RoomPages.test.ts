@@ -22,7 +22,7 @@ describe('relaxedIntent', () => {
     }
     const choices = availableRelaxations(current, now).find(({ id }) => id === 'category')?.categories
 
-    expect(choices).toEqual(RELAXATION_CATEGORIES.filter(({ slug }) => slug !== 'concerts'))
+    expect(choices).toEqual(RELAXATION_CATEGORIES.filter(({ slug }) => !['concerts', 'sports'].includes(slug)))
     expect(relaxedIntent(current, 'category', now, 'food').category_slugs).toEqual(['concerts', 'sports', 'food'])
     expect(() => relaxedIntent(current, 'category', now, 'concerts')).toThrow(/available category/)
   })
@@ -108,7 +108,7 @@ describe('relaxedIntent', () => {
     }, now)
 
     expect(suggestions.map(({ id }) => id)).toEqual(['category'])
-    expect(suggestions[0].categories).toHaveLength(5)
+    expect(suggestions[0].categories).toHaveLength(10)
   })
 
   it('offers concrete dates inside the next 14 days that fit allowed day types', () => {

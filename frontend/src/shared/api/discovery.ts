@@ -27,7 +27,7 @@ export interface DiscoveryApi {
   searchEvents(params?: DiscoverySearchParams): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number; nextCursor: string | null }>
   getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>): Promise<Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event } | (Omit<Extract<EventMapItemDto, { kind: 'cluster' }>, 'members'> & { members: Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event }> })>>
   getEvent(eventId: string): Promise<Detail>
-  recordBehavior(events: AnalyticsEvent[]): Promise<{ accepted: number; duplicates: number; rejected: number }>
+  recordBehavior(events: AnalyticsEvent[], keepalive?: boolean): Promise<{ accepted: number; duplicates: number; rejected: number }>
   setSaved(eventId: string, saved: boolean): Promise<SavedStateResponseDto>
   getSaved(params?: { tab?: 'saved' | 'matches'; limit?: number; cursor?: string }): Promise<{ items: Array<{ event: Event; savedAt: string | null; match: SavedEventsResponseDto['items'][number]['match'] }>; nextCursor: string | null }>
   recordTicketClick(eventId: string, input: { source: string; room_id?: string | null }): Promise<{ external_url: string }>
@@ -69,7 +69,7 @@ export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {
         : { ...item, members: item.members.map((member) => ({ ...member, event: mapEvent(member.event) })) })
     },
     async getEvent(eventId) { return mapDetail(await request<EventDetailDto>(`/events/${eventId}`)) },
-    async recordBehavior(events) { return request('/behavior/events:batch', { method: 'POST', body: JSON.stringify({ events }) }) },
+    async recordBehavior(events, keepalive = false) { return request('/behavior/events:batch', { method: 'POST', body: JSON.stringify({ events }), keepalive }) },
     async setSaved(eventId, saved) { return request(`/me/saved-events/${encodeURIComponent(eventId)}`, { method: 'PUT', body: JSON.stringify({ saved }) }) },
     async getSaved(params = {}) {
       const query = new URLSearchParams()

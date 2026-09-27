@@ -55,27 +55,27 @@ func TestRankingComponentsAndWeightedGroupScore(t *testing.T) {
 		t.Fatalf("Build: err=%v candidates=%d", err, len(got.Candidates))
 	}
 	c := got.Candidates[0]
-	for _, key := range []string{"category_affinity", "current_intent_category_fit", "time_quality", "budget_headroom", "distance_quality", "novelty", "popularity"} {
+	for _, key := range []string{"category_affinity", "current_intent_category_fit", "budget_headroom", "distance_quality", "behavioral_affinity"} {
 		if _, ok := c.FeatureSnapshot[key]; !ok {
 			t.Fatalf("missing feature %q: %+v", key, c.FeatureSnapshot)
 		}
 	}
 	wantFeatures := map[string]float64{
-		"category_affinity": 0, "current_intent_category_fit": .4, "time_quality": 1,
-		"budget_headroom": .5, "distance_quality": .5, "novelty": 1, "popularity": 0,
+		"category_affinity": 0, "current_intent_category_fit": .4,
+		"budget_headroom": .5, "distance_quality": .5, "behavioral_affinity": 0,
 	}
 	for key, want := range wantFeatures {
 		if math.Abs(c.FeatureSnapshot[key]-want) > 1e-6 {
 			t.Errorf("feature %s=%v, want %v", key, c.FeatureSnapshot[key], want)
 		}
 	}
-	// First=.535, second=.275, mean=.405; group=.65*.275+.35*.405=.3205.
-	if math.Abs(float64(c.Score.ParticipantScoreMin)-.275) > 1e-6 ||
-		math.Abs(float64(c.Score.ParticipantScoreMean)-.405) > 1e-6 ||
-		math.Abs(float64(c.Score.GroupScore)-.3205) > 1e-6 {
+	// First=.335/.81, second=.075/.81; group uses the existing 65/35 blend.
+	if math.Abs(float64(c.Score.ParticipantScoreMin)-(.075/.81)) > 1e-6 ||
+		math.Abs(float64(c.Score.ParticipantScoreMean)-(.205/.81)) > 1e-6 ||
+		math.Abs(float64(c.Score.GroupScore)-(.65*(.075/.81)+.35*(.205/.81))) > 1e-6 {
 		t.Fatalf("weighted scores = %+v", c.Score)
 	}
-	if c.FeatureSnapshot["category_affinity"] != 0 || c.FeatureSnapshot["popularity"] != 0 {
+	if c.FeatureSnapshot["category_affinity"] != 0 || c.FeatureSnapshot["behavioral_affinity"] != 0 {
 		t.Fatalf("unexpected mean feature values: %+v", c.FeatureSnapshot)
 	}
 }
@@ -239,7 +239,7 @@ func TestPermanentProfileFallbackUsesAllStoredFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	features := withProfile.Candidates[0].FeatureSnapshot
-	for key, want := range map[string]float64{"category_affinity": .5, "time_quality": .5, "budget_headroom": .3} {
+	for key, want := range map[string]float64{"category_affinity": .5, "budget_headroom": .3} {
 		if math.Abs(features[key]-want) > 1e-6 {
 			t.Errorf("feature %s=%v, want %v", key, features[key], want)
 		}
@@ -253,7 +253,7 @@ func TestPermanentProfileFallbackUsesAllStoredFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	ignoredFeatures := ignored.Candidates[0].FeatureSnapshot
-	if ignoredFeatures["category_affinity"] != 0 || ignoredFeatures["time_quality"] != 0 || math.Abs(ignoredFeatures["budget_headroom"]-.2) > 1e-6 {
+	if ignoredFeatures["category_affinity"] != 0 || math.Abs(ignoredFeatures["budget_headroom"]-.2) > 1e-6 {
 		t.Fatalf("preferences from another city affected ranking: %+v", ignoredFeatures)
 	}
 	if ignored.InputFingerprint == withProfile.InputFingerprint {

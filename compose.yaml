@@ -38,6 +38,15 @@ services:
         condition: service_healthy
     restart: "no"
 
+  seed:
+    <<: *backend-image
+    command: ["/app/seed"]
+    environment: *backend-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   backend:
     <<: *backend-image
     environment:
@@ -56,12 +65,108 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health/ready"]
       interval: 5s
       timeout: 3s
       retries: 12
     stop_grace_period: 15s
+
+  event-sync:
+    <<: *backend-image
+    command: ["/app/event-sync"]
+    environment:
+      <<: *backend-environment
+      KUDAGO_BASE_URL: ${KUDAGO_BASE_URL:-https://kudago.com/public-api/v1.4}
+      KUDAGO_TIMEOUT: ${KUDAGO_TIMEOUT:-30s}
+      KUDAGO_LOCATION: ${KUDAGO_LOCATION:-msk}
+      KUDAGO_PAGE_SIZE: ${KUDAGO_PAGE_SIZE:-100}
+      EVENT_SYNC_INTERVAL: ${EVENT_SYNC_INTERVAL:-60m}
+      TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
+      TIMEPAD_TOKEN: ${TIMEPAD_TOKEN:-}
+      TIMEPAD_TIMEOUT: ${TIMEPAD_TIMEOUT:-30s}
+      TIMEPAD_PAGE_SIZE: ${TIMEPAD_PAGE_SIZE:-100}
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-max-together-frontend:local}
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_MAX_APP_URL: ${VITE_MAX_APP_URL:-https://max.ru/t255_hakaton_max_bot}
+        VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
+        VITE_TICKET_PROVIDER_ALLOWLIST: ${VITE_TICKET_PROVIDER_ALLOWLIST:-kudago.com,*.kudago.com,timepad.ru,*.timepad.ru}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: max_together_test
+      POSTGRES_USER: max_together_test
+      POSTGRES_PASSWORD: test-only-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate-test:
+    profiles: ["test"]
+    <<: *backend-image
+    command: ["/app/migrate"]
+    environment:
+      APP_ENV: test
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://max_together_test:test-only-password@postgres-test:5432/max_together_test?sslmode=disable
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    restart: "no"
+
+  integration-tests:
+    profiles: ["test"]
+    image: max-together-integration-tests:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: build
+    working_dir: /src
+    command: ["go", "test", "-count=1", "./..."]
+    environment:
+      APP_ENV: test
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://max_together_test:test-only-password@postgres-test:5432/max_together_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://max_together_test:test-only-password@postgres-test:5432/max_together_test?sslmode=disable
+      MAX_BOT_TOKEN: ci-dummy-token
+      INVITE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      INVITE_URL_TEMPLATE: https://example.invalid/join/{token}
+      MAX_DEEP_LINK_TEMPLATE: https://max.ru/test-bot?startapp={token}
+    depends_on:
+      migrate-test:
+        condition: service_completed_successfully
+    restart: "no"
 
 volumes:
   postgres_data:

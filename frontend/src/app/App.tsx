@@ -6,7 +6,7 @@ import { Button, ErrorState, ScreenSkeleton } from '../shared/ui/index'
 import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
 import { skeletonVariant } from './skeletonVariant'
-import { trackAppOpen, trackClientError, trackPerformance } from '../shared/analytics/client'
+import { activateAnalytics, trackAppOpen, trackClientError, trackPerformance } from '../shared/analytics/client'
 import { getOpenInMaxStartParam } from './sharedEventLink'
 
 const HomePage = lazy(() => import('../pages/home/HomePage').then((m) => ({ default: m.HomePage })))
@@ -44,6 +44,7 @@ function AppRoutes() {
     if (bootstrap.isError && !bootFailure.current) bootFailure.current = bootstrap.error
     if (!bootstrap.data || appOpened.current) return
     appOpened.current = true
+    activateAnalytics(bootstrap.data.user.id)
     const path = location.pathname
     const entryPoint = path.startsWith('/join/') ? 'room_invite' : path.startsWith('/rooms/') ? 'room' : path.startsWith('/events/') ? 'deep_link' : path === '/' || path === '/events' ? 'feed' : path === '/saved' ? 'saved' : 'home'
     trackAppOpen(entryPoint)

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v5-unknown-price"
+	rankerVersion = "scoring-diversity-v6-behavioral"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0

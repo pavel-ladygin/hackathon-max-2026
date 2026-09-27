@@ -12,13 +12,16 @@ Known prices must be within the joint budget; events with unknown prices remain
 eligible but receive no budget-fit score. Requested metro proximity with no city
 metro data fails closed. Earlier pool events are excluded before ranking.
 
-A4 ranks all eligible events as `scoring-diversity-v5-unknown-price`. The group score combines
-the lower participant score (65%) and their mean (35%). Participant scores use
-category affinity, current category fit, time quality, budget headroom, distance
-quality, novelty, popularity, and a small behavioral category adjustment. Permanent
-preferences contribute less than current intent; smoothed immutable room votes add
-at most 0.06 and never affect eligibility. Cold start is neutral. Candidate snapshots
-contain only aggregate component means and safe, fixed explanations.
+A4 ranks all eligible events as `scoring-diversity-v6-behavioral`. The group score
+combines the lower participant score (65%) and their mean (35%). Participant
+scores use permanent category affinity, current category fit, budget headroom,
+distance quality, and smoothed behavioral category affinity. The retained weights
+are normalized to a 0..1 score. Date and time constraints affect eligibility;
+they are not counted again as a ranking feature. Constant novelty and unavailable
+popularity values are not scored or persisted. Behavioral affinity adds at most
+0.06 before normalization and cold start is neutral. Candidate snapshots contain
+the aggregate behavioral affinity alongside the other component means, with safe,
+fixed explanations.
 
 Equal scores use an HMAC-SHA256 digest over room ID, pool version, and event ID.
 The digest is compared as raw bytes, making catalog iteration order irrelevant.

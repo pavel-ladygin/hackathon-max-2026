@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
 import { CatalogMap } from './CatalogMap'
 
-const { navigate, getMapEvents, setLocation, mapSize, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef } = vi.hoisted(() => {
+const { navigate, getMapEvents, setLocation, mapSize, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef, loadMaps } = vi.hoisted(() => {
   class Marker {
     element: HTMLElement
     constructor(_options: unknown, element: HTMLElement) { this.element = element }
@@ -24,7 +24,7 @@ const { navigate, getMapEvents, setLocation, mapSize, FakeYMap, FakeYMapMarker, 
     destroy() { this.container.replaceChildren() }
   }
   class Listener { constructor(options: { onUpdate?: (event: unknown) => void }) { listenerRef.current = options.onUpdate ?? null } }
-  return { navigate: vi.fn(), getMapEvents: vi.fn(), setLocation: vi.fn(), mapSize: { width: 700, height: 500 }, listenerRef: { current: null as null | ((event: unknown) => void) }, FakeYMap: Map, FakeYMapMarker: Marker, FakeYMapListener: Listener }
+  return { navigate: vi.fn(), getMapEvents: vi.fn(), setLocation: vi.fn(), loadMaps: vi.fn(), mapSize: { width: 700, height: 500 }, listenerRef: { current: null as null | ((event: unknown) => void) }, FakeYMap: Map, FakeYMapMarker: Marker, FakeYMapListener: Listener }
 })
 
 vi.mock('../../shared/api/client', () => ({ apiClient: { getMapEvents, searchEvents: vi.fn() } }))
@@ -46,10 +46,10 @@ vi.mock('./yandexMaps', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./yandexMaps')>()
   return {
     ...actual,
-    loadYandexMaps: async () => ({
+    loadYandexMaps: loadMaps.mockImplementation(async () => ({
       ready: Promise.resolve(), YMap: FakeYMap, YMapMarker: FakeYMapMarker,
       YMapDefaultFeaturesLayer: class {}, YMapDefaultSchemeLayer: class {}, YMapListener: FakeYMapListener,
-    }),
+    })),
   }
 })
 
@@ -68,6 +68,8 @@ describe('CatalogMap event preview integration', () => {
     navigate.mockClear()
     setLocation.mockClear()
     getMapEvents.mockReset()
+    loadMaps.mockReset()
+    loadMaps.mockImplementation(async () => ({ ready: Promise.resolve(), YMap: FakeYMap, YMapMarker: FakeYMapMarker, YMapDefaultFeaturesLayer: class {}, YMapDefaultSchemeLayer: class {}, YMapListener: FakeYMapListener }))
     getMapEvents.mockResolvedValue([
       { kind: 'event', id: 'a', longitude: 37.61, latitude: 55.75, event: event('a', 'Событие A') },
       { kind: 'event', id: 'b', longitude: 37.62, latitude: 55.75, event: event('b', 'Событие B') },
@@ -346,5 +348,21 @@ describe('CatalogMap event preview integration', () => {
     expect(request).not.toHaveProperty('lng')
     expect(request).not.toHaveProperty('distance_m')
     expect(screen.queryByRole('img', { name: 'Моё местоположение' })).not.toBeInTheDocument()
+  })
+})
+
+
+describe('CatalogMap initialization retry', () => {
+  it('retries after the map API fails and initializes successfully', async () => {
+    vi.stubEnv('VITE_YANDEX_MAPS_API_KEY', 'test-key')
+    getMapEvents.mockResolvedValue([])
+    loadMaps.mockRejectedValueOnce(new Error('network failure')).mockImplementationOnce(async () => ({ ready: Promise.resolve(), YMap: FakeYMap, YMapMarker: FakeYMapMarker, YMapDefaultFeaturesLayer: class {}, YMapDefaultSchemeLayer: class {}, YMapListener: FakeYMapListener }))
+    render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
+    const retry = await screen.findByRole('button', { name: 'Повторить' })
+    fireEvent.click(retry)
+    await waitFor(() => expect(loadMaps).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Яндекс Карта событий' })).toBeInTheDocument()
+    vi.unstubAllEnvs()
   })
 })

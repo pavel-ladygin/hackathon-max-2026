@@ -16,6 +16,18 @@ afterEach(() => {
 });
 
 describe("isAllowedTicketUrl", () => {
+  const providerRules = ["kudago.com", "*.kudago.com", "timepad.ru", "*.timepad.ru"];
+
+  it("accepts the two ticket providers and rejects unrelated Russian hosts", () => {
+    expect(isAllowedTicketUrl("https://kudago.com/msk/event/1", providerRules)).toBe(true);
+    expect(isAllowedTicketUrl("https://www.kudago.com/msk/event/1", providerRules)).toBe(true);
+    expect(isAllowedTicketUrl("https://timepad.ru/event/1", providerRules)).toBe(true);
+    expect(isAllowedTicketUrl("https://club.timepad.ru/event/1", providerRules)).toBe(true);
+    expect(isAllowedTicketUrl("https://tickets.example.ru/event/1", providerRules)).toBe(false);
+    expect(isAllowedTicketUrl("https://timepad.ru.attacker.example/event/1", providerRules)).toBe(false);
+    expect(isAllowedTicketUrl("http://timepad.ru/event/1", providerRules)).toBe(false);
+  });
+
   it("accepts exact and wildcard host rules with DNS label boundaries", () => {
     expect(isAllowedTicketUrl("https://tickets.example.ru/show/1", ["tickets.example.ru"])).toBe(true);
     expect(isAllowedTicketUrl("https://tickets.example.ru/show/1", ["*.example.ru"])).toBe(true);
@@ -49,29 +61,29 @@ describe("MaxBridgeAdapterImpl navigation", () => {
   });
 
   it("opens an allowed ticket URL through the MAX bridge", async () => {
-    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "*.ru");
+    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "kudago.com,*.kudago.com,timepad.ru,*.timepad.ru");
     const openLink = vi.fn().mockResolvedValue(undefined);
     window.WebApp = bridge({ openLink });
 
-    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://tickets.example.ru/order/1")).resolves.toBe(true);
-    expect(openLink).toHaveBeenCalledWith("https://tickets.example.ru/order/1");
+    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://timepad.ru/order/1")).resolves.toBe(true);
+    expect(openLink).toHaveBeenCalledWith("https://timepad.ru/order/1");
   });
 
   it("opens an allowed ticket URL in a browser when MAX is unavailable", async () => {
-    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "*.ru");
+    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "kudago.com,*.kudago.com,timepad.ru,*.timepad.ru");
     const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
 
-    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://tickets.example.ru/order/1")).resolves.toBe(true);
-    expect(open).toHaveBeenCalledWith("https://tickets.example.ru/order/1", "_blank", "noopener,noreferrer");
+    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://kudago.com/order/1")).resolves.toBe(true);
+    expect(open).toHaveBeenCalledWith("https://kudago.com/order/1", "_blank", "noopener,noreferrer");
   });
 
   it("does not pass rejected ticket URLs to the bridge or window", async () => {
-    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "*.ru");
+    vi.stubEnv("VITE_TICKET_PROVIDER_ALLOWLIST", "kudago.com,*.kudago.com,timepad.ru,*.timepad.ru");
     const openLink = vi.fn();
     window.WebApp = bridge({ openLink });
     const open = vi.spyOn(window, "open");
 
-    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://tickets.example.com/order/1")).resolves.toBe(false);
+    await expect(new MaxBridgeAdapterImpl().openTicketLink("https://tickets.example.ru/order/1")).resolves.toBe(false);
     expect(openLink).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });

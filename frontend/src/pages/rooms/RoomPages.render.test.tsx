@@ -81,6 +81,13 @@ describe('room vote card transition', () => {
     expect(screen.queryByRole('heading', { name: 'Первое событие' })).not.toBeInTheDocument()
   })
 
+  it('shows all eleven API categories in room intent and recovery choices', () => {
+    mocks.room = { id: 'room-1', name: 'Test room', state: 'collecting_intents', round_no: 1, version: 1, participants: [], myIntent: null, pool: null, match: null, invite: null, allowed_actions: ['edit_intent'] }
+    renderRoom()
+    const categories = ['Концерты', 'Кино', 'Театр', 'Стендап', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']
+    for (const label of categories) expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+  })
+
   it('requires choosing and reviewing a concrete category before saving it', async () => {
     mocks.room = recoveryRoom()
     renderRecoveryRoom()
@@ -88,6 +95,7 @@ describe('room vote card transition', () => {
     fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
     expect(screen.getByRole('heading', { name: 'Выберите категорию' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'false')
+    for (const label of ['Театр', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']) expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Проверить изменение' })).toBeDisabled()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 

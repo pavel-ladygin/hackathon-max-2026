@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { useEventSearch, useSetSavedEvent } from '../../features/discovery/queries'
 import type { CategorySlug } from '../../shared/api/types'
+import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
 import { BottomNav, Button, Chip, ChipGroup, Empty, EventCard, FavoriteButton, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import { DatePicker } from '../../shared/ui/date-picker'
@@ -12,10 +13,6 @@ import { useDebouncedValue } from './useDebouncedValue'
 import { track } from '../../shared/analytics/client'
 import { EventImpression } from '../../shared/analytics/EventImpression'
 
-const categories: Array<{ slug: CategorySlug; label: string }> = [
-  { slug: 'concerts', label: 'Концерты' }, { slug: 'cinema', label: 'Кино' }, { slug: 'theatre', label: 'Театр' },
-  { slug: 'standup', label: 'Стендап' }, { slug: 'exhibitions', label: 'Выставки' }, { slug: 'food', label: 'Еда' },
-]
 const CatalogMap = lazy(() => import('./CatalogMap').then((module) => ({ default: module.CatalogMap })))
 
 export function CatalogPage() {
@@ -93,7 +90,7 @@ export function CatalogPage() {
       </div>
       <AnimatePresence initial={false}>
         {advancedFiltersOpen ? <motion.section id="catalog-advanced-filters" className={styles.advancedFilters} aria-label="Все фильтры" initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} transition={{ duration: reduceMotion ? 0 : .22, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
-          <ChipGroup label="Категории" className={styles.catalogChips}>{categories.map((category) => <Chip key={category.slug} selected={selected.includes(category.slug)} onClick={() => setSelected((current) => current.includes(category.slug) ? current.filter((item) => item !== category.slug) : [...current, category.slug])}>{category.label}</Chip>)}</ChipGroup>
+          <ChipGroup label="Категории" className={styles.catalogChips}>{CATEGORY_OPTIONS.map((category) => <Chip key={category.slug} selected={selected.includes(category.slug)} onClick={() => setSelected((current) => current.includes(category.slug) ? current.filter((item) => item !== category.slug) : [...current, category.slug])}>{category.label}</Chip>)}</ChipGroup>
           <div className={styles.filterRow}>
             <DatePicker id="catalog-date-from" label="С" value={dateFrom} max={dateTo || undefined} onChange={(value) => setDateFrom(value ?? '')} />
             <DatePicker id="catalog-date-to" label="По" value={dateTo} min={dateFrom || undefined} onChange={(value) => setDateTo(value ?? '')} />

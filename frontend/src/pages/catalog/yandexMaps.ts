@@ -66,11 +66,11 @@ export function loadYandexMaps(apiKey: string): Promise<YandexMapsApi> {
   if (window.ymaps3) return window.ymaps3.ready.then(() => window.ymaps3 as YandexMapsApi)
   if (apiPromise) return apiPromise
 
-  apiPromise = new Promise<YandexMapsApi>((resolve, reject) => {
-    const script = document.createElement('script')
-    script.async = true
-    script.dataset.yandexMapsApi = 'true'
-    script.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`
+  const script = document.createElement('script')
+  script.async = true
+  script.dataset.yandexMapsApi = 'true'
+  script.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`
+  const pending = new Promise<YandexMapsApi>((resolve, reject) => {
     script.addEventListener('load', () => {
       if (!window.ymaps3) {
         reject(new Error('Yandex Maps API did not expose ymaps3'))
@@ -82,5 +82,12 @@ export function loadYandexMaps(apiKey: string): Promise<YandexMapsApi> {
     document.head.appendChild(script)
   })
 
+  apiPromise = pending.catch((error: unknown) => {
+    script.remove()
+    scriptReset()
+    throw error
+  })
   return apiPromise
 }
+
+function scriptReset() { apiPromise = null }

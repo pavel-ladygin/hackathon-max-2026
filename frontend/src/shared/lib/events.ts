@@ -1,25 +1,12 @@
 import type { CategorySlug } from '../api/types'
-
-const categoryLabels: Record<CategorySlug, string> = {
-  concerts: 'Концерт',
-  cinema: 'Кино',
-  theatre: 'Театр',
-  standup: 'Стендап',
-  exhibitions: 'Выставка',
-  sports: 'Спорт',
-  food: 'Еда',
-  parties: 'Вечеринка',
-  festivals: 'Фестиваль',
-  walks: 'Прогулка',
-  other: 'Событие',
-}
+import { CATEGORY_REGISTRY } from '../api/categories'
 
 const unavailablePhoto = '/events/photo-unavailable.png'
 
 export const eventImageFallback: (category: CategorySlug | string) => string = () => unavailablePhoto
 
 export function eventCategoryLabel(category: CategorySlug | string) {
-  return categoryLabels[category as CategorySlug] ?? 'Событие'
+  return CATEGORY_REGISTRY[category as CategorySlug]?.eventLabel ?? 'Событие'
 }
 
 const uploadcareId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

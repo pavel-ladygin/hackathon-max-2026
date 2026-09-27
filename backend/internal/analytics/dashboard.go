@@ -99,6 +99,11 @@ WITH bounds AS (
  SELECT f.*
  FROM analytics_room_funnel_metrics f CROSS JOIN bounds b
  WHERE f.created_at >= b.period_start AND f.created_at < b.period_end
+), cohort_vote_facts AS (
+ SELECT c.room_id, min(v.created_at) AS first_vote_at,
+        count(v.created_at) FILTER (WHERE c.matched_at IS NOT NULL AND v.created_at <= c.matched_at)::bigint AS votes_to_match
+ FROM cohort c LEFT JOIN room_votes v ON v.room_id = c.room_id
+ GROUP BY c.room_id
 ), room_daily AS (
  SELECT (created_at AT TIME ZONE 'UTC')::date AS metric_date,
         count(*)::bigint rooms_created,
@@ -110,11 +115,15 @@ WITH bounds AS (
         count(*) FILTER (WHERE invite_confirmed AND joined AND activated AND matched AND ticket_clicked)::bigint rooms_ticket_clicked,
         count(*) FILTER (WHERE invite_confirmed AND joined AND activated AND matched AND match_event_opened)::bigint rooms_match_opened,
         count(*) FILTER (WHERE match_shown)::bigint rooms_match_shown,
+        count(*) FILTER (WHERE additional_members = 0)::bigint rooms_without_second_participant,
+        extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY cvf.first_vote_at - cohort.created_at)
+          FILTER (WHERE cvf.first_vote_at IS NOT NULL))::double precision median_time_to_first_vote_seconds,
         extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - activated_at)
           FILTER (WHERE matched_at IS NOT NULL AND activated_at IS NOT NULL))::double precision median_time_to_match_seconds,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY swipe_count)
-          FILTER (WHERE matched_at IS NOT NULL)::double precision median_swipes_to_match
- FROM cohort GROUP BY (created_at AT TIME ZONE 'UTC')::date
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY cvf.votes_to_match)
+          FILTER (WHERE matched_at IS NOT NULL)::double precision median_votes_to_match
+ FROM cohort JOIN cohort_vote_facts cvf USING (room_id)
+ GROUP BY (cohort.created_at AT TIME ZONE 'UTC')::date
 ), daily AS (
  SELECT d.metric_date AS date, d.active_users,
         coalesce(r.rooms_created, 0) AS rooms_created,
@@ -124,19 +133,32 @@ WITH bounds AS (
         coalesce(r.activated_rooms, 0) AS activated_rooms,
         coalesce(r.rooms_matched, 0) AS rooms_matched,
         coalesce(r.rooms_ticket_clicked, 0) AS rooms_ticket_clicked,
+        coalesce(r.rooms_ticket_clicked, 0) AS rooms_ticket_transitions,
         coalesce(r.rooms_match_opened, 0) AS rooms_match_opened,
         d.room_creation_rate,
+        d.active_users AS room_creation_rate_denominator,
+        r.rooms_created AS invite_share_rate_denominator,
+        r.rooms_invite_shared AS invite_open_rate_denominator,
+        r.rooms_invite_shared AS invite_join_conversion_denominator,
+        r.rooms_created AS room_activation_rate_denominator,
+        r.activated_rooms AS match_rate_denominator,
+        r.rooms_matched AS ticket_transition_rate_denominator,
+        r.rooms_created AS rooms_without_second_participant_rate_denominator,
         r.rooms_invite_shared::numeric / nullif(r.rooms_created,0) AS invite_share_rate,
         r.rooms_invite_opened::numeric / nullif(r.rooms_invite_shared,0) AS invite_open_rate,
         r.rooms_joined::numeric / nullif(r.rooms_invite_shared,0) AS invite_join_conversion,
         r.activated_rooms::numeric / nullif(r.rooms_created,0) AS room_activation_rate,
         r.rooms_matched::numeric / nullif(r.activated_rooms,0) AS match_rate,
         r.rooms_ticket_clicked::numeric / nullif(r.rooms_matched,0) AS match_ticket_ctr,
+        r.rooms_without_second_participant,
+        r.rooms_without_second_participant::numeric / nullif(r.rooms_created,0) AS rooms_without_second_participant_rate,
+        r.median_time_to_first_vote_seconds,
         r.median_time_to_match_seconds,
         extract(epoch FROM d.median_time_to_join)::double precision AS median_time_to_join_seconds,
         extract(epoch FROM d.p75_time_to_join)::double precision AS p75_time_to_join_seconds,
         extract(epoch FROM d.p90_time_to_join)::double precision AS p90_time_to_join_seconds,
-        r.median_swipes_to_match, d.second_room_rate_7d, d.second_room_rate_30d,
+        r.median_votes_to_match AS median_swipes_to_match,
+        r.median_votes_to_match, d.second_room_rate_7d, d.second_room_rate_30d,
         d.recommendation_top10_like_rate, coalesce(r.rooms_match_shown, 0) AS rooms_match_shown
  FROM analytics_daily_product_metrics d
  LEFT JOIN room_daily r ON r.metric_date = d.metric_date
@@ -145,16 +167,22 @@ WITH bounds AS (
    AND d.metric_date < (b.period_end AT TIME ZONE 'UTC')::date
  ORDER BY d.metric_date
 ), room_period AS (
- SELECT extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - activated_at)
+ SELECT extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY cvf.first_vote_at - cohort.created_at)
+          FILTER (WHERE cvf.first_vote_at IS NOT NULL))::double precision median_time_to_first_vote_seconds,
+        extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - activated_at)
           FILTER (WHERE matched_at IS NOT NULL AND activated_at IS NOT NULL))::double precision median_time_to_match_seconds,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY swipe_count)
-          FILTER (WHERE matched_at IS NOT NULL)::double precision median_swipes_to_match,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY cvf.votes_to_match)
+          FILTER (WHERE matched_at IS NOT NULL)::double precision median_votes_to_match,
         extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY first_joined_at - created_at)
           FILTER (WHERE first_joined_at IS NOT NULL))::double precision median_time_to_join_seconds
- FROM cohort
+ FROM cohort JOIN cohort_vote_facts cvf USING (room_id)
 ), second_room_period AS (
- SELECT count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days' AND has_second_7d)::numeric /
+ SELECT count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days' AND has_second_7d)::bigint AS second_room_7d_numerator,
+        count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days')::bigint AS second_room_7d_denominator,
+        count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days' AND has_second_7d)::numeric /
           nullif(count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days'), 0) second_room_rate_7d,
+        count(*) FILTER (WHERE cohort.created_at <= now() - interval '30 days' AND has_second_30d)::bigint AS second_room_30d_numerator,
+        count(*) FILTER (WHERE cohort.created_at <= now() - interval '30 days')::bigint AS second_room_30d_denominator,
         count(*) FILTER (WHERE cohort.created_at <= now() - interval '30 days' AND has_second_30d)::numeric /
           nullif(count(*) FILTER (WHERE cohort.created_at <= now() - interval '30 days'), 0) second_room_rate_30d
  FROM (
@@ -182,6 +210,8 @@ WITH bounds AS (
         coalesce(sum(activated_rooms),0)::bigint activated_rooms,
         coalesce(sum(rooms_matched),0)::bigint rooms_matched,
         coalesce(sum(rooms_ticket_clicked),0)::bigint rooms_ticket_clicked,
+        coalesce(sum(rooms_match_opened),0)::bigint rooms_match_opened,
+        coalesce(sum(rooms_without_second_participant),0)::bigint rooms_without_second_participant,
         coalesce((SELECT sum(ticket_clicks) FROM cohort),0)::bigint ticket_clicks,
         sum(rooms_invite_shared)::numeric / nullif(sum(rooms_created),0) invite_share_rate,
         (SELECT count(DISTINCT creator_user_id)::numeric / nullif((SELECT count(DISTINCT user_id) FROM analytics_events
@@ -194,15 +224,50 @@ WITH bounds AS (
         sum(rooms_matched)::numeric / nullif(sum(rooms_created),0) created_match_conversion,
         sum(rooms_ticket_clicked)::numeric / nullif(sum(rooms_matched),0) match_ticket_ctr,
         sum(rooms_match_opened)::numeric / nullif(sum(rooms_matched),0) match_event_open_ctr,
+        sum(rooms_created)::bigint invite_share_rate_denominator,
+        sum(rooms_invite_shared)::bigint invite_open_rate_denominator,
+        sum(rooms_invite_shared)::bigint invite_join_conversion_denominator,
+        sum(rooms_created)::bigint room_activation_rate_denominator,
+        sum(activated_rooms)::bigint match_rate_denominator,
+        sum(rooms_created)::bigint created_match_conversion_denominator,
+        sum(rooms_matched)::bigint match_ticket_ctr_denominator,
+        sum(rooms_matched)::bigint match_event_open_ctr_denominator,
+        sum(rooms_created)::bigint rooms_without_second_participant_rate_denominator,
+        sum(rooms_matched)::bigint match_ticket_transition_rate_denominator,
+        (SELECT count(DISTINCT user_id) FROM analytics_events
+          WHERE occurred_at >= (SELECT period_start FROM bounds)
+            AND occurred_at < (SELECT period_end FROM bounds))::bigint AS room_creation_rate_denominator,
+        coalesce(sum(rooms_ticket_clicked),0)::bigint AS ticket_transitions,
+        sum(rooms_ticket_clicked)::numeric / nullif(sum(rooms_matched),0) AS match_ticket_transition_rate,
+        sum(rooms_without_second_participant)::numeric / nullif(sum(rooms_created),0) AS rooms_without_second_participant_rate,
+        sum(rooms_created)::bigint rooms_created_denominator,
+        sum(rooms_invite_shared)::bigint invite_open_denominator,
+        sum(rooms_invite_shared)::bigint invite_join_denominator,
+        sum(rooms_created)::bigint activation_denominator,
+        sum(activated_rooms)::bigint match_denominator,
+        sum(rooms_matched)::bigint ticket_transition_denominator,
+        sum(rooms_matched)::bigint match_open_denominator,
+        (SELECT count(*) FILTER (WHERE activated)::bigint FROM cohort) activated_rooms_denominator,
+        (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated AND NOT matched)::bigint FROM cohort) no_match_numerator,
+        (SELECT count(*) FILTER (WHERE activated)::bigint FROM cohort) no_match_denominator,
+        (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated)::bigint FROM cohort) pool_exhausted_numerator,
+        (SELECT count(*) FILTER (WHERE activated)::bigint FROM cohort) pool_exhausted_denominator,
         (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated AND NOT matched)::numeric /
                  nullif(count(*) FILTER (WHERE activated),0) FROM cohort) no_match_rate,
         (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated)::numeric /
                  nullif(count(*) FILTER (WHERE activated),0) FROM cohort) pool_exhausted_rate,
         (SELECT median_time_to_match_seconds FROM room_period) median_time_to_match_seconds,
-        (SELECT median_swipes_to_match FROM room_period) median_swipes_to_match,
+        (SELECT median_time_to_first_vote_seconds FROM room_period) median_time_to_first_vote_seconds,
+        (SELECT median_votes_to_match FROM room_period) median_swipes_to_match,
+        (SELECT median_votes_to_match FROM room_period) median_votes_to_match,
         (SELECT median_time_to_join_seconds FROM room_period) median_time_to_join_seconds,
         (SELECT second_room_rate_7d FROM second_room_period) second_room_rate_7d,
-        (SELECT second_room_rate_30d FROM second_room_period) second_room_rate_30d
+        (SELECT second_room_rate_30d FROM second_room_period) second_room_rate_30d,
+        (SELECT second_room_7d_numerator FROM second_room_period) second_room_7d_numerator,
+        (SELECT second_room_7d_denominator FROM second_room_period) second_room_7d_denominator,
+        (SELECT second_room_30d_numerator FROM second_room_period) second_room_30d_numerator,
+        (SELECT second_room_30d_denominator FROM second_room_period) second_room_30d_denominator,
+        (SELECT count(*)::bigint FROM cohort) rooms_without_second_participant_denominator
  FROM daily
 ), rank_metrics AS (
  SELECT recommendation_rank AS rank, impressions, likes, opens, saves, matches, like_rate, open_rate, save_rate,

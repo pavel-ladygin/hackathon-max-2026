@@ -127,6 +127,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
   const [items, setItems] = useState<MapItem[]>([])
   const [itemsFilterKey, setItemsFilterKey] = useState(filtersKey)
   const [mapError, setMapError] = useState(false)
+  const [mapAttempt, setMapAttempt] = useState(0)
   const [mapReady, setMapReady] = useState(false)
   const [areaLoading, setAreaLoading] = useState(false)
   const [areaError, setAreaError] = useState(false)
@@ -244,7 +245,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
       setMapReady(false)
       markerRegistry.clear()
     }
-  }, [apiKey, initial])
+  }, [apiKey, initial, mapAttempt])
 
   useEffect(() => {
     if (!mapReady) return
@@ -452,7 +453,8 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     }
   }, [filtersKey, mapReady, viewportSize])
 
-  if (!apiKey || mapError) return <Empty title="Карта сейчас недоступна" description={!apiKey ? 'Для карты не настроен API-ключ.' : 'Переключитесь на список — события доступны там.'} />
+  if (!apiKey) return <Empty title="Карта сейчас недоступна" description="Для карты не настроен API-ключ." />
+  if (mapError) return <Empty title="Карта сейчас недоступна" description="Проверьте соединение и повторите загрузку карты." action={<Button onClick={() => { setMapError(false); setMapAttempt((attempt) => attempt + 1) }}>Повторить</Button>} />
 
   const locatedEvents = visibleItems.filter((item): item is MapEvent => item.kind === 'event').map((item) => item.event as LocatedEvent)
   const hasAnyCoordinates = locatedEvents.some((event) => event.latitude != null && event.longitude != null)

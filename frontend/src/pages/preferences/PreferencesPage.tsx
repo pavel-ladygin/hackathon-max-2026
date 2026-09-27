@@ -8,12 +8,12 @@ import { useBootstrap } from '../../features/auth/useBootstrap'
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, DayType, TimeSlot } from '../../shared/api/types'
+import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { Button, Chip, ChipGroup, ErrorState, FieldError, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui'
 import styles from '../pages.module.css'
 import notificationStyles from './preferences.module.css'
 
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
-const categories: Array<[CategorySlug, string]> = [['concerts', 'Концерты'], ['cinema', 'Кино'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['sports', 'Спорт'], ['food', 'Еда'], ['parties', 'Вечеринки'], ['festivals', 'Фестивали'], ['walks', 'Прогулки'], ['other', 'Другое']]
 const schema = z.object({
   budget: z.coerce.number().min(0).max(1_000_000),
   days: z.array(z.enum(['weekday', 'weekend'])),
@@ -67,7 +67,7 @@ export function PreferencesPage() {
       {saveNotifications.isError ? <p className={notificationStyles.error} role="alert">Не удалось изменить уведомления. Попробуйте ещё раз.</p> : null}
     </section>
     <form className={styles.formStack} aria-busy={save.isPending} onSubmit={form.handleSubmit((values) => interests.length > 0 && save.mutate(values))}>
-      <fieldset className={styles.fieldLabel} aria-invalid={interests.length === 0}><legend>Интересы</legend><ChipGroup>{categories.map(([value, label]) => <Chip key={value} selected={interests.includes(value)} onClick={() => setInterests((current) => toggle(current, value))}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-interests-error">{interests.length === 0 ? 'Выберите хотя бы один интерес.' : null}</FieldError></fieldset>
+      <fieldset className={styles.fieldLabel} aria-invalid={interests.length === 0}><legend>Интересы</legend><ChipGroup>{CATEGORY_OPTIONS.map(({ slug: value, label }) => <Chip key={value} selected={interests.includes(value)} onClick={() => setInterests((current) => toggle(current, value))}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-interests-error">{interests.length === 0 ? 'Выберите хотя бы один интерес.' : null}</FieldError></fieldset>
       <label className={styles.fieldLabel} htmlFor="preferences-budget">Бюджет · до {budget.toLocaleString('ru-RU')} ₽<input id="preferences-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} /><FieldError id="preferences-budget-error">{form.formState.errors.budget?.message}</FieldError></label>
       <fieldset className={styles.fieldLabel} aria-invalid={Boolean(form.formState.errors.days)}><legend>Обычно удобно</legend><ChipGroup>{([['weekday', 'Будни'], ['weekend', 'Выходные']] as Array<[DayType, string]>).map(([value, label]) => <Chip key={value} selected={days.includes(value)} onClick={() => form.setValue('days', toggle(days, value), { shouldValidate: true })}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-days-error">{form.formState.errors.days?.message}</FieldError></fieldset>
       <fieldset className={styles.fieldLabel} aria-invalid={Boolean(form.formState.errors.times)}><legend>Время</legend><ChipGroup>{([['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']] as Array<[TimeSlot, string]>).map(([value, label]) => <Chip key={value} selected={times.includes(value)} onClick={() => form.setValue('times', toggle(times, value), { shouldValidate: true })}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-times-error">{form.formState.errors.times?.message}</FieldError></fieldset>

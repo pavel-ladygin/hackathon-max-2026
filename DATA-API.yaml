@@ -1,0 +1,227 @@
+# Хакатонное описание проверок API. Локальная структура версии 1;
+# организаторы не опубликовали машинную схему или официальный номер версии.
+config_version: 1
+solution: MAX Together
+base_url: https://worknet.team/api/v1
+openapi: openapi/openapi.yaml
+platform_schema_compatibility: unknown
+checks:
+  - id: max-bootstrap-user-a
+    purpose: Открыть авторизованную сессию из Mini App MAX
+    method: POST
+    path: /auth/max/bootstrap
+    role: user_a_max_account
+    parameters:
+      headers:
+        Content-Type: application/json
+      path: {}
+      query: {}
+      body:
+        init_data: "<подписанная MAX init data пользователя A>"
+        start_param: null
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields:
+        - access_token
+        - token_type
+        - expires_in
+        - user
+        - onboarding_state
+        - preferences
+        - daily_notifications_enabled
+        - invite_context
+        - shared_event_id
+      constraints:
+        token_type: Bearer
+        expires_in: 86400
+    notes: Сохранить access_token как Bearer для последующих запросов пользователя A.
+
+  - id: max-bootstrap-user-b
+    purpose: Открыть сессию второго участника из Mini App MAX
+    method: POST
+    path: /auth/max/bootstrap
+    role: user_b_max_account
+    parameters:
+      headers: {Content-Type: application/json}
+      path: {}
+      query: {}
+      body:
+        init_data: "<подписанная MAX init data пользователя B>"
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [access_token, token_type, expires_in, user, onboarding_state, preferences, daily_notifications_enabled, invite_context, shared_event_id]
+      constraints: {token_type: Bearer, expires_in: 86400}
+    notes: Токен B используется только для запросов второго участника.
+
+  - id: create-room
+    purpose: Создать комнату и получить приглашение
+    method: POST
+    path: /rooms
+    role: user_a_max_account
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token пользователя A>"
+        Content-Type: application/json
+        Idempotency-Key: "<уникальный ключ запроса>"
+      path: {}
+      query: {}
+      body:
+        name: "Куда идём в субботу?"
+        city_id: "<UUID города из API>"
+    expected_status: [201]
+    response:
+      content_type: application/json
+      required_fields: [room, invite]
+      room_required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
+      invite_required_fields: [token, url, max_deep_link, expires_at]
+    notes: Сохранить room.id и invite.token для последующих шагов.
+
+  - id: join-room
+    purpose: Второму участнику вступить по приглашению
+    method: POST
+    path: /room-invites/{token}/join
+    role: user_b_max_account
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token пользователя B>"
+        Idempotency-Key: "<уникальный ключ запроса>"
+      path:
+        token: "<invite.token из ответа create-room>"
+      query: {}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
+    notes: Повторный join того же пользователя идемпотентен.
+
+  - id: set-room-intent-user-a
+    purpose: Пользователь A сохраняет условия подбора
+    method: PUT
+    path: /rooms/{roomId}/intent/me
+    role: user_a_max_account
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token пользователя A>"
+        Content-Type: application/json
+      path:
+        roomId: "<room.id>"
+      query: {}
+      body:
+        dates: ["<YYYY-MM-DD>"]
+        day_types: [weekend]
+        time_slots: [evening]
+        category_slugs: [concerts, exhibitions]
+        budget_max_minor: 350000
+        exclusion_slugs: []
+        radius_m: 5000
+        location: {lat: 55.751244, lng: 37.618423}
+    expected_status: [200, 202]
+    response:
+      content_type: application/json
+      required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
+    notes: HTTP 202 may include Retry-After while pool generation is asynchronous.
+
+  - id: set-room-intent-user-b
+    purpose: Пользователь B сохраняет условия подбора
+    method: PUT
+    path: /rooms/{roomId}/intent/me
+    role: user_b_max_account
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token пользователя B>"
+        Content-Type: application/json
+      path:
+        roomId: "<room.id>"
+      query: {}
+      body:
+        dates: ["<YYYY-MM-DD>"]
+        day_types: [weekend]
+        time_slots: [evening]
+        category_slugs: [concerts, exhibitions]
+        budget_max_minor: 350000
+        exclusion_slugs: []
+        radius_m: 5000
+        location: {lat: 55.751244, lng: 37.618423}
+    expected_status: [200, 202]
+    response:
+      content_type: application/json
+      required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
+
+  - id: get-room-pool
+    purpose: Получить карточки общего пула
+    method: GET
+    path: /rooms/{roomId}/events
+    role: either_room_participant
+    parameters:
+      headers: {Authorization: "Bearer <access_token участника>"}
+      path: {roomId: "<room.id>"}
+      query: {limit: 20, cursor: null}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [room_id, pool_version, round_no, items, next_cursor, total]
+    notes: Если пул ещё не готов, API может вернуть 409 POOL_NOT_READY; проверить готовность через повторное чтение.
+
+  - id: vote
+    purpose: Проголосовать; при общем лайке получить match
+    method: PUT
+    path: /rooms/{roomId}/events/{eventId}/vote
+    role: either_room_participant
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token участника>"
+        Content-Type: application/json
+      path:
+        roomId: "<room.id>"
+        eventId: "<items[].event.id>"
+      query: {}
+      body:
+        pool_version: "<pool_version из get-room-pool>"
+        vote: like
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [accepted_vote, pool_version, my_pool_finished, room_exhausted, match]
+      match_required_fields_when_present: [id, matched_at, event, participants]
+    notes: Оба участника голосуют за одну и ту же карточку; match не null при общем лайке.
+
+  - id: get-room-match
+    purpose: Прочитать состояние комнаты и подтвердить общий match
+    method: GET
+    path: /rooms/{roomId}
+    role: either_room_participant
+    parameters:
+      headers: {Authorization: "Bearer <access_token участника>"}
+      path: {roomId: "<room.id>"}
+      query: {}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
+    notes: У обоих участников match.id и match.event.id должны совпасть.
+
+  - id: open-ticket-provider
+    purpose: Получить безопасную внешнюю ссылку на страницу события
+    method: POST
+    path: /events/{eventId}/ticket-click
+    role: either_room_participant
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token участника>"
+        Content-Type: application/json
+      path:
+        eventId: "<match.event.id>"
+      query: {}
+      body:
+        source: match
+        room_id: "<room.id>"
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [external_url]
+    notes: external_url ведёт на HTTPS-страницу провайдера; завершение покупки этим API не подтверждается.
