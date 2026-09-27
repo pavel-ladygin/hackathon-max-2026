@@ -6,11 +6,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type fakeDB struct {
@@ -109,5 +111,35 @@ func TestDashboardDeadlineReturnsGatewayTimeout(t *testing.T) {
 	}
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("missing no-store response header")
+	}
+}
+
+func TestDashboardQueryAgainstPostgres(t *testing.T) {
+	url := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var payload []byte
+	if err := db.QueryRow(ctx, dashboardQuery, 30).Scan(&payload); err != nil {
+		t.Fatalf("execute dashboard SQL: %v", err)
+	}
+	var result struct {
+		Summary map[string]any `json:"summary"`
+		Daily   []any          `json:"daily"`
+	}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		t.Fatalf("decode dashboard JSON: %v", err)
+	}
+	for _, field := range []string{"rooms_created", "rooms_invite_shared", "rooms_joined", "activated_rooms", "rooms_matched", "rooms_ticket_clicked", "created_match_conversion", "match_event_open_ctr", "match_ticket_ctr", "no_match_rate"} {
+		if _, ok := result.Summary[field]; !ok {
+			t.Errorf("summary is missing %s", field)
+		}
 	}
 }
