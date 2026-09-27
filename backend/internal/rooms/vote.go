@@ -54,6 +54,9 @@ func (s *Service) Vote(ctx context.Context, principal contracts.Principal, roomI
 		if err != nil {
 			return err
 		}
+		if room.State == string(RoomStateClosed) {
+			return ErrRoomClosed
+		}
 		if room.State == string(RoomStateMatched) {
 			// An exact retry of a vote that participated in the terminal match is
 			// idempotent: rebuild the already committed result. Any new vote stays

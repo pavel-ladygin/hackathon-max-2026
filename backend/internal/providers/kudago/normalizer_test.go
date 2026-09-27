@@ -69,6 +69,15 @@ func TestNormalizePaidEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeEventDecodesHTMLTitleEntities(t *testing.T) {
+	event := validEvent()
+	event.Title = `Квест &quot;Алое золото&#34; &amp; тайна`
+	got := normalizeTestEvent(event)
+	if len(got) != 1 || got[0].Title != `Квест "Алое золото" & тайна` {
+		t.Fatalf("normalized title = %q, want decoded title", got[0].Title)
+	}
+}
+
 func TestNormalizeFreeEvent(t *testing.T) {
 	event := validEvent()
 	event.IsFree = true

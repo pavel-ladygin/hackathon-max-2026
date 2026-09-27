@@ -199,8 +199,10 @@ test.describe('desktop full-bleed layout', () => {
   })
 
   test('desktop loading skeleton also reaches viewport edges', async ({ page }) => {
+    let releaseBootstrap!: () => void
+    const bootstrapGate = new Promise<void>((resolve) => { releaseBootstrap = resolve })
     await page.route('**/api/v1/auth/max/bootstrap', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 700))
+      await bootstrapGate
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -209,14 +211,18 @@ test.describe('desktop full-bleed layout', () => {
     })
     await page.goto('/events')
     const skeleton = page.getByRole('status', { name: 'Знакомимся с вами…' })
-    await expect(skeleton).toBeVisible()
+    try {
+      await expect(skeleton).toBeVisible()
 
-    const geometry = await skeleton.evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      return { left: rect.left, width: rect.width, availableWidth: document.body.getBoundingClientRect().width }
-    })
-    expect(geometry.left).toBe(0)
-    expect(geometry.width).toBe(geometry.availableWidth)
+      const geometry = await skeleton.evaluate((element) => {
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, width: rect.width, availableWidth: document.body.getBoundingClientRect().width }
+      })
+      expect(geometry.left).toBe(0)
+      expect(geometry.width).toBe(geometry.availableWidth)
+    } finally {
+      releaseBootstrap()
+    }
   })
 
   test('home hero uses the available desktop content width', async ({ page }) => {

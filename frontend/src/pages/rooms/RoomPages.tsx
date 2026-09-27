@@ -9,7 +9,7 @@ import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
 import { RoomEventDate } from '../../features/rooms/RoomEventDate'
-import { availableRelaxations } from '../../features/rooms/relaxation'
+import { availableRelaxations, relaxedIntent } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import { withMinimumDuration } from '../../shared/lib/async'
@@ -134,6 +134,7 @@ export function RoomFlowPage() {
   if (room.isPending) return <ScreenSkeleton variant="room" label="Восстанавливаем комнату…" />
   if (room.isError || !room.data) return <Empty title="Комната недоступна" description={room.isError ? roomErrorMessage(room.error) : 'Возможно, приглашение истекло.'} />
   const expected = expectedScreen(room.data)
+  if (room.data.state === 'closed') return <ClosedScreen room={room.data} />
   if (roomScreen !== expected) return <Navigate to={`/rooms/${roomId}/${expected}`} replace />
   if (expected === 'intent') return <IntentScreen room={room.data} />
   if (expected === 'waiting') return <WaitingScreen room={room.data} />
@@ -268,7 +269,6 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const cast = (value: VoteValue) => { if (!vote.isPending) vote.mutate({ eventId: item.event.id, value }) }
   return (
     <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} right={<span>{Math.min(votedByMe + 1, poolTotal)} / {poolTotal}</span>} /><PageContent className={styles.poolWrap}>
-      <p className={`${styles.subtitle} ${styles.center}`}>Один и тот же пул, независимые оценки</p>
       <AnimatePresence mode="wait">
         <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
           <motion.span aria-hidden="true" style={{ opacity: likeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #e77888', borderRadius: 18, color: '#c74d63', padding: 12, fontWeight: 800 }}>ХОЧУ ПОЙТИ</motion.span>
@@ -278,9 +278,8 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
         </motion.article>
       </AnimatePresence>
       <AnimatePresence>{matchPreview && <motion.div role="status" aria-live="polite" initial={{ opacity: 0, scale: .88 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: .24 }} style={{ position: 'absolute', inset: '28% 12% auto', zIndex: 4, padding: 24, borderRadius: 24, background: 'rgba(255,255,255,.96)', boxShadow: '0 18px 50px rgba(70,48,35,.2)', textAlign: 'center' }}><strong style={{ display: 'block', fontSize: 32 }}>♥</strong><strong>Это мэтч!</strong><span style={{ display: 'block', marginTop: 6 }}>Событие понравилось вам обоим</span></motion.div>}</AnimatePresence>
-      <div className={styles.explain}><strong>Почему в подборке</strong>{item.event.reasons.map((reason) => <span key={reason.code}>✓ {reason.text}</span>)}</div>
-      <div className={styles.voteActions}><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('dislike')}><span className={styles.voteCircle} aria-hidden="true">×</span>Не подходит</button><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`} aria-hidden="true">♥</span>Хочу пойти</button></div>
-      {vote.isError ? <p className={styles.error} role="alert">{roomErrorMessage(vote.error, 'Голос не сохранился. Повторите действие.')}</p> : null}<PrivacyNote title="Выбор скрыт">Друг узнает о вашем лайке только при взаимном совпадении.</PrivacyNote>
+      <div className={styles.voteActions}><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('dislike')}><span className={styles.voteCircle} aria-hidden="true">×</span>Не подходит</button><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-8.2-4.9-10.5-10C-.5 4.7 6.6.6 12 6c5.4-5.4 12.5-1.3 10.5 5C20.2 16.1 12 21 12 21Z" /></svg></span>Хочу пойти</button></div>
+      {vote.isError ? <p className={styles.error} role="alert">{roomErrorMessage(vote.error, 'Голос не сохранился. Повторите действие.')}</p> : null}
     </PageContent></PageShell>
   )
 }
@@ -311,11 +310,19 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<CategorySlug | null>(null)
+  const [selectedBudget, setSelectedBudget] = useState<number | null>(null)
+  const [review, setReview] = useState(false)
   const suggestions = availableRelaxations(room.myIntent)
-  const selectedSuggestion = suggestions.find((item) => item.id === selected) ?? suggestions[0]
+  const selectedSuggestion = suggestions.find((item) => item.id === selected)
+  const nextIntent = selectedSuggestion?.id === 'date' && selectedDate ? relaxedIntent(room.myIntent, 'date', new Date(), selectedDate)
+    : selectedSuggestion?.id === 'category' && selectedCategory ? relaxedIntent(room.myIntent, 'category', new Date(), selectedCategory)
+    : selectedSuggestion?.id === 'budget' && selectedBudget !== null ? relaxedIntent(room.myIntent, 'budget', new Date(), selectedBudget)
+    : selectedSuggestion?.intent ?? null
   const restart = useMutation({ mutationFn: () => {
-    if (!selectedSuggestion) throw new Error('No room intent change selected')
-    return apiClient.replaceMyIntent(room.id, selectedSuggestion.intent)
+    if (!nextIntent) throw new Error('No room intent change selected')
+    return apiClient.replaceMyIntent(room.id, nextIntent)
   }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) } })
   if (!room.allowed_actions.includes('restart_with_new_intent')) {
     return (
@@ -329,12 +336,25 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ПУЛ ЗАКОНЧИЛСЯ</p><h1 className={styles.title}>Пока не совпали</h1><p className={styles.subtitle}>Сейчас нет событий по выбранным условиям. Можно изменить свои условия и запустить новый приватный раунд.</p>
-      <section className={styles.section}><h2 className={styles.sectionTitle}>Что можно изменить?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selectedSuggestion?.id === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selectedSuggestion?.id === item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong></span><span aria-hidden="true">{selectedSuggestion?.id === item.id ? '✓' : '○'}</span></button>)}{suggestions.length === 0 ? <p className={styles.subtitle}>Больше нечего изменить в текущих условиях. Попробуйте позже или создайте новую комнату.</p> : null}</section>
-      <PrivacyNote>Ответы второго участника не раскрываются.</PrivacyNote>
+      {!review ? <section className={styles.section}><h2 className={styles.sectionTitle}>Что изменить в подборке?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selectedSuggestion?.id === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setSelectedDate(null); setSelectedCategory(null); setSelectedBudget(null) }}><span><strong>{item.title}</strong>{item.id === 'budget' ? <small>Вы сами выберете новый лимит</small> : item.id === 'category' ? <small>Вы сами выберете новую категорию</small> : item.id === 'time' ? <small>Добавим утро, день и ночь</small> : <small>Вы сами выберете конкретный день</small>}</span><span aria-hidden="true">{selected === item.id ? '✓' : '○'}</span></button>)}
+        {selectedSuggestion?.id === 'date' ? <div className={styles.dateChoices}><h3>Выберите дату</h3>{selectedSuggestion.dates?.map((date) => <button type="button" key={date} className={`${styles.suggestion} ${selectedDate === date ? styles.suggestionSelected : ''}`} aria-pressed={selectedDate === date} onClick={() => setSelectedDate(date)}>{formatRoomDate(date)}{selectedDate === date ? <span aria-hidden="true">✓</span> : null}</button>)}</div> : null}
+        {selectedSuggestion?.id === 'category' ? <div className={styles.dateChoices}><h3>Выберите категорию</h3><div className={styles.recoveryChoiceGrid}>{selectedSuggestion.categories?.map(({ slug, label }) => <button type="button" key={slug} className={`${styles.suggestion} ${selectedCategory === slug ? styles.suggestionSelected : ''}`} aria-pressed={selectedCategory === slug} onClick={() => setSelectedCategory(slug)}>{label}{selectedCategory === slug ? <span aria-hidden="true">✓</span> : null}</button>)}</div></div> : null}
+        {selectedSuggestion?.id === 'budget' ? <div className={styles.dateChoices}><h3>Новый лимит стоимости</h3><p className={styles.subtitle}>Сейчас до {((room.myIntent?.budget_max_minor ?? 0) / 100).toLocaleString('ru')} ₽. Выберите сумму, до которой готовы потратить.</p><div className={styles.recoveryChoiceGrid}>{selectedSuggestion.budgets?.map((amount) => <button type="button" key={amount} className={`${styles.suggestion} ${selectedBudget === amount ? styles.suggestionSelected : ''}`} aria-pressed={selectedBudget === amount} onClick={() => setSelectedBudget(amount)}>до {amount.toLocaleString('ru')} ₽{selectedBudget === amount ? <span aria-hidden="true">✓</span> : null}</button>)}</div></div> : null}
+        {suggestions.length === 0 ? <p className={styles.subtitle}>Больше нечего изменить в текущих условиях. Попробуйте позже или создайте новую комнату.</p> : null}
+      </section> : <section className={styles.section}><h2 className={styles.sectionTitle}>Проверьте изменение</h2><p className={styles.subtitle}>{selectedSuggestion?.id === 'date' ? `Добавим дату: ${selectedDate ? formatRoomDate(selectedDate) : ''}` : selectedSuggestion?.id === 'category' ? `Добавим категорию: ${selectedSuggestion.categories?.find(({ slug }) => slug === selectedCategory)?.label ?? ''}` : selectedSuggestion?.id === 'budget' ? `Лимит стоимости увеличится до ${selectedBudget?.toLocaleString('ru') ?? ''} ₽.` : 'Можно будет выбрать событие в любое время суток.'}</p><p>После подтверждения начнётся новый раунд подбора.</p></section>}
       {restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
-      <div className={styles.footer}><Button disabled={restart.isPending || !selectedSuggestion} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => { if (selectedSuggestion) restart.mutate() }}>Применить и обновить подборку</Button></div>
+      <div className={styles.footer}>{review ? <><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Обновляем…" onClick={() => restart.mutate()}>Подтвердить и обновить</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button></> : <Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменение</Button>}</div>
     </PageContent></PageShell>
   )
+}
+
+function ClosedScreen({ room }: { room: RoomSnapshot }) {
+  const navigate = useNavigate()
+  const closer = room.closed_by?.display_name
+  return <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
+    <p className={styles.eyebrow}>КОМНАТА ЗАВЕРШЕНА</p><h1 className={styles.title}>Подборка закрыта</h1><p className={styles.subtitle}>{closer ? `Комнату завершил участник «${closer}».` : 'Эта комната больше не активна.'}{room.closed_at ? ` ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(room.closed_at))}` : ''}</p>
+    <div className={styles.footer}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+  </PageContent></PageShell>
 }
 
 function ChoiceField<T extends string>({ title, options, selected, onToggle, error }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void; error?: string }) {
@@ -357,6 +377,7 @@ function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? i
 
 function addDays(date: Date, amount: number) { const next = new Date(date); next.setDate(next.getDate() + amount); return next }
 function localDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+function formatRoomDate(date: string) { return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }).format(new Date(`${date}T12:00:00`)) }
 function upcomingDates(count: number): Array<[string, string]> { return Array.from({ length: count }, (_, index) => { const date = addDays(new Date(), index); return [localDate(date), new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(date)] }) }
 
 function intentDefaults(room: RoomSnapshot, fallbackDate: string): IntentForm {

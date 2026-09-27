@@ -95,6 +95,37 @@ func (q *Queries) GetPublicParticipants(ctx context.Context, arg GetPublicPartic
 	return items, nil
 }
 
+const getRoomCloseNotice = `-- name: GetRoomCloseNotice :one
+SELECT n.room_id, r.name AS room_name, r.closed_by, closer.display_name AS closed_by_display_name, r.closed_at
+FROM room_close_notices n
+JOIN rooms r ON r.id = n.room_id
+JOIN users closer ON closer.id = r.closed_by
+WHERE n.recipient_user_id = $1 AND n.acknowledged_at IS NULL
+ORDER BY n.created_at DESC
+LIMIT 1
+`
+
+type GetRoomCloseNoticeRow struct {
+	RoomID              uuid.UUID
+	RoomName            string
+	ClosedBy            pgtype.UUID
+	ClosedByDisplayName string
+	ClosedAt            pgtype.Timestamptz
+}
+
+func (q *Queries) GetRoomCloseNotice(ctx context.Context, recipientUserID uuid.UUID) (GetRoomCloseNoticeRow, error) {
+	row := q.db.QueryRow(ctx, getRoomCloseNotice, recipientUserID)
+	var i GetRoomCloseNoticeRow
+	err := row.Scan(
+		&i.RoomID,
+		&i.RoomName,
+		&i.ClosedBy,
+		&i.ClosedByDisplayName,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
 const getRoomMembership = `-- name: GetRoomMembership :one
 SELECT room_id, user_id, role, is_active, joined_at, last_seen_at
 FROM room_members

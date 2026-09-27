@@ -2,6 +2,7 @@ package timepad
 
 import (
 	"fmt"
+	"html"
 	"math"
 	"net/url"
 	"regexp"
@@ -19,7 +20,7 @@ const (
 )
 
 func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
-	title := strings.TrimSpace(event.Name)
+	title := strings.TrimSpace(html.UnescapeString(event.Name))
 	startsAt, err := parseTime(event.StartsAt)
 	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed {
 		return providers.NormalizedEvent{}, false

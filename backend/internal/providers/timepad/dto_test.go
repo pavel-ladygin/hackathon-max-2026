@@ -59,6 +59,14 @@ func TestRequestedOptionalFieldsNormalizeIntoProviderEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeEventDecodesHTMLTitleEntities(t *testing.T) {
+	event := eventDTO{ID: 42, Name: `Квест &quot;Алое золото&#34; &amp; тайна`, StartsAt: "2026-10-01T19:00:00+03:00"}
+	normalized, ok := normalizeEvent(event)
+	if !ok || normalized.Title != `Квест "Алое золото" & тайна` {
+		t.Fatalf("normalized title = %q, accepted = %t; want decoded title", normalized.Title, ok)
+	}
+}
+
 func TestNumericAgeLimitDecodesAndNormalizes(t *testing.T) {
 	var event eventDTO
 	raw := `{"id":42,"name":"Event","starts_at":"2026-10-01T19:00:00+03:00","age_limit":18}`

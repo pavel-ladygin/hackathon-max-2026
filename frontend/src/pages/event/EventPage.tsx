@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
@@ -23,6 +23,7 @@ export function EventPage() {
     reportedEventError.current = null
   }, [eventId])
   const save = useSetSavedEvent()
+  const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'shared' | 'error'>('idle')
   const ticket = useMutation({
     mutationFn: async () => {
       const { external_url } = await withMinimumDuration(apiClient.recordTicketClick(eventId!, { source: 'event_detail' }), 140)
@@ -52,6 +53,14 @@ export function EventPage() {
   const heroSmall = eventHeroImage(item.images, item.imageUrl, item.category_slug, 640)
   const heroLarge = eventHeroImage(item.images, item.imageUrl, item.category_slug)
   const fallbackImage = eventImageFallback(item.category_slug)
+  const share = async () => {
+    if (shareStatus === 'sharing') return
+    setShareStatus('sharing')
+    const base = import.meta.env.VITE_MAX_APP_URL ?? 'https://max.ru'
+    const link = `${base}${base.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(`event_${item.id}`)}`
+    const ok = await maxPlatform.shareInvite({ text: `Посмотри событие «${item.title}»`, link })
+    setShareStatus(ok ? 'shared' : 'error')
+  }
   return (
     <PageShell>
       <div className={styles.eventTopBar}><TopBar spacious prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
@@ -70,7 +79,11 @@ export function EventPage() {
         <section className={styles.section}><h2 className={styles.sectionTitle}>О событии</h2><p className={styles.bodyCopy}>{item.description.trim() || 'Организатор пока не добавил описание'}</p></section>
         {item.reasons.length > 0 ? <div className={styles.explain}><strong>Почему вам подходит</strong>{item.reasons.map((reason) => <span key={reason.code}>✓ {reason.text}</span>)}</div> : null}
         {ticket.isError ? <InlineNotice tone="danger">Не удалось открыть билетный сервис. Можно повторить попытку.</InlineNotice> : null}
-        <div className={styles.footer}><p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" disabled={!item.ticketAvailable || item.status !== 'published'} onClick={() => ticket.mutate()}>{item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button></div>
+        <div className={styles.footer}>
+          <Button tone="secondary" state={shareStatus === 'sharing' ? 'loading' : 'idle'} loadingLabel="Открываем MAX…" onClick={() => void share()}><span className={styles.shareButtonContent}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5m-8 7 8 5"/></svg>Поделиться через MAX</span></Button>
+          {shareStatus === 'shared' ? <p className={styles.externalHint} role="status">✓ Ссылка на событие отправлена</p> : shareStatus === 'error' ? <p className={styles.error} role="alert">Не удалось поделиться событием. Попробуйте ещё раз.</p> : null}
+          <p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" disabled={!item.ticketAvailable || item.status !== 'published'} onClick={() => ticket.mutate()}>{item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button>
+        </div>
       </PageContent>
     </PageShell>
   )

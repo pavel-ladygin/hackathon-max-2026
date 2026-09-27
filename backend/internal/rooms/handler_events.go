@@ -70,6 +70,8 @@ func writeRoomEventsError(w http.ResponseWriter, r *http.Request, err error) {
 		httpapi.WriteError(w, httpapi.RequestID(r.Context()), httpapi.Error{Status: http.StatusUnauthorized, Code: "UNAUTHENTICATED", Message: "Authentication required"})
 	case errors.Is(err, ErrRoomNotFound):
 		httpapi.WriteError(w, httpapi.RequestID(r.Context()), httpapi.Error{Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "Room not found"})
+	case errors.Is(err, ErrRoomClosed):
+		httpapi.WriteError(w, httpapi.RequestID(r.Context()), httpapi.Error{Status: http.StatusConflict, Code: "ROOM_CLOSED", Message: "Room is closed"})
 	case errors.Is(err, ErrPoolNotReady):
 		httpapi.WriteError(w, httpapi.RequestID(r.Context()), httpapi.Error{Status: http.StatusConflict, Code: "POOL_NOT_READY", Message: "Room pool is not ready"})
 	case errors.Is(err, ErrPoolExhausted):

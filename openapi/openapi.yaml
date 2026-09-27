@@ -107,8 +107,8 @@ paths:
       security: []
       summary: Проверить MAX init data и открыть пользовательскую сессию
       description: Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только
-        из проверенной строки и возвращает безопасный invite_context. Отдельное поле start_param — необязательный hint, который
-        сверяется с подписанным значением. Не сохраняйте raw init data.
+        из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; прочие параметры разрешаются как invite_context.
+        Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
       requestBody:
         required: true
         content:
@@ -162,6 +162,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PreferencesResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /me/notification-preferences:
+    patch:
+      tags:
+      - Preferences
+      operationId: updateMyNotificationPreferences
+      summary: Изменить подписку на ежедневные уведомления
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesRequest'
+      responses:
+        '200':
+          description: Текущее состояние подписки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -586,6 +611,33 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+  /rooms/{roomId}/close:
+    post:
+      tags: [Rooms]
+      operationId: closeRoom
+      summary: Завершить комнату для обоих участников
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: Закрытая комната; повторный вызов идемпотентен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /rooms/{roomId}/close-notice/ack:
+    post:
+      tags: [Rooms]
+      operationId: acknowledgeRoomCloseNotice
+      summary: Подтвердить просмотр уведомления о закрытии комнаты
+      parameters:
+      - $ref: '#/components/parameters/RoomId'
+      responses:
+        '204': {description: Уведомление подтверждено или уже отсутствует}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /rooms/{roomId}/intent/me:
     put:
       tags:
@@ -926,7 +978,9 @@ components:
       - user
       - onboarding_state
       - preferences
+      - daily_notifications_enabled
       - invite_context
+      - shared_event_id
       properties:
         access_token:
           type: string
@@ -949,9 +1003,16 @@ components:
           anyOf:
           - $ref: '#/components/schemas/PreferencesResponse'
           - type: 'null'
+        daily_notifications_enabled:
+          type: boolean
         invite_context:
           anyOf:
           - $ref: '#/components/schemas/InviteContext'
+          - type: 'null'
+        shared_event_id:
+          anyOf:
+          - type: string
+            format: uuid
           - type: 'null'
     User:
       type: object
@@ -1110,6 +1171,22 @@ components:
         updated_at:
           type: string
           format: date-time
+    NotificationPreferencesRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - daily_notifications_enabled
+      properties:
+        daily_notifications_enabled:
+          type: boolean
+    NotificationPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - daily_notifications_enabled
+      properties:
+        daily_notifications_enabled:
+          type: boolean
     CategorySlug:
       type: string
       enum:
@@ -1402,6 +1479,24 @@ components:
           anyOf:
           - $ref: '#/components/schemas/RoomSummary'
           - type: 'null'
+        room_closed_notice:
+          anyOf:
+          - $ref: '#/components/schemas/RoomClosedNotice'
+          - type: 'null'
+    RoomClosedNotice:
+      type: object
+      required: [room_id, room_name, closed_by, closed_at]
+      properties:
+        room_id: {type: string, format: uuid}
+        room_name: {type: string}
+        closed_by: {$ref: '#/components/schemas/ClosedBy'}
+        closed_at: {type: string, format: date-time}
+    ClosedBy:
+      type: object
+      required: [id, display_name]
+      properties:
+        id: {type: string, format: uuid}
+        display_name: {type: string}
     EventSearchResponse:
       type: object
       required:
@@ -1716,6 +1811,7 @@ components:
       - voting
       - matched
       - exhausted
+      - closed
     RoomSummary:
       type: object
       required:
@@ -1839,6 +1935,13 @@ components:
           type: string
           format: date-time
           description: Invite и room истекают через 48 часов
+        closed_by:
+          anyOf:
+          - $ref: '#/components/schemas/ClosedBy'
+          - type: 'null'
+        closed_at:
+          type: [string, 'null']
+          format: date-time
     RoomIntentRequest:
       type: object
       additionalProperties: false

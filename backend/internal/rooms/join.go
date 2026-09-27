@@ -67,6 +67,9 @@ func (s *Service) Join(ctx context.Context, principal contracts.Principal, token
 				roomsByID[room.ID] = room
 			}
 			target := roomsByID[discoveredInvite.RoomID]
+			if target.State == string(RoomStateClosed) {
+				return ErrRoomClosed
+			}
 
 			invite, err := repo.Queries.LockRoomInviteByHash(ctx, tokenHash)
 			if errors.Is(err, pgx.ErrNoRows) {

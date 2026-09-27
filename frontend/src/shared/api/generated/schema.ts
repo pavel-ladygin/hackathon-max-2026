@@ -52,7 +52,7 @@ export interface paths {
         put?: never;
         /**
          * Проверить MAX init data и открыть пользовательскую сессию
-         * @description Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только из проверенной строки и возвращает безопасный invite_context. Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
+         * @description Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; прочие параметры разрешаются как invite_context. Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
          */
         post: operations["bootstrapMaxSession"];
         delete?: never;
@@ -79,6 +79,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Изменить подписку на ежедневные уведомления */
+        patch: operations["updateMyNotificationPreferences"];
         trace?: never;
     };
     "/feed/home": {
@@ -274,6 +291,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Завершить комнату для обоих участников */
+        post: operations["closeRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/close-notice/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Подтвердить просмотр уведомления о закрытии комнаты */
+        post: operations["acknowledgeRoomCloseNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/intent/me": {
         parameters: {
             query?: never;
@@ -355,7 +406,9 @@ export interface components {
             /** @enum {string} */
             onboarding_state: "new" | "complete";
             preferences: components["schemas"]["PreferencesResponse"] | null;
+            daily_notifications_enabled: boolean;
             invite_context: components["schemas"]["InviteContext"] | null;
+            shared_event_id: string | null;
         };
         User: {
             /** Format: uuid */
@@ -412,6 +465,12 @@ export interface components {
             version: number;
             /** Format: date-time */
             updated_at: string;
+        };
+        NotificationPreferencesRequest: {
+            daily_notifications_enabled: boolean;
+        };
+        NotificationPreferencesResponse: {
+            daily_notifications_enabled: boolean;
         };
         /** @enum {string} */
         CategorySlug: "concerts" | "cinema" | "theatre" | "standup" | "exhibitions" | "sports" | "food" | "parties" | "festivals" | "walks" | "other";
@@ -511,6 +570,20 @@ export interface components {
                 items: components["schemas"]["EventCard"][];
             }[];
             active_room?: components["schemas"]["RoomSummary"] | null;
+            room_closed_notice?: components["schemas"]["RoomClosedNotice"] | null;
+        };
+        RoomClosedNotice: {
+            /** Format: uuid */
+            room_id: string;
+            room_name: string;
+            closed_by: components["schemas"]["ClosedBy"];
+            /** Format: date-time */
+            closed_at: string;
+        };
+        ClosedBy: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
         };
         EventSearchResponse: {
             items: components["schemas"]["EventCard"][];
@@ -640,7 +713,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        RoomState: "collecting_intents" | "ranking" | "voting" | "matched" | "exhausted";
+        RoomState: "collecting_intents" | "ranking" | "voting" | "matched" | "exhausted" | "closed";
         RoomSummary: {
             /** Format: uuid */
             id: string;
@@ -684,6 +757,9 @@ export interface components {
              * @description Invite и room истекают через 48 часов
              */
             expires_at: string;
+            closed_by?: components["schemas"]["ClosedBy"] | null;
+            /** Format: date-time */
+            closed_at?: string | null;
         };
         RoomIntentRequest: {
             dates: string[];
@@ -1042,6 +1118,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreferencesResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMyNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description Текущее состояние подписки */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferencesResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];
@@ -1409,6 +1511,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RoomSnapshot"];
                 };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    closeRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Закрытая комната; повторный вызов идемпотентен */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomSnapshot"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    acknowledgeRoomCloseNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Уведомление подтверждено или уже отсутствует */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];

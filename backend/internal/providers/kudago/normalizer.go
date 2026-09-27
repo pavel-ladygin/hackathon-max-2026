@@ -2,6 +2,7 @@ package kudago
 
 import (
 	"fmt"
+	"html"
 	"math"
 	"net/url"
 	"strconv"
@@ -75,7 +76,7 @@ func normalizeEvents(events []eventDTO, actualSince, actualUntil time.Time) []pr
 }
 
 func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []providers.NormalizedEvent {
-	title := strings.TrimSpace(event.Title)
+	title := strings.TrimSpace(html.UnescapeString(event.Title))
 	if event.ID <= 0 || title == "" || event.Place == nil || strings.TrimSpace(event.Place.Title) == "" || !validCoordinates(event.Place.Coords) {
 		return nil
 	}

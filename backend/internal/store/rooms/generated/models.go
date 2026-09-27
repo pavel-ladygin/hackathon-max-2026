@@ -21,6 +21,8 @@ type Room struct {
 	Version           int32
 	CreatedAt         pgtype.Timestamptz
 	ExpiresAt         pgtype.Timestamptz
+	ClosedBy          pgtype.UUID
+	ClosedAt          pgtype.Timestamptz
 }
 
 type RoomIntent struct {

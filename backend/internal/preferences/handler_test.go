@@ -18,11 +18,13 @@ import (
 )
 
 type fakeReplacer struct {
-	input  Input
-	userID uuid.UUID
-	value  Value
-	err    error
-	calls  int
+	input                     Input
+	userID                    uuid.UUID
+	value                     Value
+	err                       error
+	calls                     int
+	dailyNotificationsEnabled bool
+	notificationCalls         int
 }
 
 func (f *fakeReplacer) Replace(_ context.Context, userID uuid.UUID, input Input) (Value, error) {
@@ -30,6 +32,43 @@ func (f *fakeReplacer) Replace(_ context.Context, userID uuid.UUID, input Input)
 	f.userID = userID
 	f.input = input
 	return f.value, f.err
+}
+
+func (f *fakeReplacer) SetDailyNotificationsEnabled(_ context.Context, _ uuid.UUID, enabled bool) (bool, error) {
+	f.notificationCalls++
+	f.dailyNotificationsEnabled = enabled
+	return enabled, nil
+}
+
+func TestUpdateNotificationPreferenceRequiresBoolAndReturnsSavedValue(t *testing.T) {
+	fake := &fakeReplacer{}
+	handler := NewHandler(fake)
+	router := httpapi.NewRouter(nil, slog.Default(), func(r chi.Router) {
+		handler.RegisterRoutes(r, injectPrincipal(uuid.New()))
+	})
+	for _, body := range []string{`{"daily_notifications_enabled":true}`, `{"daily_notifications_enabled":false}`} {
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, httptest.NewRequest(http.MethodPatch, "/api/v1/me/notification-preferences", bytes.NewBufferString(body)))
+		if res.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+		}
+		var response struct {
+			Enabled bool `json:"daily_notifications_enabled"`
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil || response.Enabled != fake.dailyNotificationsEnabled {
+			t.Fatalf("response=%s err=%v", res.Body.String(), err)
+		}
+	}
+	if fake.notificationCalls != 2 || fake.dailyNotificationsEnabled {
+		t.Fatalf("calls=%d enabled=%v", fake.notificationCalls, fake.dailyNotificationsEnabled)
+	}
+	for _, body := range []string{`{}`, `{"daily_notifications_enabled":"yes"}`, `{"daily_notifications_enabled":true,"extra":1}`} {
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, httptest.NewRequest(http.MethodPatch, "/api/v1/me/notification-preferences", bytes.NewBufferString(body)))
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("body=%s status=%d", body, res.Code)
+		}
+	}
 }
 
 func TestReplaceMapsRequestToServiceAndResponse(t *testing.T) {

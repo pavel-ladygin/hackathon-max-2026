@@ -9,6 +9,7 @@ import { EventPage } from './EventPage'
 const mocks = vi.hoisted(() => ({
   event: { data: undefined as any, isPending: false, isError: false, error: undefined as unknown, isFetching: false, refetch: vi.fn() },
   openTicketLink: vi.fn(),
+  shareInvite: vi.fn(),
   recordTicketClick: vi.fn(),
 }))
 
@@ -17,10 +18,10 @@ vi.mock('../../features/discovery/queries', () => ({
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 vi.mock('../../shared/api/client', () => ({ apiClient: { recordBehavior: vi.fn(), recordTicketClick: mocks.recordTicketClick } }))
-vi.mock('../../shared/platform/max/adapter', () => ({ maxPlatform: { openTicketLink: mocks.openTicketLink } }))
+vi.mock('../../shared/platform/max/adapter', () => ({ maxPlatform: { openTicketLink: mocks.openTicketLink, shareInvite: mocks.shareInvite } }))
 
 const baseEvent = {
-  id: 'event-1', title: 'Jazz вечер', subtitle: 'Живой концерт', category_slug: 'concerts', starts_at: '2026-09-23T16:00:00Z', timezone: 'Europe/Moscow', date_label: 'Сегодня, 19:00', venue_name: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', venue: { id: 'venue-1', name: 'Клуб', address: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', metro: null, district: null }, distance_m: null, distance_label: null, price_from_minor: null, currency: 'RUB', price_label: 'Бесплатно', image_url: null, imageUrl: null, saved: false, reasons: [], description: '   ', endsAt: null, ticketAvailable: true, status: 'published', age_rating: null, dataProvenance: { source: 'demo', source_updated_at: null, is_demo: false }, images: [],
+  id: '6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1', title: 'Jazz вечер', subtitle: 'Живой концерт', category_slug: 'concerts', starts_at: '2026-09-23T16:00:00Z', timezone: 'Europe/Moscow', date_label: 'Сегодня, 19:00', venue_name: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', venue: { id: 'venue-1', name: 'Клуб', address: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', metro: null, district: null }, distance_m: null, distance_label: null, price_from_minor: null, currency: 'RUB', price_label: 'Бесплатно', image_url: null, imageUrl: null, saved: false, reasons: [], description: '   ', endsAt: null, ticketAvailable: true, status: 'published', age_rating: null, dataProvenance: { source: 'demo', source_updated_at: null, is_demo: false }, images: [],
 }
 
 function renderPage() {
@@ -32,6 +33,7 @@ describe('EventPage', () => {
   beforeEach(() => {
     mocks.event = { data: { ...baseEvent }, isPending: false, isError: false, error: undefined, isFetching: false, refetch: vi.fn() }
     mocks.openTicketLink.mockReset()
+    mocks.shareInvite.mockReset()
     mocks.recordTicketClick.mockReset()
     mocks.recordTicketClick.mockResolvedValue({ external_url: 'https://tickets.example/event-1' })
   })
@@ -43,6 +45,14 @@ describe('EventPage', () => {
     expect(screen.queryByText('Почему вам подходит')).not.toBeInTheDocument()
     const venue = screen.getByText('г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле')
     expect(venue.querySelector('small')).toBeNull()
+  })
+
+  it('renders an HTML-decoded event title and image alternative text', () => {
+    mocks.event = { ...mocks.event, data: { ...baseEvent, title: 'Квест "Алое золото"' } }
+    renderPage()
+
+    expect(screen.getByRole('heading', { name: 'Квест "Алое золото"' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Квест "Алое золото"' })).toBeInTheDocument()
   })
 
   it('keeps the shimmer while an event photo loads and uses the neutral fallback only after an error', () => {
@@ -93,5 +103,30 @@ describe('EventPage', () => {
 
     await waitFor(() => expect(screen.getByText('Не удалось открыть билетный сервис. Можно повторить попытку.')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Открыть билеты во внешнем билетном сервисе' })).toBeEnabled()
+  })
+
+  it('shares the event title and MAX event deep link', async () => {
+    mocks.shareInvite.mockResolvedValue(true)
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
+
+    await waitFor(() => expect(mocks.shareInvite).toHaveBeenCalledWith({
+      text: 'Посмотри событие «Jazz вечер»',
+      link: expect.stringMatching(/^https:\/\/max\.ru(?:\/[^?]*)?\?startapp=event_6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1$/),
+    }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Ссылка на событие отправлена')
+  })
+
+  it('shows a retryable error if sharing fails', async () => {
+    mocks.shareInvite.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось поделиться событием')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
+    await waitFor(() => expect(mocks.shareInvite).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole('status')).toHaveTextContent('Ссылка на событие отправлена')
   })
 })

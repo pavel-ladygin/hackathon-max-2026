@@ -25,6 +25,8 @@ func (s *Service) RegisterRoutes(r chi.Router) {
 	r.With(behavior.OperationMiddleware("room_create", sink)).Post(createRoute, s.CreateRoom)
 	r.With(behavior.OperationMiddleware("room_join", sink)).Post("/api/v1/room-invites/{token}/join", s.JoinRoomByInvite)
 	r.Get("/api/v1/rooms/{roomId}", s.GetRoom)
+	r.Post("/api/v1/rooms/{roomId}/close", s.CloseRoom)
+	r.Post("/api/v1/rooms/{roomId}/close-notice/ack", s.AcknowledgeRoomCloseNotice)
 	r.Get("/api/v1/rooms/{roomId}/events", s.GetRoomEvents)
 	r.With(behavior.OperationMiddleware("room_vote", sink)).Put("/api/v1/rooms/{roomId}/events/{eventId}/vote", s.VoteForRoomEvent)
 	r.Put("/api/v1/rooms/{roomId}/intent/me", s.ReplaceMyRoomIntent)

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	roomsql "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/rooms/generated"
@@ -118,6 +119,67 @@ func TestB10OneThenBothFinishAndReconnect(t *testing.T) {
 		if len(snapshot.AllowedActions) != 1 || snapshot.AllowedActions[0] != api.RestartWithNewIntent {
 			t.Fatalf("reconnect actions=%v; want restart_with_new_intent", snapshot.AllowedActions)
 		}
+	}
+}
+
+func TestRoomCloseIsIdempotentRetiresBothMembersAndLeavesUnreadNotice(t *testing.T) {
+	db := openTestDB(t)
+	f, pool, events := seedB8VotingPool(t, db, 1)
+	svc := newVoteService(t, db, behavior.Recorder{})
+	ctx := context.Background()
+	if err := svc.Close(ctx, contracts.Principal{UserID: f.creator}, f.room); err != nil {
+		t.Fatalf("close room: %v", err)
+	}
+	if err := svc.Close(ctx, contracts.Principal{UserID: f.creator}, f.room); err != nil {
+		t.Fatalf("repeat close: %v", err)
+	}
+	for _, userID := range []uuid.UUID{f.creator, f.member} {
+		snapshot, err := svc.Get(ctx, contracts.Principal{UserID: userID}, f.room)
+		if err != nil || snapshot.State != api.RoomStateClosed {
+			t.Fatalf("closed snapshot user=%s snapshot=%+v err=%v", userID, snapshot, err)
+		}
+		closedBy, err := snapshot.ClosedBy.Get()
+		if err != nil || closedBy.Id != f.creator {
+			t.Fatalf("closed_by user=%s value=%+v err=%v", userID, closedBy, err)
+		}
+		if _, err := snapshot.ClosedAt.Get(); err != nil {
+			t.Fatalf("closed_at user=%s err=%v", userID, err)
+		}
+	}
+	var active int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1 AND is_active", f.room).Scan(&active); err != nil || active != 0 {
+		t.Fatalf("active memberships=%d err=%v; want 0", active, err)
+	}
+	homeRooms := discovery.NewRepository(db)
+	for _, userID := range []uuid.UUID{f.creator, f.member} {
+		if room, found, err := homeRooms.GetActiveRoom(ctx, userID); err != nil || found {
+			t.Fatalf("active room user=%s value=%+v found=%v err=%v; want no active room", userID, room, found, err)
+		}
+	}
+	var notices int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_close_notices WHERE room_id=$1 AND recipient_user_id=$2 AND acknowledged_at IS NULL", f.room, f.member).Scan(&notices); err != nil || notices != 1 {
+		t.Fatalf("counterpart unread notices=%d err=%v; want 1", notices, err)
+	}
+	if notice, err := homeRooms.GetRoomCloseNotice(ctx, f.member); err != nil || notice == nil || notice.RoomID != f.room || notice.RoomName == "" || notice.ClosedByID != f.creator {
+		t.Fatalf("counterpart notice=%+v err=%v; want closure notice for counterpart", notice, err)
+	}
+	if notice, err := homeRooms.GetRoomCloseNotice(ctx, f.creator); err != nil || notice != nil {
+		t.Fatalf("closer notice=%+v err=%v; want none", notice, err)
+	}
+	if err := svc.AcknowledgeCloseNotice(ctx, contracts.Principal{UserID: f.member}, f.room); err != nil {
+		t.Fatalf("acknowledge close notice: %v", err)
+	}
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_close_notices WHERE room_id=$1 AND recipient_user_id=$2 AND acknowledged_at IS NULL", f.room, f.member).Scan(&notices); err != nil || notices != 0 {
+		t.Fatalf("unread notices after ack=%d err=%v; want 0", notices, err)
+	}
+	if notice, err := homeRooms.GetRoomCloseNotice(ctx, f.member); err != nil || notice != nil {
+		t.Fatalf("notice after ack=%+v err=%v; want none", notice, err)
+	}
+	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); !errors.Is(err, rooms.ErrRoomClosed) {
+		t.Fatalf("intent after close err=%v; want ROOM_CLOSED", err)
+	}
+	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], api.VoteRequest{PoolVersion: int(pool.Version), Vote: api.Like}); !errors.Is(err, rooms.ErrRoomClosed) {
+		t.Fatalf("vote after close err=%v; want ROOM_CLOSED", err)
 	}
 }
 

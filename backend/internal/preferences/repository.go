@@ -35,6 +35,9 @@ func (r *Repository) get(ctx context.Context, userID uuid.UUID) (Value, bool, er
 			return err
 		}
 		value = valueFromRow(row, categories)
+		if err := tx.QueryRow(ctx, `SELECT daily_notifications_enabled FROM users WHERE id = $1`, userID).Scan(&value.DailyNotificationsEnabled); err != nil {
+			return err
+		}
 		found = true
 		return nil
 	})
@@ -76,9 +79,21 @@ func (r *Repository) replace(ctx context.Context, userID uuid.UUID, input Input)
 		value = Value{CityID: input.CityID, InterestSlugs: append([]string(nil), input.InterestSlugs...), BudgetMaxMinor: input.BudgetMaxMinor,
 			UsualDayTypes: append([]string(nil), input.UsualDayTypes...), UsualTimeSlots: append([]string(nil), input.UsualTimeSlots...),
 			Version: int(updated.Version), UpdatedAt: updated.UpdatedAt.Time}
+		if err := tx.QueryRow(ctx, `SELECT daily_notifications_enabled FROM users WHERE id = $1`, userID).Scan(&value.DailyNotificationsEnabled); err != nil {
+			return err
+		}
 		return nil
 	})
 	return value, err
+}
+
+func (r *Repository) setDailyNotificationsEnabled(ctx context.Context, userID uuid.UUID, enabled bool) (bool, error) {
+	var updated bool
+	err := r.pool.QueryRow(ctx, `UPDATE users SET daily_notifications_enabled = $2, updated_at = now() WHERE id = $1 RETURNING daily_notifications_enabled`, userID, enabled).Scan(&updated)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return updated, err
 }
 
 func valueFromRow(row platform.GetUserPreferencesRow, categories []string) Value {

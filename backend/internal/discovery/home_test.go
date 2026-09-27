@@ -43,15 +43,23 @@ type fakeHomePreferences struct {
 }
 
 type fakeHomeRooms struct {
-	room  ActiveRoom
-	found bool
-	err   error
-	calls int
+	room        ActiveRoom
+	found       bool
+	err         error
+	calls       int
+	notice      *RoomClosedNotice
+	noticeErr   error
+	noticeCalls int
 }
 
 func (f *fakeHomeRooms) GetActiveRoom(context.Context, uuid.UUID) (ActiveRoom, bool, error) {
 	f.calls++
 	return f.room, f.found, f.err
+}
+
+func (f *fakeHomeRooms) GetRoomCloseNotice(context.Context, uuid.UUID) (*RoomClosedNotice, error) {
+	f.noticeCalls++
+	return f.notice, f.noticeErr
 }
 
 func (f *fakeHomePreferences) Get(context.Context, uuid.UUID) (preferences.Value, bool, error) {
@@ -92,6 +100,46 @@ func TestHomeUsesProfileCityAndPreferencesWithoutASecondRecommender(t *testing.T
 	}
 	if feed.ActiveRoom == nil || feed.ActiveRoom.ID != roomID || feed.ActiveRoom.Name != "Active" || feed.ActiveRoom.CityID != city || feed.ActiveRoom.State != "ranking" {
 		t.Fatalf("active room = %#v", feed.ActiveRoom)
+	}
+}
+
+func TestHomeIncludesUnreadRoomClosureNotice(t *testing.T) {
+	user, city := uuid.New(), uuid.New()
+	notice := &RoomClosedNotice{
+		RoomID: uuid.New(), RoomName: "Суббота", ClosedByID: uuid.New(),
+		ClosedByDisplayName: "Алексей", ClosedAt: time.Date(2026, 9, 27, 10, 30, 0, 0, time.UTC),
+	}
+	rooms := &fakeHomeRooms{notice: notice}
+	service := NewHomeService(
+		homeSearchFunc(func(context.Context, SearchFilter) (Page, error) { return Page{}, nil }),
+		&fakeHomeCities{city: city}, &fakeHomePreferences{}, rooms,
+	)
+	feed, err := service.Home(context.Background(), HomeInput{UserID: user})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rooms.noticeCalls != 1 || feed.RoomClosedNotice == nil || *feed.RoomClosedNotice != *notice {
+		t.Fatalf("notice calls=%d feed notice=%+v; want persistent unread notice %+v", rooms.noticeCalls, feed.RoomClosedNotice, notice)
+	}
+
+	provider := &fakeHomeProvider{feed: feed}
+	res := serveHome(provider, &user, "/api/v1/feed/home")
+	var body struct {
+		Notice *struct {
+			RoomID   string `json:"room_id"`
+			RoomName string `json:"room_name"`
+			ClosedBy struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"display_name"`
+			} `json:"closed_by"`
+			ClosedAt time.Time `json:"closed_at"`
+		} `json:"room_closed_notice"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if res.Code != http.StatusOK || body.Notice == nil || body.Notice.RoomID != notice.RoomID.String() || body.Notice.RoomName != notice.RoomName || body.Notice.ClosedBy.ID != notice.ClosedByID.String() || body.Notice.ClosedBy.DisplayName != notice.ClosedByDisplayName || !body.Notice.ClosedAt.Equal(notice.ClosedAt) {
+		t.Fatalf("home response status=%d notice=%+v body=%s", res.Code, body.Notice, res.Body.String())
 	}
 }
 

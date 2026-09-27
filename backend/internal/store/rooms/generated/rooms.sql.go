@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acknowledgeRoomCloseNotice = `-- name: AcknowledgeRoomCloseNotice :execrows
+UPDATE room_close_notices
+SET acknowledged_at = COALESCE(acknowledged_at, clock_timestamp())
+WHERE room_id = $1 AND recipient_user_id = $2
+`
+
+type AcknowledgeRoomCloseNoticeParams struct {
+	RoomID          uuid.UUID
+	RecipientUserID uuid.UUID
+}
+
+func (q *Queries) AcknowledgeRoomCloseNotice(ctx context.Context, arg AcknowledgeRoomCloseNoticeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, acknowledgeRoomCloseNotice, arg.RoomID, arg.RecipientUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const activateRoomPool = `-- name: ActivateRoomPool :execrows
 UPDATE rooms
 SET active_pool_version = $2, state = $3, version = version + 1
@@ -66,6 +85,25 @@ func (q *Queries) ClockNow(ctx context.Context) (pgtype.Timestamptz, error) {
 	var column_1 pgtype.Timestamptz
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const closeRoom = `-- name: CloseRoom :execrows
+UPDATE rooms
+SET state = 'closed', closed_by = $2, closed_at = clock_timestamp(), version = version + 1
+WHERE id = $1 AND state <> 'closed'
+`
+
+type CloseRoomParams struct {
+	ID       uuid.UUID
+	ClosedBy pgtype.UUID
+}
+
+func (q *Queries) CloseRoom(ctx context.Context, arg CloseRoomParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeRoom, arg.ID, arg.ClosedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteExpiredCreateIdempotency = `-- name: DeleteExpiredCreateIdempotency :execrows
@@ -157,7 +195,7 @@ func (q *Queries) GetCreateIdempotency(ctx context.Context, arg GetCreateIdempot
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
 FROM rooms
 WHERE id = $1
 `
@@ -177,7 +215,28 @@ func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.Version,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.ClosedBy,
+		&i.ClosedAt,
 	)
+	return i, err
+}
+
+const getRoomClosureActor = `-- name: GetRoomClosureActor :one
+SELECT r.closed_by, r.closed_at, u.display_name
+FROM rooms r JOIN users u ON u.id = r.closed_by
+WHERE r.id = $1 AND r.state = 'closed'
+`
+
+type GetRoomClosureActorRow struct {
+	ClosedBy    pgtype.UUID
+	ClosedAt    pgtype.Timestamptz
+	DisplayName string
+}
+
+func (q *Queries) GetRoomClosureActor(ctx context.Context, id uuid.UUID) (GetRoomClosureActorRow, error) {
+	row := q.db.QueryRow(ctx, getRoomClosureActor, id)
+	var i GetRoomClosureActorRow
+	err := row.Scan(&i.ClosedBy, &i.ClosedAt, &i.DisplayName)
 	return i, err
 }
 
@@ -214,7 +273,7 @@ func (q *Queries) InsertCreateIdempotency(ctx context.Context, arg InsertCreateI
 const insertRoom = `-- name: InsertRoom :one
 INSERT INTO rooms (id, creator_user_id, city_id, name, state, round_no, active_pool_version, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
 `
 
 type InsertRoomParams struct {
@@ -252,12 +311,30 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		&i.Version,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.ClosedBy,
+		&i.ClosedAt,
 	)
 	return i, err
 }
 
+const insertRoomCloseNotice = `-- name: InsertRoomCloseNotice :exec
+INSERT INTO room_close_notices (room_id, recipient_user_id)
+VALUES ($1, $2)
+ON CONFLICT (room_id, recipient_user_id) DO NOTHING
+`
+
+type InsertRoomCloseNoticeParams struct {
+	RoomID          uuid.UUID
+	RecipientUserID uuid.UUID
+}
+
+func (q *Queries) InsertRoomCloseNotice(ctx context.Context, arg InsertRoomCloseNoticeParams) error {
+	_, err := q.db.Exec(ctx, insertRoomCloseNotice, arg.RoomID, arg.RecipientUserID)
+	return err
+}
+
 const lockExpiredRoomsForCleanup = `-- name: LockExpiredRoomsForCleanup :many
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
 FROM rooms
 WHERE expires_at <= $1
   AND EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = rooms.id AND m.is_active = true)
@@ -292,6 +369,8 @@ func (q *Queries) LockExpiredRoomsForCleanup(ctx context.Context, arg LockExpire
 			&i.Version,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.ClosedBy,
+			&i.ClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -304,7 +383,7 @@ func (q *Queries) LockExpiredRoomsForCleanup(ctx context.Context, arg LockExpire
 }
 
 const lockRoom = `-- name: LockRoom :one
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
 FROM rooms
 WHERE id = $1
 FOR UPDATE
@@ -325,6 +404,8 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.Version,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.ClosedBy,
+		&i.ClosedAt,
 	)
 	return i, err
 }
@@ -382,7 +463,7 @@ const restartExhaustedRoomRound = `-- name: RestartExhaustedRoomRound :one
 UPDATE rooms
 SET state = 'collecting_intents', round_no = round_no + 1, version = version + 1
 WHERE id = $1 AND state = 'exhausted' AND round_no < 3
-RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at
+RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
 `
 
 // The caller holds the room row lock.  Keep active_pool_version as history;
@@ -402,6 +483,8 @@ func (q *Queries) RestartExhaustedRoomRound(ctx context.Context, id uuid.UUID) (
 		&i.Version,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.ClosedBy,
+		&i.ClosedAt,
 	)
 	return i, err
 }

@@ -12,6 +12,7 @@ export function useRoom(roomId: string | undefined) {
       if (state === 'collecting_intents') return jitter(3_000)
       if (state === 'ranking') return jitter(1_000)
       if (state === 'voting') return jitter(2_000)
+      if (state === 'exhausted') return jitter(3_000)
       return false
     },
     refetchIntervalInBackground: false,

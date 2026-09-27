@@ -35,12 +35,24 @@ type HomeActiveRoomReader interface {
 	GetActiveRoom(context.Context, uuid.UUID) (ActiveRoom, bool, error)
 }
 
+type HomeRoomCloseNoticeReader interface {
+	GetRoomCloseNotice(context.Context, uuid.UUID) (*RoomClosedNotice, error)
+}
+
 // ActiveRoom is the minimal public projection needed by the home screen.
 type ActiveRoom struct {
 	ID     uuid.UUID
 	Name   string
 	CityID uuid.UUID
 	State  string
+}
+
+type RoomClosedNotice struct {
+	RoomID              uuid.UUID
+	RoomName            string
+	ClosedByID          uuid.UUID
+	ClosedByDisplayName string
+	ClosedAt            time.Time
 }
 
 // HomeInput is the normalized, request-only home-feed input.
@@ -58,10 +70,11 @@ type HomeSection struct {
 }
 
 type HomeFeed struct {
-	ID          uuid.UUID
-	GeneratedAt time.Time
-	ActiveRoom  *ActiveRoom
-	Sections    []HomeSection
+	ID               uuid.UUID
+	GeneratedAt      time.Time
+	ActiveRoom       *ActiveRoom
+	RoomClosedNotice *RoomClosedNotice
+	Sections         []HomeSection
 }
 
 // HomeService builds a bounded deterministic set of display sections from the
@@ -141,6 +154,12 @@ func (s *HomeService) Home(ctx context.Context, input HomeInput) (HomeFeed, erro
 	feed := HomeFeed{ID: s.newID(), GeneratedAt: s.now().UTC(), Sections: sections}
 	if hasActiveRoom {
 		feed.ActiveRoom = &activeRoom
+	}
+	if reader, ok := s.rooms.(HomeRoomCloseNoticeReader); ok {
+		feed.RoomClosedNotice, err = reader.GetRoomCloseNotice(ctx, input.UserID)
+		if err != nil {
+			return HomeFeed{}, err
+		}
 	}
 	return feed, nil
 }

@@ -65,6 +65,9 @@ func (s *Service) GetEvents(ctx context.Context, principal contracts.Principal, 
 		if err != nil {
 			return err
 		}
+		if room.State == string(RoomStateClosed) {
+			return ErrRoomClosed
+		}
 		// Final-round cleanup retires memberships. Historical members may retry
 		// their accepted events request and receive the terminal result, while a
 		// user who never belonged to the room remains a 404 above.

@@ -44,6 +44,8 @@ func writeJoinError(w http.ResponseWriter, r *http.Request, err error) {
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "INVITE_EXPIRED", Message: "Invite has expired"}
 	case errors.Is(err, ErrRoomFull):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROOM_FULL", Message: "Room is full"}
+	case errors.Is(err, ErrRoomClosed):
+		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROOM_CLOSED", Message: "Room is closed"}
 	case errors.Is(err, ErrActiveRoomExists):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ACTIVE_ROOM_EXISTS", Message: "An active room already exists"}
 	case errors.Is(err, ErrIdempotencyConflict):

@@ -22,4 +22,9 @@ describe('API boundary mappers', () => {
     expect(mapEvent({ ...EVENTS[0], other_occurrences_count: 0 }).other_occurrences_count).toBe(0)
     expect(mapEvent(EVENTS[0]).other_occurrences_count).toBeUndefined()
   })
+
+  it('decodes named, numeric, and ampersand entities in event titles', () => {
+    expect(mapEvent({ ...EVENTS[0], title: '«&quot;Алое золото&#34; &amp; ещё»' }).title).toBe('«"Алое золото" & ещё»')
+    expect(mapEvent(EVENTS[0]).title).toBe(EVENTS[0].title)
+  })
 })

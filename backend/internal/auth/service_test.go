@@ -11,17 +11,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
 
 type fakeAuthRepo struct {
-	user            platform.User
-	preferences     *preferences.Value
-	bootstrapHashes [][]byte
-	byHash          map[[32]byte]platform.GetAuthSessionRow
-	bootstrapErr    error
-	sessionErr      error
+	user                      platform.User
+	preferences               *preferences.Value
+	dailyNotificationsEnabled bool
+	bootstrapHashes           [][]byte
+	byHash                    map[[32]byte]platform.GetAuthSessionRow
+	bootstrapErr              error
+	sessionErr                error
 }
 
 func validOpaqueToken() string { return base64.RawURLEncoding.EncodeToString(make([]byte, 32)) }
@@ -31,7 +33,7 @@ func (f *fakeAuthRepo) bootstrap(_ context.Context, _ identity, hash []byte, _ t
 		return bootstrapProfile{}, f.bootstrapErr
 	}
 	f.bootstrapHashes = append(f.bootstrapHashes, append([]byte(nil), hash...))
-	return bootstrapProfile{user: f.user, preferences: f.preferences}, nil
+	return bootstrapProfile{user: f.user, preferences: f.preferences, dailyNotificationsEnabled: f.dailyNotificationsEnabled}, nil
 }
 func (f *fakeAuthRepo) session(_ context.Context, hash []byte) (platform.GetAuthSessionRow, error) {
 	if f.sessionErr != nil {
@@ -51,6 +53,76 @@ func testService(t *testing.T, repo *fakeAuthRepo, now time.Time) *Service {
 		t.Fatal(err)
 	}
 	return &Service{validator: validator, repo: repo, now: func() time.Time { return now }}
+}
+
+type recordingInviteResolver struct{ tokens []string }
+
+func (r *recordingInviteResolver) ResolveInviteContext(_ context.Context, _ uuid.UUID, token string) (*api.InviteContext, error) {
+	r.tokens = append(r.tokens, token)
+	return nil, nil
+}
+
+func TestBootstrapRoutesEventStartParamSeparatelyFromRoomInvite(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	resolver := &recordingInviteResolver{}
+	for _, tc := range []struct {
+		name         string
+		startParam   string
+		wantEventID  uuid.UUID
+		wantResolver bool
+	}{
+		{name: "shared event", startParam: "event_22222222-2222-4222-8222-222222222222", wantEventID: uuid.MustParse("22222222-2222-4222-8222-222222222222")},
+		{name: "room invite", startParam: "opaque-room-invite", wantResolver: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeAuthRepo{user: platform.User{ID: uuid.New(), DisplayName: "Ada", Locale: "en", OnboardingState: "new"}}
+			s := testService(t, repo, now)
+			s.SetInviteContextResolver(resolver)
+			values := validValues(now)
+			values["auth_date"] = "1700000000"
+			values["start_param"] = tc.startParam
+			before := len(resolver.tokens)
+			result, err := s.bootstrap(context.Background(), signedInitData(t, "secret", values), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantEventID != uuid.Nil {
+				if result.sharedEventID == nil || *result.sharedEventID != tc.wantEventID || result.invite != nil {
+					t.Fatalf("event bootstrap result=%+v", result)
+				}
+			} else if result.sharedEventID != nil {
+				t.Fatalf("unexpected shared event id %v", result.sharedEventID)
+			}
+			if got := len(resolver.tokens) - before; got != btoi(tc.wantResolver) {
+				t.Fatalf("resolver calls=%d, wantResolver=%v", got, tc.wantResolver)
+			}
+			if tc.wantResolver && resolver.tokens[len(resolver.tokens)-1] != tc.startParam {
+				t.Fatalf("resolver token=%q, want %q", resolver.tokens[len(resolver.tokens)-1], tc.startParam)
+			}
+		})
+	}
+}
+
+func TestBootstrapRejectsMalformedEventStartParamBeforeCreatingSession(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	repo := &fakeAuthRepo{user: platform.User{ID: uuid.New(), DisplayName: "Ada", Locale: "en", OnboardingState: "new"}}
+	s := testService(t, repo, now)
+	values := validValues(now)
+	values["auth_date"] = "1700000000"
+	values["start_param"] = "event_not-a-uuid"
+	if _, err := s.bootstrap(context.Background(), signedInitData(t, "secret", values), nil); !errors.Is(err, errInvalidRequest) {
+		t.Fatalf("error=%v, want invalid request", err)
+	}
+	if len(repo.bootstrapHashes) != 0 {
+		t.Fatalf("malformed event parameter created %d sessions", len(repo.bootstrapHashes))
+	}
+}
+
+func btoi(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func TestServiceBootstrapPersistsOnlyTokenHashAndCreatesDistinctSessions(t *testing.T) {

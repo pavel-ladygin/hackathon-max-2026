@@ -810,6 +810,7 @@ func (e RoomSnapshotAllowedActions) Valid() bool {
 
 // Defines values for RoomState.
 const (
+	RoomStateClosed            RoomState = "closed"
 	RoomStateCollectingIntents RoomState = "collecting_intents"
 	RoomStateExhausted         RoomState = "exhausted"
 	RoomStateMatched           RoomState = "matched"
@@ -820,6 +821,8 @@ const (
 // Valid indicates whether the value is a known member of the RoomState enum.
 func (e RoomState) Valid() bool {
 	switch e {
+	case RoomStateClosed:
+		return true
 	case RoomStateCollectingIntents:
 		return true
 	case RoomStateExhausted:
@@ -1001,13 +1004,15 @@ type BootstrapRequest struct {
 
 // BootstrapResponse defines model for BootstrapResponse.
 type BootstrapResponse struct {
-	AccessToken     string                                 `json:"access_token"`
-	ExpiresIn       int                                    `json:"expires_in"`
-	InviteContext   nullable.Nullable[InviteContext]       `json:"invite_context"`
-	OnboardingState BootstrapResponseOnboardingState       `json:"onboarding_state"`
-	Preferences     nullable.Nullable[PreferencesResponse] `json:"preferences"`
-	TokenType       BootstrapResponseTokenType             `json:"token_type"`
-	User            User                                   `json:"user"`
+	AccessToken               string                                 `json:"access_token"`
+	DailyNotificationsEnabled bool                                   `json:"daily_notifications_enabled"`
+	ExpiresIn                 int                                    `json:"expires_in"`
+	InviteContext             nullable.Nullable[InviteContext]       `json:"invite_context"`
+	OnboardingState           BootstrapResponseOnboardingState       `json:"onboarding_state"`
+	Preferences               nullable.Nullable[PreferencesResponse] `json:"preferences"`
+	SharedEventId             nullable.Nullable[openapi_types.UUID]  `json:"shared_event_id"`
+	TokenType                 BootstrapResponseTokenType             `json:"token_type"`
+	User                      User                                   `json:"user"`
 }
 
 // BootstrapResponseOnboardingState defines model for BootstrapResponse.OnboardingState.
@@ -1018,6 +1023,12 @@ type BootstrapResponseTokenType string
 
 // CategorySlug defines model for CategorySlug.
 type CategorySlug string
+
+// ClosedBy defines model for ClosedBy.
+type ClosedBy struct {
+	DisplayName string             `json:"display_name"`
+	Id          openapi_types.UUID `json:"id"`
+}
 
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
@@ -1234,10 +1245,11 @@ type HealthResponseStatus string
 
 // HomeFeedResponse defines model for HomeFeedResponse.
 type HomeFeedResponse struct {
-	ActiveRoom  nullable.Nullable[RoomSummary] `json:"active_room,omitempty"`
-	FeedId      openapi_types.UUID             `json:"feed_id"`
-	GeneratedAt time.Time                      `json:"generated_at"`
-	Sections    []struct {
+	ActiveRoom       nullable.Nullable[RoomSummary]      `json:"active_room,omitempty"`
+	FeedId           openapi_types.UUID                  `json:"feed_id"`
+	GeneratedAt      time.Time                           `json:"generated_at"`
+	RoomClosedNotice nullable.Nullable[RoomClosedNotice] `json:"room_closed_notice,omitempty"`
+	Sections         []struct {
 		Items []EventCard                  `json:"items"`
 		Title string                       `json:"title"`
 		Type  HomeFeedResponseSectionsType `json:"type"`
@@ -1306,6 +1318,16 @@ type MyIntent struct {
 
 // MyIntentExclusionSlugs defines model for MyIntent.ExclusionSlugs.
 type MyIntentExclusionSlugs string
+
+// NotificationPreferencesRequest defines model for NotificationPreferencesRequest.
+type NotificationPreferencesRequest struct {
+	DailyNotificationsEnabled bool `json:"daily_notifications_enabled"`
+}
+
+// NotificationPreferencesResponse defines model for NotificationPreferencesResponse.
+type NotificationPreferencesResponse struct {
+	DailyNotificationsEnabled bool `json:"daily_notifications_enabled"`
+}
 
 // PoolSummary defines model for PoolSummary.
 type PoolSummary struct {
@@ -1380,6 +1402,14 @@ type RecommendationReason struct {
 // RecommendationReasonCode defines model for RecommendationReason.Code.
 type RecommendationReasonCode string
 
+// RoomClosedNotice defines model for RoomClosedNotice.
+type RoomClosedNotice struct {
+	ClosedAt time.Time          `json:"closed_at"`
+	ClosedBy ClosedBy           `json:"closed_by"`
+	RoomId   openapi_types.UUID `json:"room_id"`
+	RoomName string             `json:"room_name"`
+}
+
 // RoomEventsResponse defines model for RoomEventsResponse.
 type RoomEventsResponse struct {
 	Items []struct {
@@ -1430,6 +1460,8 @@ type RoomInvite struct {
 type RoomSnapshot struct {
 	AllowedActions []RoomSnapshotAllowedActions `json:"allowed_actions"`
 	CityId         openapi_types.UUID           `json:"city_id"`
+	ClosedAt       nullable.Nullable[time.Time] `json:"closed_at,omitempty"`
+	ClosedBy       nullable.Nullable[ClosedBy]  `json:"closed_by,omitempty"`
 	CreatedAt      time.Time                    `json:"created_at"`
 
 	// ExpiresAt Invite и room истекают через 48 часов
@@ -1691,6 +1723,9 @@ type IngestBehaviorEventsJSONRequestBody = BehaviorBatchRequest
 
 // RecordTicketClickJSONRequestBody defines body for RecordTicketClick for application/json ContentType.
 type RecordTicketClickJSONRequestBody = TicketClickRequest
+
+// UpdateMyNotificationPreferencesJSONRequestBody defines body for UpdateMyNotificationPreferences for application/json ContentType.
+type UpdateMyNotificationPreferencesJSONRequestBody = NotificationPreferencesRequest
 
 // ReplaceMyPreferencesJSONRequestBody defines body for ReplaceMyPreferences for application/json ContentType.
 type ReplaceMyPreferencesJSONRequestBody = PreferencesRequest

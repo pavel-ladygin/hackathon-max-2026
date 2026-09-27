@@ -20,6 +20,8 @@
 .heroImage { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .heroCopy { position: absolute; z-index: 1; right: 18px; bottom: 18px; left: 18px; display: grid; gap: 5px; }
 .heroCopy strong { font-size: 26px; letter-spacing: -.04em; }
+.heroCopy > span:not(.eyebrow) { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.heroCopy .eyebrow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sectionHead { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 10px; }
 .homeAction { gap: 18px; }
 .homeAction > div { min-width: 0; }
@@ -34,6 +36,7 @@
 .detailMeta dd { margin: 0; font-size: 13px; font-weight: 750; line-height: 1.4; }
 .detailMeta small { display: block; margin-top: 3px; color: var(--color-muted); font-size: 11px; font-weight: 500; }
 .externalHint { margin: 0; color: var(--color-muted); font-size: 11px; text-align: center; }
+.shareButtonContent { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .bodyCopy { color: #625e59; font-size: 13px; line-height: 1.75; }
 .explain { display: grid; gap: 10px; margin: 24px 0; padding: 18px; border-radius: var(--radius-lg); background: var(--color-warm); color: #625e59; font-size: 12px; }
 .avatars { display: flex; align-items: center; justify-content: center; margin: 26px 0; }
@@ -55,11 +58,16 @@
 .voteAction { display: grid; gap: 7px; place-items: center; border: 0; background: none; color: var(--color-muted); font-size: 11px; }
 .voteCircle { display: grid; width: 62px; height: 62px; place-items: center; border: 1px solid var(--color-border); border-radius: 50%; background: #fff; box-shadow: var(--shadow-card); font-size: 25px; }
 .like { background: var(--color-ink); color: #ff6a6e; }
+.like svg { display: block; width: 23px; height: 23px; fill: currentColor; }
 .reason { margin: 8px 0; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: #fff; }
 .reason p { margin-top: 5px; color: var(--color-muted); font-size: 11px; line-height: 1.5; }
 .suggestion { display: flex; width: 100%; align-items: center; justify-content: space-between; margin: 9px 0; padding: 15px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: #fff; text-align: left; touch-action: manipulation; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .suggestionSelected { border-color: var(--color-ink); background: #f7f5f1; }
 .suggestion small { display: block; margin-top: 4px; color: #8e806f; }
+.dateChoices { margin-top: 16px; }
+.dateChoices h3 { margin: 0 0 8px; font-size: 14px; }
+.recoveryChoiceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 288px; overflow-y: auto; }
+.recoveryChoiceGrid .suggestion { min-height: 50px; margin: 0; }
 .center { text-align: center; }
 .narrow { max-width: 640px; margin: 0 auto; }
 .searchLabel { display: block; margin: 8px 0; font-size: 12px; font-weight: 800; }
@@ -99,6 +107,11 @@
   .eventGrid .eventCardWithSave, .eventGrid .feedCard { height: 100%; min-height: 143px; align-items: center; }
   .eventGrid .eventCardWithSave strong, .eventGrid .feedCard strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
   .eventGrid .eventCardWithSave > span:last-child, .eventGrid .feedCard > span:last-child { align-self: center; }
+}
+
+@media (max-width: 767px) {
+  .hero { height: clamp(300px, 42vh, 380px); min-height: 0; }
+  .heroCopy strong { display: -webkit-box; overflow: hidden; font-size: 22px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 }
 
 @media (max-width: 520px) {

@@ -158,6 +158,7 @@ jobs:
       contents: read
     env:
       MAX_BOT_TOKEN: ci-dummy-token
+      MAX_APP_URL: https://max.ru/t255_hakaton_max_bot
       INVITE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       INVITE_ENCRYPTION_KEY_VERSION: "1"
       INVITE_URL_TEMPLATE: https://worknet.team/join/{token}
