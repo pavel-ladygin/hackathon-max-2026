@@ -60,7 +60,7 @@ ON CONFLICT (max_user_id) DO UPDATE SET
     avatar_url = EXCLUDED.avatar_url,
     locale = EXCLUDED.locale,
     updated_at = now()
-RETURNING id, max_user_id, display_name, avatar_url, city_id, locale, onboarding_state, created_at, updated_at
+RETURNING id, max_user_id, display_name, avatar_url, city_id, locale, onboarding_state, created_at, updated_at, daily_notifications_enabled
 `
 
 type UpsertMAXUserParams struct {
@@ -90,6 +90,7 @@ func (q *Queries) UpsertMAXUser(ctx context.Context, arg UpsertMAXUserParams) (U
 		&i.OnboardingState,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DailyNotificationsEnabled,
 	)
 	return i, err
 }

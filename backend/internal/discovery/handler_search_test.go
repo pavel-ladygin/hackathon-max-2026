@@ -21,6 +21,7 @@ type fakeSearchProvider struct {
 	filter       SearchFilter
 	page         Page
 	searchErr    error
+	total        int
 	decodeCursor Cursor
 	decodeErr    error
 	encoded      string
@@ -29,6 +30,10 @@ type fakeSearchProvider struct {
 func (f *fakeSearchProvider) Search(_ context.Context, filter SearchFilter) (Page, error) {
 	f.filter = filter
 	return f.page, f.searchErr
+}
+func (f *fakeSearchProvider) Count(_ context.Context, filter SearchFilter) (int, error) {
+	f.filter = filter
+	return f.total, f.searchErr
 }
 func (f *fakeSearchProvider) DecodeCursor(string, SearchFilter) (Cursor, error) {
 	return f.decodeCursor, f.decodeErr
@@ -54,7 +59,7 @@ func TestSearchInputMapsFiltersAndUsesProfileCity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filter.UserID != user || filter.CityID != city || filter.Query == nil || *filter.Query != "музыка" || filter.DateFrom.Format("2006-01-02") != "2026-09-20" || filter.DateTo.Format("2006-01-02") != "2026-09-21" || filter.PriceMaxMinor == nil || *filter.PriceMaxMinor != 0 || !filter.FreeOnly || filter.DistanceMeters == nil || *filter.DistanceMeters != 500 || filter.Location == nil || filter.Limit != 2 || filter.Cursor == nil {
+	if filter.UserID != user || filter.CityID != city || filter.Query == nil || *filter.Query != "музыка" || filter.DateFrom.Format("2006-01-02") != "2026-09-20" || filter.DateTo.Format("2006-01-02") != "2026-09-21" || filter.PriceMaxMinor == nil || *filter.PriceMaxMinor != 0 || !filter.FreeOnly || filter.DistanceMeters == nil || *filter.DistanceMeters != 500 || filter.Location == nil || filter.Limit != 2 || filter.Cursor == nil || !filter.IncludeTotal || len(filter.GenreSlugs) != 1 || filter.GenreSlugs[0] != "concerts" {
 		t.Fatalf("filter = %#v", filter)
 	}
 	if got := strings.Join(filter.DayTypes, ","); got != "weekday,weekend" {
@@ -108,14 +113,62 @@ func TestSearchHandlerReturnsPageAndMapsResponse(t *testing.T) {
 			Longitude      *float64  `json:"longitude"`
 		} `json:"items"`
 		AppliedFilters map[string]interface{} `json:"applied_filters"`
-		TotalEstimate  int                    `json:"total_estimate"`
+		TotalEstimate  *int                   `json:"total_estimate"`
 		NextCursor     *string                `json:"next_cursor"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Items) != 1 || body.Items[0].ID != eventID || body.Items[0].PriceFromMinor == nil || *body.Items[0].PriceFromMinor != 0 || body.Items[0].DistanceM == nil || *body.Items[0].DistanceM != distance || body.Items[0].Latitude == nil || *body.Items[0].Latitude != latitude || body.Items[0].Longitude == nil || *body.Items[0].Longitude != longitude || body.TotalEstimate != 1 || body.NextCursor == nil || *body.NextCursor != "next-signed" || body.AppliedFilters["city_id"] != city.String() || body.AppliedFilters["free_only"] != true {
+	if len(body.Items) != 1 || body.Items[0].ID != eventID || body.Items[0].PriceFromMinor == nil || *body.Items[0].PriceFromMinor != 0 || body.Items[0].DistanceM == nil || *body.Items[0].DistanceM != distance || body.Items[0].Latitude == nil || *body.Items[0].Latitude != latitude || body.Items[0].Longitude == nil || *body.Items[0].Longitude != longitude || body.TotalEstimate == nil || *body.TotalEstimate != 1 || body.NextCursor == nil || *body.NextCursor != "next-signed" || body.AppliedFilters["city_id"] != city.String() || body.AppliedFilters["free_only"] != true {
 		t.Fatalf("response = %#v", body)
+	}
+}
+
+func TestSearchIncludeTotalFalseReturnsNullAndCountEndpointCounts(t *testing.T) {
+	user, city := uuid.New(), uuid.New()
+	provider := &fakeSearchProvider{total: 17}
+	cities := &fakeSearchCities{city: city}
+	res := serveSearch(provider, cities, &user, "/api/v1/events/search?include_total=false&q=%D1%84%D0%B8%D0%BB%D1%8C%D0%BC%D1%8B")
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"total_estimate":null`) {
+		t.Fatalf("search response = %d %s", res.Code, res.Body.String())
+	}
+	if provider.filter.IncludeTotal || len(provider.filter.GenreSlugs) != 1 || provider.filter.GenreSlugs[0] != "cinema" {
+		t.Fatalf("search filter = %#v", provider.filter)
+	}
+	handler := NewSearchHandler(provider, cities)
+	router := httpapi.NewRouter(nil, slog.Default(), func(r chi.Router) { r.Get("/api/v1/events/search/count", handler.CountEvents) })
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/events/search/count?q=%D1%82%D0%B5%D0%B0%D1%82%D1%80%D0%B0", nil)
+	request = request.WithContext(contracts.WithPrincipal(request.Context(), contracts.Principal{UserID: user}))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"total":17}`+"\n" || len(provider.filter.GenreSlugs) != 1 || provider.filter.GenreSlugs[0] != "theatre" {
+		t.Fatalf("count response = %d %s, filter=%#v", recorder.Code, recorder.Body.String(), provider.filter)
+	}
+}
+
+func TestGenreMappingRequiresGenreOnlyQuery(t *testing.T) {
+	genre := "концерты"
+	if got := genreSlugsForQuery(&genre); len(got) != 1 || got[0] != "concerts" {
+		t.Fatalf("genre-only query = %v", got)
+	}
+	mixed := "концерты джаз"
+	if got := genreSlugsForQuery(&mixed); len(got) != 0 {
+		t.Fatalf("mixed query must not match every concert: %v", got)
+	}
+}
+
+func TestCountRejectsPaginationParameters(t *testing.T) {
+	user, city := uuid.New(), uuid.New()
+	handler := NewSearchHandler(&fakeSearchProvider{}, &fakeSearchCities{city: city})
+	router := httpapi.NewRouter(nil, slog.Default(), func(r chi.Router) { r.Get("/api/v1/events/search/count", handler.CountEvents) })
+	for _, suffix := range []string{"?cursor=old", "?limit=24", "?include_total=false"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/events/search/count"+suffix, nil)
+		request = request.WithContext(contracts.WithPrincipal(request.Context(), contracts.Principal{UserID: user}))
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d", suffix, response.Code)
+		}
 	}
 }
 

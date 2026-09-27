@@ -2,7 +2,24 @@
 -- Generated sqlc methods are consumed by internal/discovery.
 
 -- name: SearchDiscoveryEventCards :many
-WITH base AS (
+WITH search_candidates AS (
+    SELECT e.id FROM events e WHERE sqlc.narg('query')::text IS NULL
+    UNION
+    SELECT e.id FROM events e WHERE e.title ILIKE '%' || sqlc.narg('query')::text || '%'
+       OR e.title % sqlc.narg('query')::text
+    UNION
+    SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || sqlc.narg('query')::text || '%'
+       OR e.subtitle % sqlc.narg('query')::text
+    UNION
+    SELECT e.id FROM events e WHERE e.description ILIKE '%' || sqlc.narg('query')::text || '%'
+    UNION
+    SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
+      WHERE v.name ILIKE '%' || sqlc.narg('query')::text || '%'
+         OR v.name % sqlc.narg('query')::text
+    UNION
+    SELECT ec.event_id AS id FROM event_categories ec
+      WHERE ec.category_slug = ANY(sqlc.arg('genre_slugs')::text[])
+), base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at, e.timezone, e.price_from_minor,
            e.currency, v.name AS venue_name, v.latitude, v.longitude,
            e.starts_at AT TIME ZONE e.timezone AS local_starts_at,
@@ -13,16 +30,12 @@ WITH base AS (
                     power(sin(radians(v.longitude - sqlc.narg('longitude')::double precision) / 2), 2)
                 ))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
+    JOIN search_candidates sc ON sc.id = e.id
     WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
       AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 ), filtered AS (
     SELECT b.* FROM base b
-    WHERE (sqlc.narg('query')::text IS NULL OR
-           (setweight(to_tsvector('simple', b.title || ' ' || coalesce(b.subtitle, '') || ' ' || b.venue_name), 'A') ||
-           setweight(to_tsvector('simple', b.description), 'C')) @@ websearch_to_tsquery('simple', sqlc.narg('query')::text) OR
-           similarity(concat_ws(' ', b.title, b.subtitle, b.venue_name), sqlc.narg('query')::text) > 0.1 OR
-           concat_ws(' ', b.title, b.subtitle, b.venue_name, b.description) ILIKE '%' || sqlc.narg('query')::text || '%')
-      AND (sqlc.narg('date_from')::date IS NULL OR b.local_starts_at::date >= sqlc.narg('date_from')::date)
+    WHERE (sqlc.narg('date_from')::date IS NULL OR b.local_starts_at::date >= sqlc.narg('date_from')::date)
       AND (sqlc.narg('date_to')::date IS NULL OR b.local_starts_at::date <= sqlc.narg('date_to')::date)
       AND (cardinality(sqlc.arg('day_types')::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY(sqlc.arg('day_types')::text[]))
       AND (cardinality(sqlc.arg('time_slots')::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY(sqlc.arg('time_slots')::text[]))
@@ -31,8 +44,8 @@ WITH base AS (
       AND (NOT sqlc.arg('free_only')::boolean OR b.price_from_minor = 0)
       AND (sqlc.narg('distance_meters')::integer IS NULL OR b.distance_m <= sqlc.narg('distance_meters')::integer)
       AND (sqlc.narg('bounds_west')::double precision IS NULL OR
-           ((sqlc.narg('bounds_west')::double precision < sqlc.narg('bounds_east')::double precision AND b.longitude BETWEEN sqlc.narg('bounds_west')::double precision AND sqlc.narg('bounds_east')::double precision) OR
-            (sqlc.narg('bounds_west')::double precision > sqlc.narg('bounds_east')::double precision AND (b.longitude >= sqlc.narg('bounds_west')::double precision OR b.longitude <= sqlc.narg('bounds_east')::double precision))))
+           ((sqlc.narg('bounds_west')::double precision < sqlc.narg('bounds_east')::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN sqlc.narg('bounds_west')::double precision AND sqlc.narg('bounds_east')::double precision) OR
+            (sqlc.narg('bounds_west')::double precision > sqlc.narg('bounds_east')::double precision AND b.latitude IS NOT NULL AND (b.longitude >= sqlc.narg('bounds_west')::double precision OR b.longitude <= sqlc.narg('bounds_east')::double precision))))
       AND (sqlc.narg('bounds_south')::double precision IS NULL OR b.latitude BETWEEN sqlc.narg('bounds_south')::double precision AND sqlc.narg('bounds_north')::double precision)
       AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 )
@@ -51,18 +64,33 @@ ORDER BY f.starts_at, f.id
 LIMIT sqlc.arg('limit_count');
 
 -- name: CountDiscoveryEventCards :one
-WITH base AS (
+WITH search_candidates AS (
+    SELECT e.id FROM events e WHERE sqlc.narg('query')::text IS NULL
+    UNION
+    SELECT e.id FROM events e WHERE e.title ILIKE '%' || sqlc.narg('query')::text || '%'
+       OR e.title % sqlc.narg('query')::text
+    UNION
+    SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || sqlc.narg('query')::text || '%'
+       OR e.subtitle % sqlc.narg('query')::text
+    UNION
+    SELECT e.id FROM events e WHERE e.description ILIKE '%' || sqlc.narg('query')::text || '%'
+    UNION
+    SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
+      WHERE v.name ILIKE '%' || sqlc.narg('query')::text || '%'
+         OR v.name % sqlc.narg('query')::text
+    UNION
+    SELECT ec.event_id AS id FROM event_categories ec
+      WHERE ec.category_slug = ANY(sqlc.arg('genre_slugs')::text[])
+), base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name, v.latitude, v.longitude,
            CASE WHEN sqlc.narg('latitude')::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - sqlc.narg('latitude')::double precision) / 2), 2) + cos(radians(sqlc.narg('latitude')::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - sqlc.narg('longitude')::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
+    JOIN search_candidates sc ON sc.id = e.id
     WHERE v.city_id = sqlc.arg('city_id') AND e.status = 'published'
       AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 )
 SELECT count(*)::integer FROM base b
-WHERE (sqlc.narg('query')::text IS NULL OR
-       (setweight(to_tsvector('simple', b.title || ' ' || coalesce(b.subtitle, '') || ' ' || b.venue_name), 'A') || setweight(to_tsvector('simple', b.description), 'C')) @@ websearch_to_tsquery('simple', sqlc.narg('query')::text) OR
-       similarity(concat_ws(' ', b.title, b.subtitle, b.venue_name), sqlc.narg('query')::text) > 0.1 OR concat_ws(' ', b.title, b.subtitle, b.venue_name, b.description) ILIKE '%' || sqlc.narg('query')::text || '%')
-  AND (sqlc.narg('date_from')::date IS NULL OR b.local_starts_at::date >= sqlc.narg('date_from')::date) AND (sqlc.narg('date_to')::date IS NULL OR b.local_starts_at::date <= sqlc.narg('date_to')::date)
+WHERE (sqlc.narg('date_from')::date IS NULL OR b.local_starts_at::date >= sqlc.narg('date_from')::date) AND (sqlc.narg('date_to')::date IS NULL OR b.local_starts_at::date <= sqlc.narg('date_to')::date)
   AND (cardinality(sqlc.arg('day_types')::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY(sqlc.arg('day_types')::text[]))
   AND (cardinality(sqlc.arg('time_slots')::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY(sqlc.arg('time_slots')::text[]))
   AND (cardinality(sqlc.arg('category_slugs')::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY(sqlc.arg('category_slugs')::text[])))

@@ -92,15 +92,16 @@ type ProviderSyncRun struct {
 }
 
 type User struct {
-	ID              uuid.UUID
-	MaxUserID       int64
-	DisplayName     string
-	AvatarUrl       pgtype.Text
-	CityID          pgtype.UUID
-	Locale          string
-	OnboardingState string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                        uuid.UUID
+	MaxUserID                 int64
+	DisplayName               string
+	AvatarUrl                 pgtype.Text
+	CityID                    pgtype.UUID
+	Locale                    string
+	OnboardingState           string
+	CreatedAt                 pgtype.Timestamptz
+	UpdatedAt                 pgtype.Timestamptz
+	DailyNotificationsEnabled bool
 }
 
 type Venue struct {

@@ -132,6 +132,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/search/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Подсчитать события по фильтрам поиска */
+        get: operations["countSearchEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/map": {
         parameters: {
             query?: never;
@@ -590,8 +607,11 @@ export interface components {
             applied_filters: {
                 [key: string]: unknown;
             };
-            total_estimate: number;
+            total_estimate: number | null;
             next_cursor: string | null;
+        };
+        EventSearchCountResponse: {
+            total: number;
         };
         EventMapResponse: {
             items: (components["schemas"]["EventMapPoint"] | components["schemas"]["EventMapCluster"])[];
@@ -1183,8 +1203,10 @@ export interface operations {
     searchEvents: {
         parameters: {
             query?: {
-                /** @description Поиск по названию, описанию и площадке */
+                /** @description Поиск по названию, описанию, площадке и жанру; поддерживаются близкие написания */
                 q?: string;
+                /** @description При false total_estimate возвращается как null */
+                include_total?: boolean;
                 /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
                 date_from?: string;
@@ -1220,6 +1242,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventSearchResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    countSearchEvents: {
+        parameters: {
+            query?: {
+                q?: string;
+                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                city_id?: components["parameters"]["CityId"];
+                date_from?: string;
+                date_to?: string;
+                day_types?: components["schemas"]["DayType"][];
+                time_slots?: components["schemas"]["TimeSlot"][];
+                category_slugs?: components["schemas"]["CategorySlug"][];
+                price_max_minor?: number;
+                distance_m?: number;
+                lat?: number;
+                lng?: number;
+                free_only?: boolean;
+                west?: number;
+                south?: number;
+                east?: number;
+                north?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Точное количество подходящих событий */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSearchCountResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];

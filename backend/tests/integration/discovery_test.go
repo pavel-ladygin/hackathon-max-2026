@@ -39,7 +39,10 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 	}
 	for i, eventID := range events {
 		starts := created.Add(time.Duration(i) * time.Hour)
-		if _, err := db.Exec(ctx, `INSERT INTO events (id,source,external_id,is_demo,title,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_available,status,published_at) VALUES ($1,'test',$2,false,$3,$4,$5,$6,'UTC',$7,'RUB',true,'published',$6)`, eventID, eventID.String(), "Test event "+eventID.String(), "searchable deterministic event", venue, starts, i*100); err != nil {
+		titles := []string{"Jazz event", "Cinema event", "Theatre event"}
+		subtitles := []string{"Morning", "Evening", "Night"}
+		descriptions := []string{"alpha", "mosaic", "beta"}
+		if _, err := db.Exec(ctx, `INSERT INTO events (id,source,external_id,is_demo,title,subtitle,description,venue_id,starts_at,timezone,price_from_minor,currency,ticket_available,status,published_at) VALUES ($1,'test',$2,false,$3,$4,$5,$6,$7,'UTC',$8,'RUB',true,'published',$7)`, eventID, eventID.String(), titles[i], subtitles[i], descriptions[i], venue, starts, i*100); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := db.Exec(ctx, `INSERT INTO event_categories (event_id,category_slug,is_primary) VALUES ($1,'concerts',true)`, eventID); err != nil {
@@ -53,7 +56,7 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := discovery.NewService(repository, codec)
-	filter := discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 2}
+	filter := discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 2, IncludeTotal: true}
 	first, err := service.Search(ctx, filter)
 	if err != nil {
 		t.Fatal(err)
@@ -81,11 +84,46 @@ func TestDiscoverySearchCursorIsExclusiveAndStable(t *testing.T) {
 	if err != nil || len(repeat.Items) != 2 || repeat.Items[0].ID != first.Items[0].ID || repeat.Items[1].ID != first.Items[1].ID {
 		t.Fatalf("repeat = %+v, err=%v", repeat, err)
 	}
+	fastFilter := filter
+	fastFilter.Cursor = nil
+	fastFilter.IncludeTotal = false
+	fast, err := service.Search(ctx, fastFilter)
+	if err != nil || len(fast.Items) != 2 || fast.NextCursor == nil {
+		t.Fatalf("fast page = %+v, err=%v", fast, err)
+	}
+	total, err := service.Count(ctx, fastFilter)
+	if err != nil || total != 3 {
+		t.Fatalf("separate count = %d, err=%v", total, err)
+	}
+	for _, tc := range []struct {
+		query      string
+		genreSlugs []string
+		want       []uuid.UUID
+	}{
+		{query: "Jazz", want: []uuid.UUID{events[0]}},
+		{query: "Ja", want: []uuid.UUID{events[0]}},
+		{query: "Jaz event", want: []uuid.UUID{events[0]}},
+		{query: "Evening", want: []uuid.UUID{events[1]}},
+		{query: "mosaic", want: []uuid.UUID{events[1]}},
+		{query: "Test venue", want: events},
+		{query: "Концерты", genreSlugs: []string{"concerts"}, want: events},
+	} {
+		searchFilter := discovery.SearchFilter{UserID: user, CityID: city, Query: &tc.query, GenreSlugs: tc.genreSlugs, Limit: 5}
+		page, searchErr := service.Search(ctx, searchFilter)
+		if searchErr != nil || len(page.Items) != len(tc.want) {
+			t.Fatalf("query %q: page=%+v, err=%v", tc.query, page, searchErr)
+		}
+		for i, want := range tc.want {
+			if page.Items[i].ID != want {
+				t.Fatalf("query %q: item %d = %s, want %s", tc.query, i, page.Items[i].ID, want)
+			}
+		}
+	}
 
 	if _, err := db.Exec(ctx, `UPDATE events SET provider_active=false WHERE id=$1`, events[1]); err != nil {
 		t.Fatal(err)
 	}
-	activeOnly, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 5})
+	activeOnly, err := service.Search(ctx, discovery.SearchFilter{UserID: user, CityID: city, CategorySlugs: []string{"concerts"}, Limit: 5, IncludeTotal: true})
 	if err != nil || activeOnly.Total != 2 || len(activeOnly.Items) != 2 || activeOnly.Items[0].ID != events[0] || activeOnly.Items[1].ID != events[2] {
 		t.Fatalf("active-only discovery = %+v, err=%v", activeOnly, err)
 	}

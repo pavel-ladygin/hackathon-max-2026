@@ -21,6 +21,10 @@ type Reader interface {
 	Get(context.Context, uuid.UUID, uuid.UUID, *Location) (Detail, error)
 }
 
+type Counter interface {
+	Count(context.Context, SearchFilter) (int, error)
+}
+
 // Service normalizes input and owns cursor/filter compatibility. It has no HTTP
 // dependency so future feed, search and detail handlers can share it.
 type Service struct {
@@ -46,6 +50,17 @@ func (s *Service) Search(ctx context.Context, filter SearchFilter) (Page, error)
 	}
 	page.NextCursor.FilterHash = filterHash
 	return page, nil
+}
+
+func (s *Service) Count(ctx context.Context, filter SearchFilter) (int, error) {
+	if err := normalizeFilter(&filter); err != nil {
+		return 0, err
+	}
+	reader, ok := s.repository.(Counter)
+	if !ok {
+		return 0, errors.New("discovery repository does not support counting")
+	}
+	return reader.Count(ctx, filter)
 }
 
 // SearchMapPage shares search validation and cursor compatibility while using
@@ -116,6 +131,7 @@ func normalizeFilter(filter *SearchFilter) error {
 		"concerts", "cinema", "theatre", "standup", "exhibitions", "sports", "food", "parties", "festivals", "walks", "other"); !ok {
 		return ErrInvalidFilter
 	}
+	filter.GenreSlugs = normalizedStrings(filter.GenreSlugs)
 	if filter.Query != nil {
 		query := strings.TrimSpace(*filter.Query)
 		if utf8.RuneCountInString(query) > 120 {
@@ -182,16 +198,16 @@ func timeSlot(hour int) string {
 
 func hashFilter(filter SearchFilter) string {
 	type fingerprint struct {
-		User, City, Query       string
-		DateFrom, DateTo        string
-		Days, Slots, Categories []string
-		Price                   *int32
-		Free                    bool
-		Location                *Location
-		Distance                *int32
-		Bounds                  *Bounds
+		User, City, Query               string
+		DateFrom, DateTo                string
+		Days, Slots, Categories, Genres []string
+		Price                           *int32
+		Free                            bool
+		Location                        *Location
+		Distance                        *int32
+		Bounds                          *Bounds
 	}
-	item := fingerprint{User: filter.UserID.String(), City: filter.CityID.String(), Days: filter.DayTypes, Slots: filter.TimeSlots, Categories: filter.CategorySlugs, Price: filter.PriceMaxMinor, Free: filter.FreeOnly, Location: filter.Location, Distance: filter.DistanceMeters}
+	item := fingerprint{User: filter.UserID.String(), City: filter.CityID.String(), Days: filter.DayTypes, Slots: filter.TimeSlots, Categories: filter.CategorySlugs, Genres: filter.GenreSlugs, Price: filter.PriceMaxMinor, Free: filter.FreeOnly, Location: filter.Location, Distance: filter.DistanceMeters}
 	item.Bounds = filter.Bounds
 	if filter.Query != nil {
 		item.Query = *filter.Query

@@ -17,7 +17,7 @@ func TestExpectedVersionsIncludesFoundation(t *testing.T) {
 	if len(versions) < len(want) || !slices.Equal(versions[:len(want)], want) {
 		t.Fatalf("foundation versions = %v, want prefix %v", versions, want)
 	}
-	if versions[len(versions)-1] != 21 {
-		t.Fatalf("latest migration version = %d, want 21", versions[len(versions)-1])
+	if versions[len(versions)-1] != 22 {
+		t.Fatalf("latest migration version = %d, want 22", versions[len(versions)-1])
 	}
 }

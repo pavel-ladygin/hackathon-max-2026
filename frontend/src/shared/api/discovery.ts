@@ -24,7 +24,8 @@ export interface DiscoverySearchParams {
 
 export interface DiscoveryApi {
   getHomeFeed(params?: Record<string, string | number | undefined>): Promise<{ feed_id: string; generated_at: string; sections: Array<Omit<HomeFeedResponseDto['sections'][number], 'items'> & { items: Event[] }>; activeRoom: HomeFeedResponseDto['active_room']; roomClosedNotice: HomeFeedResponseDto['room_closed_notice'] }>
-  searchEvents(params?: DiscoverySearchParams): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number; nextCursor: string | null }>
+  searchEvents(params?: DiscoverySearchParams, signal?: AbortSignal): Promise<{ items: Event[]; appliedFilters: Record<string, unknown>; totalEstimate: number | null; nextCursor: string | null }>
+  getSearchCount(params?: Omit<DiscoverySearchParams, 'limit' | 'cursor'>, signal?: AbortSignal): Promise<number>
   getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>): Promise<Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event } | (Omit<Extract<EventMapItemDto, { kind: 'cluster' }>, 'members'> & { members: Array<{ kind: 'event'; id: string; longitude: number; latitude: number; event: Event }> })>>
   getEvent(eventId: string): Promise<Detail>
   recordBehavior(events: AnalyticsEvent[], keepalive?: boolean): Promise<{ accepted: number; duplicates: number; rejected: number }>
@@ -54,11 +55,18 @@ export function createHttpDiscoveryApi(request: RequestFn): DiscoveryApi {
       const response = await request<HomeFeedResponseDto>(`/feed/home${query.size ? `?${query}` : ''}`)
       return { ...response, sections: response.sections.map((section) => ({ ...section, items: section.items.map(mapEvent) })), activeRoom: response.active_room, roomClosedNotice: response.room_closed_notice }
     },
-    async searchEvents(params = {}) {
+    async searchEvents(params = {}, signal) {
       const query = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, Array.isArray(value) ? value.join(',') : String(value))
-      const response = await request<EventSearchResponseDto>(`/events/search${query.size ? `?${query}` : ''}`)
+      query.set('include_total', 'false')
+      const response = await request<EventSearchResponseDto>(`/events/search?${query}`, { signal })
       return { items: response.items.map(mapEvent), appliedFilters: response.applied_filters, totalEstimate: response.total_estimate, nextCursor: response.next_cursor }
+    },
+    async getSearchCount(params = {}, signal) {
+      const query = new URLSearchParams()
+      for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, Array.isArray(value) ? value.join(',') : String(value))
+      const response = await request<{ total: number }>(`/events/search/count${query.size ? `?${query}` : ''}`, { signal })
+      return response.total
     },
     async getMapEvents(params) {
       const query = new URLSearchParams()

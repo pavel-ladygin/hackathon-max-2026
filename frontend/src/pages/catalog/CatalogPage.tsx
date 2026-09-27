@@ -1,7 +1,7 @@
 import { lazy, Suspense, startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
-import { useEventSearch, useSetSavedEvent } from '../../features/discovery/queries'
+import { useEventSearch, useEventSearchCount, useSetSavedEvent } from '../../features/discovery/queries'
 import type { CategorySlug } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
@@ -32,9 +32,10 @@ export function CatalogPage() {
   const params = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, limit: 24 }), [dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
   const mapFilters = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined }), [dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
   const results = useEventSearch(params, view === 'list')
+  const searchCount = useEventSearchCount(mapFilters, view === 'list' && Boolean(results.data?.pages[0]) && !results.isPlaceholderData)
   const save = useSetSavedEvent()
   const events = results.data?.pages.flatMap((page) => page.items) ?? []
-  const totalEstimate = results.data?.pages[0]?.totalEstimate ?? 0
+  const shownTotal = results.data?.pages[0]?.totalEstimate ?? (searchCount.isSuccess ? searchCount.data : null)
   const activeFilterCount = selected.length + (freeOnly ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (price < 10_000 ? 1 : 0)
   const filterSnapshot = JSON.stringify({ selected, freeOnly, dateFrom, dateTo, price })
   const previousFilters = useRef(filterSnapshot)
@@ -51,8 +52,8 @@ export function CatalogPage() {
   useEffect(() => {
     if (!results.data || !normalizedQuery || trackedSearch.current === normalizedQuery) return
     trackedSearch.current = normalizedQuery
-    track('search_performed', { properties: { query_length: normalizedQuery.length, result_count: totalEstimate } })
-  }, [normalizedQuery, results.data, totalEstimate])
+    track('search_performed', { properties: { query_length: normalizedQuery.length, ...(shownTotal !== null ? { result_count: shownTotal } : {}) } })
+  }, [normalizedQuery, results.data, shownTotal])
 
   useEffect(() => {
     if (previousFilters.current === filterSnapshot) return
@@ -62,9 +63,9 @@ export function CatalogPage() {
       ...(price < 10_000 ? { budget_max: price } : {}),
       ...(dateFrom ? { date_from: dateFrom } : {}),
       ...(dateTo ? { date_to: dateTo } : {}),
-      result_count: totalEstimate,
+      ...(shownTotal !== null ? { result_count: shownTotal } : {}),
     } })
-  }, [activeFilterCount, dateFrom, dateTo, filterSnapshot, freeOnly, price, selected, totalEstimate])
+  }, [activeFilterCount, dateFrom, dateTo, filterSnapshot, freeOnly, price, selected, shownTotal])
 
   useEffect(() => {
     if (view === 'map') track('map_opened')
@@ -111,7 +112,7 @@ export function CatalogPage() {
         <div className={styles.sectionHead}><h2>События на карте</h2></div>
         <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap filters={mapFilters} /></Suspense>
       </> : results.isPending ? <ScreenSkeleton variant="cards" inline label="Загружаем события…" /> : results.isError ? <Empty inline title="Поиск недоступен" description="Проверьте соединение и попробуйте ещё раз." action={<Button onClick={() => void results.refetch()}>Повторить</Button>} /> : events.length === 0 ? <Empty inline title="Ничего не нашли" description="Попробуйте убрать фильтр или изменить запрос." /> : <>
-        <div className={styles.sectionHead}><h2>События</h2><span className={styles.eyebrow}>{totalEstimate} найдено</span></div>
+        <div className={styles.sectionHead}><h2>События</h2>{shownTotal !== null ? <span className={styles.eyebrow}>{shownTotal} найдено</span> : null}</div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key="list" initial={{ opacity: 0, y: reduceMotion ? 0 : 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 0 }} transition={{ duration: reduceMotion ? 0 : .2, ease: 'easeOut' }}><div className={styles.eventGrid}>{events.map((event, index) => <EventImpression key={event.id} event={event} listType="search" position={index + 1} className={styles.catalogItem}><EventCard className={styles.eventCardWithSave} event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), fallbackImage: eventImageFallback(event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} /><FavoriteButton size="card" className={styles.saveButton} selected={event.saved} pending={save.isPending} label={event.saved ? `Убрать «${event.title}» из сохранённых` : `Сохранить «${event.title}»`} onToggle={() => save.mutate({ eventId: event.id, saved: !event.saved })} /></EventImpression>)}</div></motion.div>
         </AnimatePresence>

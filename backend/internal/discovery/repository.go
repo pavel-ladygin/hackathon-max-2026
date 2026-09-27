@@ -78,11 +78,13 @@ func (r *Repository) Search(ctx context.Context, filter SearchFilter) (page Page
 			page.NextCursor = &Cursor{StartsAt: last.StartsAt, EventID: last.ID}
 			page.Items = page.Items[:filter.Limit]
 		}
-		total, err := queries.CountDiscoveryEventCards(ctx, countParams(filter))
-		if err != nil {
-			return err
+		if filter.IncludeTotal {
+			total, err := queries.CountDiscoveryEventCards(ctx, countParams(filter))
+			if err != nil {
+				return err
+			}
+			page.Total = int(total)
 		}
-		page.Total = int(total)
 		return nil
 	})
 	return page, err
@@ -110,6 +112,18 @@ func (r *Repository) SearchMapPage(ctx context.Context, filter SearchFilter) (pa
 	return page, err
 }
 
+func (r *Repository) Count(ctx context.Context, filter SearchFilter) (total int, err error) {
+	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		count, countErr := platform.New(tx).CountDiscoveryEventCards(ctx, countParams(filter))
+		if countErr != nil {
+			return countErr
+		}
+		total = int(count)
+		return nil
+	})
+	return total, err
+}
+
 func (r *Repository) Get(ctx context.Context, userID, eventID uuid.UUID, location *Location) (detail Detail, err error) {
 	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		queries := platform.New(tx)
@@ -135,7 +149,7 @@ func (r *Repository) Get(ctx context.Context, userID, eventID uuid.UUID, locatio
 }
 
 func searchParams(filter SearchFilter, limit int) platform.SearchDiscoveryEventCardsParams {
-	params := platform.SearchDiscoveryEventCardsParams{UserID: filter.UserID, LimitCount: int32(limit), CityID: filter.CityID, Query: optionalText(filter.Query), DateFrom: optionalDate(filter.DateFrom), DateTo: optionalDate(filter.DateTo), DayTypes: filter.DayTypes, TimeSlots: filter.TimeSlots, CategorySlugs: filter.CategorySlugs, PriceMaxMinor: optionalInt4(filter.PriceMaxMinor), FreeOnly: filter.FreeOnly, DistanceMeters: optionalInt4(filter.DistanceMeters)}
+	params := platform.SearchDiscoveryEventCardsParams{UserID: filter.UserID, LimitCount: int32(limit), CityID: filter.CityID, Query: optionalText(filter.Query), DateFrom: optionalDate(filter.DateFrom), DateTo: optionalDate(filter.DateTo), DayTypes: filter.DayTypes, TimeSlots: filter.TimeSlots, CategorySlugs: filter.CategorySlugs, GenreSlugs: filter.GenreSlugs, PriceMaxMinor: optionalInt4(filter.PriceMaxMinor), FreeOnly: filter.FreeOnly, DistanceMeters: optionalInt4(filter.DistanceMeters)}
 	if filter.Bounds != nil {
 		params.BoundsWest = pgtype.Float8{Float64: filter.Bounds.West, Valid: true}
 		params.BoundsSouth = pgtype.Float8{Float64: filter.Bounds.South, Valid: true}
@@ -152,7 +166,7 @@ func searchParams(filter SearchFilter, limit int) platform.SearchDiscoveryEventC
 
 func countParams(filter SearchFilter) platform.CountDiscoveryEventCardsParams {
 	latitude, longitude := locationValues(filter.Location)
-	params := platform.CountDiscoveryEventCardsParams{CityID: filter.CityID, Query: optionalText(filter.Query), DateFrom: optionalDate(filter.DateFrom), DateTo: optionalDate(filter.DateTo), DayTypes: filter.DayTypes, TimeSlots: filter.TimeSlots, CategorySlugs: filter.CategorySlugs, PriceMaxMinor: optionalInt4(filter.PriceMaxMinor), FreeOnly: filter.FreeOnly, DistanceMeters: optionalInt4(filter.DistanceMeters), Latitude: latitude, Longitude: longitude}
+	params := platform.CountDiscoveryEventCardsParams{CityID: filter.CityID, Query: optionalText(filter.Query), DateFrom: optionalDate(filter.DateFrom), DateTo: optionalDate(filter.DateTo), DayTypes: filter.DayTypes, TimeSlots: filter.TimeSlots, CategorySlugs: filter.CategorySlugs, GenreSlugs: filter.GenreSlugs, PriceMaxMinor: optionalInt4(filter.PriceMaxMinor), FreeOnly: filter.FreeOnly, DistanceMeters: optionalInt4(filter.DistanceMeters), Latitude: latitude, Longitude: longitude}
 	if filter.Bounds != nil {
 		params.BoundsWest = pgtype.Float8{Float64: filter.Bounds.West, Valid: true}
 		params.BoundsSouth = pgtype.Float8{Float64: filter.Bounds.South, Valid: true}

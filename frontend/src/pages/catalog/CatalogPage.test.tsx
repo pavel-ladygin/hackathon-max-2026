@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPage } from './CatalogPage'
 
 const searchCalls: Array<Record<string, unknown>> = []
+const countCalls: Array<{ params: Record<string, unknown>; enabled: boolean }> = []
 const defaultResult = {
-  data: { pages: [{ items: [{ id: 'event-1', title: 'Jazz evening', imageUrl: null, category_slug: 'concerts' as const, date_label: 'Сегодня', venue_name: 'Club', price_label: 'Бесплатно', saved: false }], totalEstimate: 1 }] },
+  data: { pages: [{ items: [{ id: 'event-1', title: 'Jazz evening', imageUrl: null, category_slug: 'concerts' as const, date_label: 'Сегодня', venue_name: 'Club', price_label: 'Бесплатно', saved: false }], totalEstimate: null as number | null }] },
   isPending: false,
   isFetching: false,
   isFetchingNextPage: false,
@@ -15,11 +16,16 @@ const defaultResult = {
   refetch: vi.fn(),
 }
 let resultState: Omit<typeof defaultResult, 'data'> & { data: typeof defaultResult.data | undefined } = defaultResult
+let countState: { data: number | undefined; isSuccess: boolean } = { data: 1, isSuccess: true }
 
 vi.mock('../../features/discovery/queries', () => ({
   useEventSearch: (params: Record<string, unknown>) => {
     searchCalls.push(params)
     return resultState
+  },
+  useEventSearchCount: (params: Record<string, unknown>, enabled: boolean) => {
+    countCalls.push({ params, enabled })
+    return countState
   },
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
@@ -34,7 +40,9 @@ describe('CatalogPage search', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     searchCalls.length = 0
+    countCalls.length = 0
     resultState = defaultResult
+    countState = { data: 1, isSuccess: true }
   })
 
   afterEach(() => {
@@ -48,6 +56,20 @@ describe('CatalogPage search', () => {
     for (const label of ['Концерты', 'Кино', 'Театр', 'Стендап', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']) {
       expect(within(group).getByRole('button', { name: label })).toBeInTheDocument()
     }
+  })
+
+  it('shows cards before the separate exact count finishes', () => {
+    resultState = { ...defaultResult, data: { pages: [{ ...defaultResult.data.pages[0], totalEstimate: null }] } }
+    countState = { data: undefined, isSuccess: false }
+    const view = renderCatalog()
+
+    expect(screen.getByText('Jazz evening')).toBeInTheDocument()
+    expect(screen.queryByText(/найдено/)).not.toBeInTheDocument()
+    expect(countCalls.at(-1)?.enabled).toBe(true)
+
+    countState = { data: 42, isSuccess: true }
+    view.rerender(<MemoryRouter><CatalogPage /></MemoryRouter>)
+    expect(screen.getByText('42 найдено')).toBeInTheDocument()
   })
 
   it('debounces and trims search text before passing q to the query', () => {

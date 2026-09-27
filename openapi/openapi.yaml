@@ -237,7 +237,13 @@ paths:
         schema:
           type: string
           maxLength: 120
-        description: Поиск по названию, описанию и площадке
+        description: Поиск по названию, описанию, площадке и жанру; поддерживаются близкие написания
+      - name: include_total
+        in: query
+        schema:
+          type: boolean
+          default: true
+        description: При false total_estimate возвращается как null
       - $ref: '#/components/parameters/CityId'
       - name: date_from
         in: query
@@ -324,6 +330,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventSearchResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /events/search/count:
+    get:
+      tags: [Discovery]
+      operationId: countSearchEvents
+      summary: Подсчитать события по фильтрам поиска
+      parameters:
+      - name: q
+        in: query
+        schema: {type: string, maxLength: 120}
+      - $ref: '#/components/parameters/CityId'
+      - name: date_from
+        in: query
+        schema: {type: string, format: date}
+      - name: date_to
+        in: query
+        schema: {type: string, format: date}
+      - name: day_types
+        in: query
+        schema:
+          type: array
+          items: {$ref: '#/components/schemas/DayType'}
+        style: form
+        explode: false
+      - name: time_slots
+        in: query
+        schema:
+          type: array
+          items: {$ref: '#/components/schemas/TimeSlot'}
+        style: form
+        explode: false
+      - name: category_slugs
+        in: query
+        schema:
+          type: array
+          items: {$ref: '#/components/schemas/CategorySlug'}
+        style: form
+        explode: false
+      - name: price_max_minor
+        in: query
+        schema: {type: integer, minimum: 0}
+      - name: distance_m
+        in: query
+        schema: {type: integer, minimum: 100, maximum: 50000}
+      - name: lat
+        in: query
+        schema: {type: number, minimum: -90, maximum: 90}
+      - name: lng
+        in: query
+        schema: {type: number, minimum: -180, maximum: 180}
+      - name: free_only
+        in: query
+        schema: {type: boolean, default: false}
+      - name: west
+        in: query
+        schema: {type: number, minimum: -180, maximum: 180}
+      - name: south
+        in: query
+        schema: {type: number, minimum: -90, maximum: 90}
+      - name: east
+        in: query
+        schema: {type: number, minimum: -180, maximum: 180}
+      - name: north
+        in: query
+        schema: {type: number, minimum: -90, maximum: 90}
+      responses:
+        '200':
+          description: Точное количество подходящих событий
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventSearchCountResponse'}
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1513,12 +1593,21 @@ components:
           type: object
           additionalProperties: true
         total_estimate:
-          type: integer
+          type:
+          - integer
+          - 'null'
           minimum: 0
         next_cursor:
           type:
           - string
           - 'null'
+    EventSearchCountResponse:
+      type: object
+      required: [total]
+      properties:
+        total:
+          type: integer
+          minimum: 0
     EventMapResponse:
       type: object
       required: [items]

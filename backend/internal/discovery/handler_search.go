@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ import (
 // SearchProvider is the discovery capability used by the search transport.
 type SearchProvider interface {
 	Search(context.Context, SearchFilter) (Page, error)
+	Count(context.Context, SearchFilter) (int, error)
 	EncodeNextCursor(Cursor) (string, error)
 	DecodeCursor(string, SearchFilter) (Cursor, error)
 }
@@ -45,6 +47,7 @@ func NewSearchHandler(service SearchProvider, cities SearchCityReader) *SearchHa
 
 func (h *SearchHandler) RegisterRoutes(r chi.Router, authenticate func(http.Handler) http.Handler) {
 	r.With(authenticate).Get("/api/v1/events/search", h.SearchEvents)
+	r.With(authenticate).Get("/api/v1/events/search/count", h.CountEvents)
 	r.With(authenticate).Get("/api/v1/events/map", h.MapEvents)
 }
 
@@ -103,6 +106,16 @@ func searchInput(ctx context.Context, r *http.Request, userID uuid.UUID, cities 
 	if filter.Query, err = stringQuery(query, "q"); err != nil {
 		return SearchFilter{}, ErrInvalidFilter
 	}
+	filter.GenreSlugs = genreSlugsForQuery(filter.Query)
+	filter.IncludeTotal = true
+	if raw, present := queryValue(query, "include_total"); !present && query["include_total"] != nil {
+		return SearchFilter{}, ErrInvalidFilter
+	} else if present {
+		filter.IncludeTotal, err = strconv.ParseBool(raw)
+		if err != nil {
+			return SearchFilter{}, ErrInvalidFilter
+		}
+	}
 	if filter.DateFrom, err = dateQuery(query, "date_from"); err != nil {
 		return SearchFilter{}, ErrInvalidFilter
 	}
@@ -157,6 +170,73 @@ func searchInput(ctx context.Context, r *http.Request, userID uuid.UUID, cities 
 		filter.Cursor = &cursor
 	}
 	return filter, nil
+}
+
+// CountEvents returns the exact number of events matching the search filters.
+func (h *SearchHandler) CountEvents(w http.ResponseWriter, r *http.Request) {
+	principal, ok := contracts.PrincipalFromContext(r.Context())
+	if !ok {
+		writeSearchError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Authentication required")
+		return
+	}
+	if q := r.URL.Query(); q.Has("cursor") || q.Has("limit") || q.Has("include_total") {
+		writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event count request")
+		return
+	}
+	filter, err := searchInput(r.Context(), r, principal.UserID, h.cities, h.service)
+	if err != nil {
+		if errors.Is(err, ErrInvalidFilter) || errors.Is(err, ErrInvalidCursor) || errors.Is(err, pgx.ErrNoRows) {
+			writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event search request")
+			return
+		}
+		writeSearchError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+		return
+	}
+	total, err := h.service.Count(r.Context(), filter)
+	if err != nil {
+		if errors.Is(err, ErrInvalidFilter) {
+			writeSearchError(w, r, http.StatusBadRequest, "VALIDATION_FAILED", "Invalid event search request")
+			return
+		}
+		writeSearchError(w, r, http.StatusInternalServerError, "INTERNAL", "Internal server error")
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, api.EventSearchCountResponse{Total: total})
+}
+
+func genreSlugsForQuery(query *string) []string {
+	if query == nil {
+		return nil
+	}
+	// Match Russian case endings commonly used in natural-language searches.
+	// Typo tolerance remains the SQL worker's responsibility.
+	text := strings.ToLower(strings.TrimSpace(*query))
+	tokens := strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	if len(tokens) != 1 {
+		return nil
+	}
+	matched := map[string]bool{}
+	for _, token := range tokens {
+		for stem, slugs := range map[string][]string{
+			"музык": {"concerts"}, "концерт": {"concerts"}, "кино": {"cinema"}, "фильм": {"cinema"},
+			"театр": {"theatre"}, "спектакл": {"theatre"}, "стендап": {"standup"}, "выставк": {"exhibitions"},
+			"спорт": {"sports"}, "футбол": {"sports"}, "еда": {"food"}, "гастроном": {"food"},
+			"вечеринк": {"parties"}, "клуб": {"parties"}, "фестивал": {"festivals"}, "прогулк": {"walks"},
+			"экскурс": {"walks"},
+		} {
+			if strings.HasPrefix(token, stem) {
+				for _, slug := range slugs {
+					matched[slug] = true
+				}
+			}
+		}
+	}
+	result := make([]string, 0, len(matched))
+	for slug := range matched {
+		result = append(result, slug)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func boundsQuery(query map[string][]string) (*Bounds, error) {
@@ -642,7 +722,10 @@ func locationQuery(query map[string][]string) (*Location, error) {
 }
 
 func searchResponse(page Page, filter SearchFilter, service SearchProvider) (api.EventSearchResponse, error) {
-	response := api.EventSearchResponse{Items: make([]api.EventCard, len(page.Items)), AppliedFilters: appliedFilters(filter), TotalEstimate: page.Total, NextCursor: nullable.NewNullNullable[string]()}
+	response := api.EventSearchResponse{Items: make([]api.EventCard, len(page.Items)), AppliedFilters: appliedFilters(filter), TotalEstimate: nullable.NewNullNullable[int](), NextCursor: nullable.NewNullNullable[string]()}
+	if filter.IncludeTotal {
+		response.TotalEstimate = nullable.NewNullableWithValue(page.Total)
+	}
 	for index, card := range page.Items {
 		response.Items[index] = homeCard(card)
 		if card.Latitude != nil && card.Longitude != nil {
