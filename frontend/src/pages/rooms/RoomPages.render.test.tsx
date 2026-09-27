@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RoomFlowPage } from './RoomPages'
+import { availableDates } from '../../features/rooms/relaxation'
 
 const mocks = vi.hoisted(() => ({
   events: undefined as any,
@@ -91,6 +92,7 @@ describe('room vote card transition', () => {
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
+    expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
     expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
@@ -113,6 +115,7 @@ describe('room vote card transition', () => {
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: /до 2\s?500 ₽/ }))
+    expect(screen.getByRole('button', { name: /до 2\s?500 ₽/ })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
     expect(screen.getByText('Лимит стоимости увеличится до 2 500 ₽.')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
@@ -121,6 +124,31 @@ describe('room vote card transition', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       budget_max_minor: 250_000,
+    }))
+  })
+
+  it('requires choosing and reviewing a concrete date before saving it', async () => {
+    mocks.room = recoveryRoom()
+    const selectedDate = availableDates(mocks.room.myIntent.dates, [], new Date())[0]
+    renderRecoveryRoom()
+
+    fireEvent.click(screen.getByRole('button', { name: /Добавить дату/ }))
+    const choices = screen.getByRole('heading', { name: 'Выберите дату' }).parentElement
+    const dateChip = choices?.querySelector('button')
+    expect(dateChip).toBeTruthy()
+    expect(dateChip).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Проверить изменение' })).toBeDisabled()
+
+    fireEvent.click(dateChip!)
+    expect(dateChip).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    expect(screen.getByRole('heading', { name: 'Проверьте изменение' })).toBeInTheDocument()
+    expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и обновить' }))
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
+      dates: expect.arrayContaining([selectedDate]),
     }))
   })
 })

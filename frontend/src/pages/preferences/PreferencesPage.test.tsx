@@ -41,7 +41,8 @@ describe('PreferencesPage daily notifications', () => {
     fireEvent.click(toggle)
 
     await waitFor(() => expect(mocks.updateNotifications).toHaveBeenCalledWith({ daily_notifications_enabled: true }))
-    expect(screen.getByRole('status')).toHaveTextContent('Настройка сохранена.')
+    await waitFor(() => expect(toggle).toBeChecked())
+    expect(screen.queryByText('Настройка сохранена.')).not.toBeInTheDocument()
     expect(mocks.replacePreferences).not.toHaveBeenCalled()
   })
 
@@ -51,7 +52,7 @@ describe('PreferencesPage daily notifications', () => {
     const toggle = screen.getByRole('switch', { name: /ежедневные идеи от бота/i })
     fireEvent.click(toggle)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить настройку уведомлений')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось изменить уведомления')
     expect(toggle).not.toBeChecked()
   })
 })

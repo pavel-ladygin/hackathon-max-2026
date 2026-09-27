@@ -66,8 +66,7 @@
 .suggestion small { display: block; margin-top: 4px; color: #8e806f; }
 .dateChoices { margin-top: 16px; }
 .dateChoices h3 { margin: 0 0 8px; font-size: 14px; }
-.recoveryChoiceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 288px; overflow-y: auto; }
-.recoveryChoiceGrid .suggestion { min-height: 50px; margin: 0; }
+.recoveryChoiceGrid { display: flex; min-width: 0; flex-wrap: wrap; align-items: flex-start; gap: 8px; max-height: 288px; overflow-y: auto; overscroll-behavior: contain; }
 .center { text-align: center; }
 .narrow { max-width: 640px; margin: 0 auto; }
 .searchLabel { display: block; margin: 8px 0; font-size: 12px; font-weight: 800; }

@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
 import { apiClient } from '../../shared/api/client'
 import { track, trackClientError, trackFailure, trackPerformance } from '../../shared/analytics/client'
@@ -11,9 +11,17 @@ import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Empty, EventImage, FavoriteButton, InlineNotice, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
 
-export function EventPage() {
+export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => void } = {}) {
   const { eventId } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
+  const sharedEventEntry = (location.state as { sharedEventEntry?: boolean } | null)?.sharedEventEntry === true
+  const goBack = () => {
+    if (sharedEventEntry) {
+      onLeaveSharedEvent?.()
+      navigate('/', { replace: true })
+    } else navigate(-1)
+  }
   const event = useEventDetail(eventId)
   const loadedEventId = event.data?.id
   const eventStartedAt = useRef<number | null>(null)
@@ -46,7 +54,7 @@ export function EventPage() {
   if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем событие…" />
   if (event.isError) {
     const notFound = event.error instanceof ApiError && event.error.code === 'NOT_FOUND'
-    return <Empty title={notFound ? 'Событие не найдено' : 'Не удалось загрузить событие'} description={notFound ? undefined : 'Проверьте соединение и попробуйте ещё раз.'} action={notFound ? <Button onClick={() => navigate('/')}>Вернуться в афишу</Button> : <Button state={event.isFetching ? 'loading' : 'idle'} onClick={() => void event.refetch()}>Повторить</Button>} />
+    return <Empty title={notFound ? 'Событие не найдено' : 'Не удалось загрузить событие'} description={notFound ? undefined : 'Проверьте соединение и попробуйте ещё раз.'} action={notFound ? <Button onClick={() => { if (sharedEventEntry) onLeaveSharedEvent?.(); navigate('/') }}>Вернуться в афишу</Button> : <Button state={event.isFetching ? 'loading' : 'idle'} onClick={() => void event.refetch()}>Повторить</Button>} />
   }
 
   const item = event.data
@@ -63,7 +71,7 @@ export function EventPage() {
   }
   return (
     <PageShell>
-      <div className={styles.eventTopBar}><TopBar spacious prominentBack title="Событие" onBack={() => navigate(-1)} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
+      <div className={styles.eventTopBar}><TopBar spacious prominentBack title="Событие" onBack={goBack} right={event.data ? <FavoriteButton size="action" selected={event.data.saved} pending={save.isPending} className={styles.detailSaveButton} label={event.data.saved ? 'Убрать из сохранённых' : 'Сохранить событие'} onToggle={() => save.mutate({ eventId: event.data.id, saved: !event.data.saved })} /> : null} /></div>
       <EventImage className={styles.detailHero} src={heroLarge} srcSet={heroSmall === heroLarge ? undefined : `${heroSmall} 640w, ${heroLarge} 1200w`} sizes="100vw" fallbackSrc={fallbackImage} alt={item.title} width="1200" height="720" loading="eager" fetchPriority="high" />
       <PageContent className={styles.narrow}>
         <p className={styles.eyebrow}>{eventCategoryLabel(item.category_slug)}</p>

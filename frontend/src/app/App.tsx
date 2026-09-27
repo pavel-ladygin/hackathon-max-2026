@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useBootstrap } from '../features/auth/useBootstrap'
 import { OpenInMaxPage } from '../pages/system/OpenInMaxPage'
@@ -34,9 +34,11 @@ function MaxBridgeReady() {
 function AppRoutes() {
   const location = useLocation()
   const appOpened = useRef(false)
+  const [sharedEventDismissed, setSharedEventDismissed] = useState(false)
   const bootStartedAt = useRef<number | null>(null)
   const bootFailure = useRef<unknown>(null)
   const bootstrap = useBootstrap()
+  const sharedEventId = bootstrap.data?.sharedEventId
   useEffect(() => { bootStartedAt.current = performance.now() }, [])
   useEffect(() => {
     if (bootstrap.isError && !bootFailure.current) bootFailure.current = bootstrap.error
@@ -64,9 +66,8 @@ function AppRoutes() {
   if (location.pathname === '/' && inviteContext?.token && !inviteContext.already_joined) {
     return <Navigate to={`/join/${encodeURIComponent(inviteContext.token)}`} replace />
   }
-  const sharedEventId = bootstrap.data.sharedEventId
-  if (location.pathname === '/' && sharedEventId) {
-    return <Navigate to={`/events/${encodeURIComponent(sharedEventId)}`} replace />
+  if (location.pathname === '/' && sharedEventId && !sharedEventDismissed) {
+    return <Navigate to={`/events/${encodeURIComponent(sharedEventId)}`} replace state={{ sharedEventEntry: true }} />
   }
 
   return (
@@ -77,7 +78,7 @@ function AppRoutes() {
       <Route path="/" element={<HomePage />} />
       <Route path="/events" element={<CatalogPage />} />
       <Route path="/catalog" element={<Navigate to="/events" replace />} />
-      <Route path="/events/:eventId" element={<EventPage />} />
+      <Route path="/events/:eventId" element={<EventPage onLeaveSharedEvent={() => setSharedEventDismissed(true)} />} />
       <Route path="/saved" element={<SavedPage />} />
       <Route path="/preferences" element={<PreferencesPage />} />
       <Route path="/rooms/new" element={<NewRoomPage />} />

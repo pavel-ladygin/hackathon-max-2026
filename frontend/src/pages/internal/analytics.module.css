@@ -18,7 +18,7 @@
 .intro p:not(.kicker) { margin: 0; color: #7c8490; font-size: 12px; }
 .updated { color: #a0a6af; font-size: 10px; line-height: 1.6; text-align: right; }
 .updated b { color: #626b78; font-size: 11px; font-weight: 650; }
-.metricsGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0 0 14px; }
+.metricsGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 14px; }
 .metricCard { display: flex; min-height: 132px; flex-direction: column; justify-content: center; gap: 10px; border: 1px solid #e8eaed; border-radius: 13px; padding: 18px 19px; background: #fff; box-shadow: 0 2px 5px #1a263408; }
 .metricCard > span { color: #737b87; font-size: 11px; font-weight: 650; }
 .metricCard strong { color: #242a34; font-size: clamp(22px, 2.5vw, 30px); font-weight: 750; letter-spacing: -.04em; line-height: 1; }

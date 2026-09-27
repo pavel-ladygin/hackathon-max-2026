@@ -92,30 +92,66 @@ func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 const dashboardQuery = `
-WITH daily AS (
- SELECT metric_date AS date, active_users, rooms_created, rooms_invite_shared, rooms_invite_opened,
-        rooms_joined, activated_rooms, rooms_matched, rooms_ticket_clicked,
-        room_creation_rate, invite_share_rate, invite_open_rate, invite_join_conversion,
-        room_activation_rate, match_rate, match_ticket_ctr,
-        extract(epoch FROM median_time_to_match)::double precision AS median_time_to_match_seconds,
-        extract(epoch FROM median_time_to_join)::double precision AS median_time_to_join_seconds,
-        extract(epoch FROM p75_time_to_join)::double precision AS p75_time_to_join_seconds,
-        extract(epoch FROM p90_time_to_join)::double precision AS p90_time_to_join_seconds,
-        median_swipes_to_match, second_room_rate_7d, second_room_rate_30d, recommendation_top10_like_rate,
-        (SELECT count(*) FROM analytics_room_metrics rm
-          WHERE (rm.created_at AT TIME ZONE 'UTC')::date = metric_date AND rm.match_shown) AS rooms_match_shown
- FROM analytics_daily_product_metrics
- WHERE metric_date >= (now() AT TIME ZONE 'UTC')::date - ($1::int - 1)
- ORDER BY metric_date
+WITH bounds AS (
+ SELECT (((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC') AS period_start,
+        (((now() AT TIME ZONE 'UTC')::date + 1)::timestamp AT TIME ZONE 'UTC') AS period_end
+), cohort AS (
+ SELECT f.*
+ FROM analytics_room_funnel_metrics f CROSS JOIN bounds b
+ WHERE f.created_at >= b.period_start AND f.created_at < b.period_end
+), room_daily AS (
+ SELECT (created_at AT TIME ZONE 'UTC')::date AS metric_date,
+        count(*)::bigint rooms_created,
+        count(*) FILTER (WHERE invite_confirmed)::bigint rooms_invite_shared,
+        count(*) FILTER (WHERE invite_opened)::bigint rooms_invite_opened,
+        count(*) FILTER (WHERE invite_confirmed AND joined)::bigint rooms_joined,
+        count(*) FILTER (WHERE invite_confirmed AND joined AND activated)::bigint activated_rooms,
+        count(*) FILTER (WHERE invite_confirmed AND joined AND activated AND matched)::bigint rooms_matched,
+        count(*) FILTER (WHERE invite_confirmed AND joined AND activated AND matched AND ticket_clicked)::bigint rooms_ticket_clicked,
+        count(*) FILTER (WHERE invite_confirmed AND joined AND activated AND matched AND match_event_opened)::bigint rooms_match_opened,
+        count(*) FILTER (WHERE match_shown)::bigint rooms_match_shown,
+        extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - activated_at)
+          FILTER (WHERE matched_at IS NOT NULL AND activated_at IS NOT NULL))::double precision median_time_to_match_seconds,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY swipe_count)
+          FILTER (WHERE matched_at IS NOT NULL)::double precision median_swipes_to_match
+ FROM cohort GROUP BY (created_at AT TIME ZONE 'UTC')::date
+), daily AS (
+ SELECT d.metric_date AS date, d.active_users,
+        coalesce(r.rooms_created, 0) AS rooms_created,
+        coalesce(r.rooms_invite_shared, 0) AS rooms_invite_shared,
+        coalesce(r.rooms_invite_opened, 0) AS rooms_invite_opened,
+        coalesce(r.rooms_joined, 0) AS rooms_joined,
+        coalesce(r.activated_rooms, 0) AS activated_rooms,
+        coalesce(r.rooms_matched, 0) AS rooms_matched,
+        coalesce(r.rooms_ticket_clicked, 0) AS rooms_ticket_clicked,
+        coalesce(r.rooms_match_opened, 0) AS rooms_match_opened,
+        d.room_creation_rate,
+        r.rooms_invite_shared::numeric / nullif(r.rooms_created,0) AS invite_share_rate,
+        r.rooms_invite_opened::numeric / nullif(r.rooms_invite_shared,0) AS invite_open_rate,
+        r.rooms_joined::numeric / nullif(r.rooms_invite_shared,0) AS invite_join_conversion,
+        r.activated_rooms::numeric / nullif(r.rooms_created,0) AS room_activation_rate,
+        r.rooms_matched::numeric / nullif(r.activated_rooms,0) AS match_rate,
+        r.rooms_ticket_clicked::numeric / nullif(r.rooms_matched,0) AS match_ticket_ctr,
+        r.median_time_to_match_seconds,
+        extract(epoch FROM d.median_time_to_join)::double precision AS median_time_to_join_seconds,
+        extract(epoch FROM d.p75_time_to_join)::double precision AS p75_time_to_join_seconds,
+        extract(epoch FROM d.p90_time_to_join)::double precision AS p90_time_to_join_seconds,
+        r.median_swipes_to_match, d.second_room_rate_7d, d.second_room_rate_30d,
+        d.recommendation_top10_like_rate, coalesce(r.rooms_match_shown, 0) AS rooms_match_shown
+ FROM analytics_daily_product_metrics d
+ LEFT JOIN room_daily r ON r.metric_date = d.metric_date
+ CROSS JOIN bounds b
+ WHERE d.metric_date >= (b.period_start AT TIME ZONE 'UTC')::date
+   AND d.metric_date < (b.period_end AT TIME ZONE 'UTC')::date
+ ORDER BY d.metric_date
 ), room_period AS (
- SELECT extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - first_joined_at)
-          FILTER (WHERE matched_at IS NOT NULL AND first_joined_at IS NOT NULL))::double precision median_time_to_match_seconds,
+ SELECT extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY matched_at - activated_at)
+          FILTER (WHERE matched_at IS NOT NULL AND activated_at IS NOT NULL))::double precision median_time_to_match_seconds,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY swipe_count)
           FILTER (WHERE matched_at IS NOT NULL)::double precision median_swipes_to_match,
         extract(epoch FROM percentile_cont(0.5) WITHIN GROUP (ORDER BY first_joined_at - created_at)
           FILTER (WHERE first_joined_at IS NOT NULL))::double precision median_time_to_join_seconds
- FROM analytics_room_metrics
- WHERE created_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC'
+ FROM cohort
 ), second_room_period AS (
  SELECT count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days' AND has_second_7d)::numeric /
           nullif(count(*) FILTER (WHERE cohort.created_at <= now() - interval '7 days'), 0) second_room_rate_7d,
@@ -129,40 +165,45 @@ WITH daily AS (
           EXISTS (SELECT 1 FROM analytics_room_metrics second
                   WHERE second.creator_user_id = first_room.creator_user_id AND second.created_at > first_room.created_at
                     AND second.created_at <= first_room.created_at + interval '30 days') has_second_30d
-   FROM analytics_room_metrics first_room
-   WHERE first_room.created_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC'
-     AND NOT EXISTS (SELECT 1 FROM analytics_room_metrics earlier
+   FROM cohort first_room
+   WHERE NOT EXISTS (SELECT 1 FROM analytics_room_metrics earlier
                      WHERE earlier.creator_user_id = first_room.creator_user_id
                        AND (earlier.created_at < first_room.created_at
                             OR (earlier.created_at = first_room.created_at AND earlier.room_id < first_room.room_id)))
  ) cohort
 ), daily_summary AS (
  SELECT (SELECT count(DISTINCT user_id) FROM analytics_events
-          WHERE occurred_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC') active_users,
-        coalesce(sum(rooms_created),0) rooms_created,
-        coalesce(sum(rooms_invite_shared),0) rooms_invite_shared, coalesce(sum(rooms_invite_opened),0) rooms_invite_opened,
-        coalesce(sum(rooms_joined),0) rooms_joined, coalesce(sum(activated_rooms),0) activated_rooms,
-        coalesce(sum(rooms_matched),0) rooms_matched, coalesce(sum(rooms_ticket_clicked),0) rooms_ticket_clicked,
+          WHERE occurred_at >= (SELECT period_start FROM bounds)
+            AND occurred_at < (SELECT period_end FROM bounds)) active_users,
+        coalesce(sum(rooms_created),0)::bigint rooms_created,
+        coalesce(sum(rooms_invite_shared),0)::bigint rooms_invite_shared,
+        coalesce(sum(rooms_invite_opened),0)::bigint rooms_invite_opened,
+        coalesce(sum(rooms_joined),0)::bigint rooms_joined,
+        coalesce(sum(activated_rooms),0)::bigint activated_rooms,
+        coalesce(sum(rooms_matched),0)::bigint rooms_matched,
+        coalesce(sum(rooms_ticket_clicked),0)::bigint rooms_ticket_clicked,
+        coalesce((SELECT sum(ticket_clicks) FROM cohort),0)::bigint ticket_clicks,
         sum(rooms_invite_shared)::numeric / nullif(sum(rooms_created),0) invite_share_rate,
         (SELECT count(DISTINCT creator_user_id)::numeric / nullif((SELECT count(DISTINCT user_id) FROM analytics_events
-          WHERE occurred_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC'),0)
-           FROM analytics_room_metrics
-          WHERE created_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC') room_creation_rate,
+          WHERE occurred_at >= (SELECT period_start FROM bounds) AND occurred_at < (SELECT period_end FROM bounds)),0)
+           FROM cohort) room_creation_rate,
         sum(rooms_invite_opened)::numeric / nullif(sum(rooms_invite_shared),0) invite_open_rate,
         sum(rooms_joined)::numeric / nullif(sum(rooms_invite_shared),0) invite_join_conversion,
         sum(activated_rooms)::numeric / nullif(sum(rooms_created),0) room_activation_rate,
         sum(rooms_matched)::numeric / nullif(sum(activated_rooms),0) match_rate,
-        (SELECT count(*) FILTER (WHERE match_shown AND ticket_clicked)::numeric /
-                nullif(count(*) FILTER (WHERE match_shown),0)
-           FROM analytics_room_metrics
-          WHERE created_at >= ((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC') match_ticket_ctr,
+        sum(rooms_matched)::numeric / nullif(sum(rooms_created),0) created_match_conversion,
+        sum(rooms_ticket_clicked)::numeric / nullif(sum(rooms_matched),0) match_ticket_ctr,
+        sum(rooms_match_opened)::numeric / nullif(sum(rooms_matched),0) match_event_open_ctr,
+        (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated AND NOT matched)::numeric /
+                 nullif(count(*) FILTER (WHERE activated),0) FROM cohort) no_match_rate,
+        (SELECT count(*) FILTER (WHERE state = 'exhausted' AND activated)::numeric /
+                 nullif(count(*) FILTER (WHERE activated),0) FROM cohort) pool_exhausted_rate,
         (SELECT median_time_to_match_seconds FROM room_period) median_time_to_match_seconds,
         (SELECT median_swipes_to_match FROM room_period) median_swipes_to_match,
         (SELECT median_time_to_join_seconds FROM room_period) median_time_to_join_seconds,
         (SELECT second_room_rate_7d FROM second_room_period) second_room_rate_7d,
         (SELECT second_room_rate_30d FROM second_room_period) second_room_rate_30d
- FROM analytics_daily_product_metrics
- WHERE metric_date >= (now() AT TIME ZONE 'UTC')::date - ($1::int - 1)
+ FROM daily
 ), rank_metrics AS (
  SELECT recommendation_rank AS rank, impressions, likes, opens, saves, matches, like_rate, open_rate, save_rate,
         match_rate, average_score_liked, average_score_disliked

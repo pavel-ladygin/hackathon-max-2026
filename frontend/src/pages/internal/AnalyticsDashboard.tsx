@@ -102,12 +102,16 @@ function AnalyticsDashboard() {
   }, [days, reload])
 
   const daily = useMemo(() => data?.daily ?? [], [data])
-  const totals = useMemo(() => ({ active: data?.summary?.active_users ?? 0, created: data?.summary?.rooms_created ?? 0, joined: data?.summary?.rooms_joined ?? 0, activated: data?.summary?.activated_rooms ?? 0, matched: data?.summary?.rooms_matched ?? 0, tickets: data?.summary?.rooms_ticket_clicked ?? 0 }), [data])
-  const matchRate = data?.summary?.match_rate ?? null
+  const summary = data?.summary
+  const totals = { active: summary?.active_users ?? 0, created: summary?.rooms_created ?? 0, invites: summary?.rooms_invite_shared ?? 0, joined: summary?.rooms_joined ?? 0, activated: summary?.activated_rooms ?? 0, matched: summary?.rooms_matched ?? 0, ticketRooms: summary?.rooms_ticket_clicked ?? 0, ticketClicks: summary?.ticket_clicks ?? summary?.rooms_ticket_clicked ?? 0 }
+  const activationRate = summary?.room_activation_rate ?? null
+  const matchRate = summary?.match_rate ?? null
+  const createdMatchConversion = summary?.created_match_conversion ?? null
+  const eventOpenCtr = summary?.match_event_open_ctr ?? null
   const ticketCtr = data?.summary?.match_ticket_ctr ?? null
   const weightedAgreement = data?.vote_agreement_summary?.agreement_rate ?? null
   const weightedRepeat = ratio(sumField((data?.repeat_exposure ?? []) as GenericRow[], 'repeat_impressions'), sumField((data?.repeat_exposure ?? []) as GenericRow[], 'impressions'))
-  const noData = !loading && !error && (daily.length === 0 || (totals.active + totals.created + totals.joined + totals.activated + totals.matched + totals.tickets === 0))
+  const noData = !loading && !error && (daily.length === 0 || (totals.active + totals.created + totals.joined + totals.activated + totals.matched + totals.ticketRooms === 0))
 
   return <main className={styles.page}>
     <header className={styles.header}><div className={styles.brand}><div className={styles.brandMark}>M</div><div><p>WORKNET <span>/ INTERNAL</span></p><h1>Продуктовая аналитика</h1></div></div><div className={styles.headerTools}><span className={styles.live}><i /> Данные PostgreSQL</span><div className={styles.period} aria-label="Период отчёта">{periodOptions.map((period) => <button key={period} aria-pressed={days === period} onClick={() => { setDays(period); setLoadingFor(period); setError('') }}>{period} дней</button>)}</div></div></header>
@@ -120,18 +124,22 @@ function AnalyticsDashboard() {
         <div className={styles.metricsGrid}>
           <MetricCard label="Активность" value={number(totals.active)} detail="уникальные активные пользователи за период" tone="accent" />
           <MetricCard label="Создано комнат" value={number(totals.created)} detail="за выбранный период" />
-          <MetricCard label="Комнаты активированы" value={number(totals.activated)} detail="оба участника проголосовали" />
-          <MetricCard label="Доля мэтчей" value={percent(matchRate)} detail={`${number(totals.matched)} комнат с мэтчем`} />
-          <MetricCard label="Переходы к билетам" value={number(totals.tickets)} detail={`CTR ${percent(ticketCtr)}`} />
+          <MetricCard label="Room Activation Rate" value={percent(activationRate)} detail={`${number(totals.activated)} из ${number(totals.created)} комнат · оба участника голосовали`} />
+          <MetricCard label="Activated Room Match Rate" value={percent(matchRate)} detail={`${number(totals.matched)} комнат с мэтчем / активированные`} />
+          <MetricCard label="Created → Match Conversion" value={percent(createdMatchConversion)} detail="комнаты с мэтчем / созданные комнаты" />
+          <MetricCard label="Match → Event Open CTR" value={percent(eventOpenCtr)} detail="комнаты с открытием события / комнаты с мэтчем" />
+          <MetricCard label="Ticket clicks" value={number(totals.ticketClicks)} detail={`${number(totals.ticketRooms)} комнат · Match → Ticket CTR ${percent(ticketCtr)}`} />
+          <MetricCard label="No-match rate" value={percent(summary?.no_match_rate)} detail="активированные комнаты, завершившиеся без мэтча" />
+          <MetricCard label="Pool exhausted rate" value={percent(summary?.pool_exhausted_rate)} detail="активированные комнаты с исчерпанным пулом" />
         </div>
         <div className={styles.mainGrid}>
           <Panel title="Динамика" hint="Активные пользователи и новые комнаты по дням" className={styles.trendPanel}>{daily.length && !noData ? <TrendChart rows={daily} /> : <Empty />}</Panel>
-          <Panel title="Воронка комнат" hint="Суммарно за период"><div className={styles.funnel}>{[
-            ['Созданы', totals.created], ['Приглашение отправлено', totalsBy(daily, 'rooms_invite_shared')], ['Участник вошёл', totals.joined], ['Комната активирована', totals.activated], ['Найден мэтч', totals.matched], ['Открыты билеты', totals.tickets],
+          <Panel title="Воронка комнат" hint="Уникальные комнаты когорты по дате создания · каждый этап включает предыдущие"><div className={styles.funnel}>{[
+            ['Комната создана', totals.created], ['Приглашение отправлено или использовано', totals.invites], ['Второй участник вошёл', totals.joined], ['Комната активирована', totals.activated], ['Найден мэтч', totals.matched], ['Переход к билетам', totals.ticketRooms],
           ].map(([label, value], index) => <div className={styles.funnelStep} key={label}><span className={styles.funnelIndex}>0{index + 1}</span><span>{label}</span><b>{number(value as number)}</b></div>)}</div></Panel>
         </div>
         <div className={styles.twoCol}>
-          <Panel title="Совместный выбор" hint="Медианы среди комнат, созданных за выбранный период"><div className={styles.statPair}><div><span>Время до мэтча</span><b>{duration(data?.summary?.median_time_to_match_seconds)}</b></div><div><span>Голосов до мэтча</span><b>{number(data?.summary?.median_swipes_to_match, 1)}</b></div><div><span>Время до входа</span><b>{duration(data?.summary?.median_time_to_join_seconds)}</b></div><div><span>Сходимость голосов</span><b>{percent(weightedAgreement)}</b></div></div></Panel>
+          <Panel title="Совместный выбор" hint="Медианы среди комнат, созданных за выбранный период"><div className={styles.statPair}><div><span>От активации до первого мэтча</span><b>{duration(data?.summary?.median_time_to_match_seconds)}</b></div><div><span>Уникальные события с голосом до мэтча</span><b>{number(data?.summary?.median_swipes_to_match, 1)}</b></div><div><span>Время до входа</span><b>{duration(data?.summary?.median_time_to_join_seconds)}</b></div><div><span>Сходимость голосов</span><b>{percent(weightedAgreement)}</b></div></div></Panel>
           <Panel title="Повторное использование" hint="По зрелым когортам первых комнат выбранного периода"><div className={styles.statPair}><div><span>Вторая комната · 7 дней</span><b>{percent(data?.summary?.second_room_rate_7d)}</b></div><div><span>Вторая комната · 30 дней</span><b>{percent(data?.summary?.second_room_rate_30d)}</b></div><div><span>Создано на пользователя</span><b>{percent(data?.summary?.room_creation_rate ?? averageRate(daily, 'room_creation_rate', 'rooms_created', 'active_users'))}</b></div><div><span>Повторные показы</span><b>{percent(weightedRepeat)}</b></div></div></Panel>
         </div>
         <div className={styles.twoCol}>
@@ -153,7 +161,6 @@ function AnalyticsDashboard() {
   </main>
 }
 
-function totalsBy(rows: DailyMetric[], key: keyof DailyMetric) { return rows.reduce((sum, row) => sum + (typeof row[key] === 'number' ? row[key] as number : 0), 0) }
 function sumField(rows: GenericRow[], key: string) { return rows.reduce((sum, row) => sum + (typeof row[key] === 'number' ? row[key] as number : 0), 0) }
 function aggregateCatalog(rows: GenericRow[]) {
   const totals = new Map<string, Record<string, number>>()
