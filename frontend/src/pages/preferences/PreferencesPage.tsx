@@ -10,6 +10,7 @@ import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, DayType, TimeSlot } from '../../shared/api/types'
 import { Button, Chip, ChipGroup, ErrorState, FieldError, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui'
 import styles from '../pages.module.css'
+import notificationStyles from './preferences.module.css'
 
 const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
 const categories: Array<[CategorySlug, string]> = [['concerts', 'Концерты'], ['cinema', 'Кино'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['sports', 'Спорт'], ['food', 'Еда'], ['parties', 'Вечеринки'], ['festivals', 'Фестивали'], ['walks', 'Прогулки'], ['other', 'Другое']]
@@ -56,15 +57,14 @@ export function PreferencesPage() {
   const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>
     <h1 className={styles.title}>Настройте афишу</h1><p className={styles.subtitle}>Эти параметры влияют на персональные рекомендации. Условия отдельной встречи задаются приватно в комнате.</p>
-    <section className={styles.formStack} aria-busy={saveNotifications.isPending}>
-      <label className={styles.fieldLabel} htmlFor="preferences-daily-notifications">
-        <span>Ежедневные идеи от бота</span>
-        <input id="preferences-daily-notifications" type="checkbox" role="switch" checked={dailyNotificationsEnabled} disabled={saveNotifications.isPending} onChange={(event) => { saveNotifications.reset(); saveNotifications.mutate(event.currentTarget.checked) }} />
-        <span className={styles.subtitle}>Одно короткое сообщение в день в 12:00 по Москве. Вы можете отключить его в любой момент.</span>
+    <section className={notificationStyles.card} aria-busy={saveNotifications.isPending}>
+      <label className={notificationStyles.option} htmlFor="preferences-daily-notifications">
+        <span className={notificationStyles.icon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+        <span className={notificationStyles.copy}><strong id="preferences-notifications-title">Ежедневные идеи от бота</strong><span>Короткое приглашение найти планы с друзьями · в 12:00 по Москве</span></span>
+        <span className={notificationStyles.hint} id="preferences-notifications-hint">Можно выключить в любой момент</span>
+        <input id="preferences-daily-notifications" className={notificationStyles.switch} type="checkbox" role="switch" aria-labelledby="preferences-notifications-title" aria-describedby="preferences-notifications-hint" checked={dailyNotificationsEnabled} disabled={saveNotifications.isPending} onChange={(event) => { saveNotifications.reset(); saveNotifications.mutate(event.currentTarget.checked) }} />
       </label>
-      {saveNotifications.isPending ? <p role="status">Сохраняем подписку…</p> : null}
-      {saveNotifications.isSuccess ? <p role="status">Настройка сохранена.</p> : null}
-      {saveNotifications.isError ? <p className={styles.error} role="alert">Не удалось сохранить настройку уведомлений. Попробуйте ещё раз.</p> : null}
+      {saveNotifications.isError ? <p className={notificationStyles.error} role="alert">Не удалось изменить уведомления. Попробуйте ещё раз.</p> : null}
     </section>
     <form className={styles.formStack} aria-busy={save.isPending} onSubmit={form.handleSubmit((values) => interests.length > 0 && save.mutate(values))}>
       <fieldset className={styles.fieldLabel} aria-invalid={interests.length === 0}><legend>Интересы</legend><ChipGroup>{categories.map(([value, label]) => <Chip key={value} selected={interests.includes(value)} onClick={() => setInterests((current) => toggle(current, value))}>{label}</Chip>)}</ChipGroup><FieldError id="preferences-interests-error">{interests.length === 0 ? 'Выберите хотя бы один интерес.' : null}</FieldError></fieldset>
