@@ -94,6 +94,8 @@
 .eventTopBar { padding: 0 12px; background: #fff; }
 .tabs { display: flex; gap: 8px; margin: 6px 0 22px; }
 .matchNote { display: block; margin: -3px 12px 10px; color: #8e806f; font-size: 11px; }
+.matchesGrid { row-gap: 16px; }
+.matchesGrid .matchNote { margin: 6px 12px 0; line-height: 1.4; }
 .fieldError { margin: -3px 0 0; color: #b42318; font-size: 11px; }
 
 @media (min-width: 768px) {

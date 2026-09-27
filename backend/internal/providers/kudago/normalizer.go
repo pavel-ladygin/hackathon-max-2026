@@ -2,7 +2,6 @@ package kudago
 
 import (
 	"fmt"
-	"html"
 	"math"
 	"net/url"
 	"strconv"
@@ -76,8 +75,8 @@ func normalizeEvents(events []eventDTO, actualSince, actualUntil time.Time) []pr
 }
 
 func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []providers.NormalizedEvent {
-	title := strings.TrimSpace(html.UnescapeString(event.Title))
-	if event.ID <= 0 || title == "" || event.Place == nil || strings.TrimSpace(event.Place.Title) == "" || !validCoordinates(event.Place.Coords) {
+	title := providers.CleanText(event.Title)
+	if event.ID <= 0 || title == "" || event.Place == nil || providers.CleanText(event.Place.Title) == "" || !validCoordinates(event.Place.Coords) {
 		return nil
 	}
 
@@ -136,8 +135,8 @@ func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []provid
 
 func normalizeVenue(place placeDTO) providers.NormalizedVenue {
 	venue := providers.NormalizedVenue{
-		Name:      strings.TrimSpace(place.Title),
-		Address:   strings.TrimSpace(place.Address),
+		Name:      providers.CleanText(place.Title),
+		Address:   providers.CleanText(place.Address),
 		Latitude:  place.Coords.Lat,
 		Longitude: place.Coords.Lon,
 		VenueType: "other",
@@ -145,7 +144,7 @@ func normalizeVenue(place placeDTO) providers.NormalizedVenue {
 	if place.ID > 0 {
 		venue.ExternalID = strconv.FormatInt(place.ID, 10)
 	}
-	if metro := strings.TrimSpace(place.Subway); metro != "" {
+	if metro := providers.CleanText(place.Subway); metro != "" {
 		venue.Metro = &metro
 	}
 	return venue
@@ -160,21 +159,21 @@ func validCoordinates(coords coordsDTO) bool {
 }
 
 func subtitle(event eventDTO) *string {
-	value := strings.TrimSpace(event.Tagline)
+	value := providers.CleanText(event.Tagline)
 	if value == "" {
-		value = strings.TrimSpace(event.ShortTitle)
+		value = providers.CleanText(event.ShortTitle)
 	}
-	if value == "" || value == strings.TrimSpace(event.Title) {
+	if value == "" || value == providers.CleanText(event.Title) {
 		return nil
 	}
 	return &value
 }
 
 func description(event eventDTO) string {
-	if value := strings.TrimSpace(event.BodyText); value != "" {
+	if value := providers.CleanText(event.BodyText); value != "" {
 		return value
 	}
-	return strings.TrimSpace(event.Description)
+	return providers.CleanText(event.Description)
 }
 
 func providerPageURL(raw string) *string {

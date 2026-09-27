@@ -2,7 +2,6 @@ package timepad
 
 import (
 	"fmt"
-	"html"
 	"math"
 	"net/url"
 	"regexp"
@@ -20,16 +19,16 @@ const (
 )
 
 func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
-	title := strings.TrimSpace(html.UnescapeString(event.Name))
+	title := providers.CleanText(event.Name)
 	startsAt, err := parseTime(event.StartsAt)
 	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed {
 		return providers.NormalizedEvent{}, false
 	}
 	registrationURL := ticketURL(event.URL)
 	status, providerActive := normalizeLifecycle(event)
-	venueName := strings.TrimSpace(event.Location.Address)
+	venueName := providers.CleanText(event.Location.Address)
 	if venueName == "" {
-		venueName = strings.TrimSpace(event.Organization.Name)
+		venueName = providers.CleanText(event.Organization.Name)
 	}
 	if venueName == "" {
 		venueName = "Москва"
@@ -42,12 +41,12 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		// Timepad's description_short is currently the only requested text
 		// source. Subtitle and Description are therefore aliases, not independent
 		// provider fields.
-		Subtitle:    optionalString(event.DescriptionShort),
-		Description: strings.TrimSpace(event.DescriptionShort),
+		Subtitle:    providers.CleanOptionalText(event.DescriptionShort),
+		Description: providers.CleanText(event.DescriptionShort),
 		Venue: providers.NormalizedVenue{
 			ExternalID: fmt.Sprintf("event:%d", event.ID),
 			Name:       venueName,
-			Address:    strings.TrimSpace(event.Location.Address),
+			Address:    providers.CleanText(event.Location.Address),
 			VenueType:  "other",
 		},
 		StartsAt:        startsAt,
