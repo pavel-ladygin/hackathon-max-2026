@@ -17,6 +17,7 @@ import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared
 import { apiClient } from '../../shared/api/client'
 import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, RoomIntentRequestDto, RoomSnapshot, VoteValue } from '../../shared/api/types'
+import { CATEGORY_OPTIONS, CATEGORY_SLUGS } from '../../shared/api/categories'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, EventImage, PageContent, PageShell, PrivacyNote, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
@@ -147,7 +148,7 @@ const intentSchema = z.object({
   dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату').max(14).refine((dates) => new Set(dates).size === dates.length && dates.every((date) => date >= localDate(new Date())), 'Выберите будущие даты без повторов'),
   day_types: z.array(z.enum(['weekday', 'weekend'])),
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
-  category_slugs: z.array(z.enum(['concerts', 'cinema', 'theatre', 'standup', 'exhibitions', 'sports', 'food', 'parties', 'festivals', 'walks', 'other'])).min(1),
+  category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1),
   budget: z.coerce.number().min(0).max(1_000_000),
   free_text: z.string().max(300),
 })
@@ -179,7 +180,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <ChoiceField title="Когда удобно" error={form.formState.errors.dates?.message} options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} />
         <ChoiceField title="Тип дня (необязательно)" error={form.formState.errors.day_types?.message} options={[['weekday', 'Будни'], ['weekend', 'Выходные']]} selected={dayTypes} onToggle={(value) => form.setValue('day_types', toggleValue(dayTypes, value as IntentForm['day_types'][number]), { shouldValidate: true })} />
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
-        <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={[['concerts', 'Концерты'], ['theatre', 'Театр'], ['standup', 'Стендап'], ['exhibitions', 'Выставки'], ['cinema', 'Кино'], ['food', 'Еда']]} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
+        <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={CATEGORY_OPTIONS.map(({ slug, label }) => [slug, label] as [CategorySlug, string])} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
         <label className={intentStyles.rangeField} htmlFor="room-budget">Бюджет · до {budget.toLocaleString('ru')} ₽<input id="room-budget" className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget')} />{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {Object.keys(form.formState.errors).length ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время и интересы.</p> : null}

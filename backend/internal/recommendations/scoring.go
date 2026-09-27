@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
@@ -17,18 +16,15 @@ import (
 const (
 	featureCategoryAffinity         = "category_affinity"
 	featureCurrentIntentCategoryFit = "current_intent_category_fit"
-	featureTimeQuality              = "time_quality"
 	featureBudgetHeadroom           = "budget_headroom"
 	featureDistanceQuality          = "distance_quality"
-	featureNovelty                  = "novelty"
-	featurePopularity               = "popularity"
+	featureBehavioralAffinity       = "behavioral_affinity"
 )
 
 type participantFeatures struct {
 	categoryAffinity, currentIntentCategoryFit float64
 	behavioralAffinity                         float64
-	timeQuality, budgetHeadroom                float64
-	distanceQuality, novelty, popularity       float64
+	budgetHeadroom, distanceQuality            float64
 }
 
 type rankedEvent struct {
@@ -55,11 +51,9 @@ func scoreEvent(event catalog.Event, venue platform.Venue, first, second normali
 	features := contracts.FeatureSnapshot{
 		featureCategoryAffinity:         (firstFeatures.categoryAffinity + secondFeatures.categoryAffinity) / 2,
 		featureCurrentIntentCategoryFit: (firstFeatures.currentIntentCategoryFit + secondFeatures.currentIntentCategoryFit) / 2,
-		featureTimeQuality:              (firstFeatures.timeQuality + secondFeatures.timeQuality) / 2,
 		featureBudgetHeadroom:           (firstFeatures.budgetHeadroom + secondFeatures.budgetHeadroom) / 2,
 		featureDistanceQuality:          (firstFeatures.distanceQuality + secondFeatures.distanceQuality) / 2,
-		featureNovelty:                  (firstFeatures.novelty + secondFeatures.novelty) / 2,
-		featurePopularity:               (firstFeatures.popularity + secondFeatures.popularity) / 2,
+		featureBehavioralAffinity:       (firstFeatures.behavioralAffinity + secondFeatures.behavioralAffinity) / 2,
 	}
 	return rankedEvent{
 		event:      event,
@@ -109,38 +103,21 @@ func featuresFor(event catalog.Event, venue platform.Venue, intent normalizedInt
 			distance = clamp01(1 - d/float64(intent.radius.meters))
 		}
 	}
-	timeQuality := boolFloat(len(intent.days) > 0 || len(intent.slots) > 0)
-	if timeQuality == 0 && profileTimeFit(event, intent.profile) {
-		timeQuality = .5
-	}
 	return participantFeatures{
 		categoryAffinity:         .5 * categoryFit(event, intent.profile.categories),
 		currentIntentCategoryFit: categoryFit(event, intent.categories),
 		behavioralAffinity:       behavioralCategoryFit(event, intent.behavior.categories),
-		timeQuality:              timeQuality,
 		budgetHeadroom:           headroom,
 		distanceQuality:          distance,
-		novelty:                  1,
 	}
-}
-
-func profileTimeFit(event catalog.Event, profile normalizedProfile) bool {
-	if !profile.present || (len(profile.days) == 0 && len(profile.slots) == 0) || !event.StartsAt.Valid {
-		return false
-	}
-	location, err := time.LoadLocation(event.Timezone)
-	if err != nil {
-		location = time.UTC
-	}
-	local := event.StartsAt.Time.In(location)
-	return (len(profile.days) == 0 || profile.days[dayType(local.Weekday())]) &&
-		(len(profile.slots) == 0 || profile.slots[timeSlot(local.Hour())])
 }
 
 func userScore(f participantFeatures) float64 {
-	return .30*f.categoryAffinity + .20*f.currentIntentCategoryFit + .15*f.timeQuality +
-		.15*f.budgetHeadroom + .10*f.distanceQuality + .05*f.novelty + .05*f.popularity +
-		.06*f.behavioralAffinity
+	// Normalize retained evidence weights (0.30 + 0.20 + 0.15 + 0.10 + 0.06)
+	// so scores remain on a 0..1 scale. Time preferences constrain eligibility;
+	// the old current-intent score was constant across eligible candidates.
+	return (.30*f.categoryAffinity + .20*f.currentIntentCategoryFit +
+		.15*f.budgetHeadroom + .10*f.distanceQuality + .06*f.behavioralAffinity) / .81
 }
 
 func behavioralCategoryFit(event catalog.Event, categories map[string]float64) float64 {
@@ -192,9 +169,6 @@ func explanations(event catalog.Event, first, second normalizedIntent, a, b part
 	if (a.categoryAffinity+b.categoryAffinity)/2 > 0 && len(result) < 3 {
 		result = append(result, contracts.Explanation{Code: "profile_affinity", Text: "Учитывает постоянные предпочтения"})
 	}
-	if a.timeQuality > 0 && b.timeQuality > 0 {
-		result = append(result, contracts.Explanation{Code: "time_fit", Text: "Подходит по времени"})
-	}
 	if (a.budgetHeadroom+b.budgetHeadroom)/2 >= .25 {
 		result = append(result, contracts.Explanation{Code: "budget_fit", Text: "Подходит по стоимости"})
 	}
@@ -230,12 +204,6 @@ func clamp01(value float64) float64 {
 		return 0
 	}
 	return math.Max(0, math.Min(1, value))
-}
-func boolFloat(value bool) float64 {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 func normalizeCategorySlug(value string) string { return strings.ToLower(strings.TrimSpace(value)) }

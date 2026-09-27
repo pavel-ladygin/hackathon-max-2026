@@ -62,13 +62,14 @@ fi
 
 "${compose[@]}" pull
 "${compose[@]}" run --rm migrate
-"${compose[@]}" up -d postgres backend frontend event-sync timepad-image-recovery
+"${compose[@]}" up -d postgres backend frontend event-sync daily-notifications timepad-image-recovery
 
 healthy=false
 for attempt in $(seq 1 30); do
   if curl --fail --silent --show-error "$PUBLIC_URL/api/v1/health/ready" >/dev/null \
     && curl --fail --silent --show-error "$PUBLIC_URL/" >/dev/null \
     && curl --fail --silent --show-error "$PUBLIC_URL/open/nonexistent-spa-route" >/dev/null \
+    && "${compose[@]}" ps --status running daily-notifications --format '{{.Names}}' | grep -q . \
     && analytics_auth_is_enforced; then
     healthy=true
     break
@@ -89,6 +90,6 @@ if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]]; then
   export BACKEND_IMAGE="$IMAGE_PREFIX/backend:$previous_sha"
   export FRONTEND_IMAGE="$IMAGE_PREFIX/frontend:$previous_sha"
   "${compose[@]}" pull
-  "${compose[@]}" up -d postgres backend frontend event-sync timepad-image-recovery || true
+  "${compose[@]}" up -d postgres backend frontend event-sync daily-notifications timepad-image-recovery || true
 fi
 exit 1

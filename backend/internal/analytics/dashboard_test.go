@@ -101,6 +101,23 @@ func TestDashboardDatabaseFailureDoesNotCache(t *testing.T) {
 	}
 }
 
+func TestDashboardQueryExposesRequestedFunnelMeasures(t *testing.T) {
+	for _, field := range []string{
+		"median_time_to_first_vote_seconds", "median_votes_to_match",
+		"rooms_without_second_participant", "rooms_without_second_participant_denominator",
+		"rooms_without_second_participant_rate", "ticket_transitions",
+		"match_ticket_transition_rate", "invite_open_rate_denominator",
+		"invite_join_denominator", "activation_denominator", "match_denominator",
+		"ticket_transition_denominator", "match_ticket_ctr_denominator",
+		"rooms_without_second_participant_rate_denominator", "second_room_7d_denominator",
+		"second_room_30d_denominator",
+	} {
+		if !strings.Contains(dashboardQuery, field) {
+			t.Errorf("dashboard SQL does not expose %q", field)
+		}
+	}
+}
+
 func TestDashboardDeadlineReturnsGatewayTimeout(t *testing.T) {
 	db := &fakeDB{err: context.DeadlineExceeded}
 	h := NewHandler(db)
@@ -137,7 +154,7 @@ func TestDashboardQueryAgainstPostgres(t *testing.T) {
 	if err := json.Unmarshal(payload, &result); err != nil {
 		t.Fatalf("decode dashboard JSON: %v", err)
 	}
-	for _, field := range []string{"rooms_created", "rooms_invite_shared", "rooms_joined", "activated_rooms", "rooms_matched", "rooms_ticket_clicked", "created_match_conversion", "match_event_open_ctr", "match_ticket_ctr", "no_match_rate"} {
+	for _, field := range []string{"rooms_created", "rooms_invite_shared", "rooms_joined", "activated_rooms", "rooms_matched", "rooms_ticket_clicked", "ticket_transitions", "created_match_conversion", "match_event_open_ctr", "match_ticket_ctr", "match_ticket_transition_rate", "no_match_rate", "median_time_to_first_vote_seconds", "median_swipes_to_match", "rooms_without_second_participant", "rooms_without_second_participant_denominator", "rooms_without_second_participant_rate", "room_creation_rate_denominator", "invite_open_denominator", "invite_join_denominator", "activation_denominator", "match_denominator", "ticket_transition_denominator", "no_match_denominator", "second_room_7d_denominator", "second_room_30d_denominator"} {
 		if _, ok := result.Summary[field]; !ok {
 			t.Errorf("summary is missing %s", field)
 		}

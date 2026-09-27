@@ -56,6 +56,74 @@ func TestImportParsesPosterImageReturnedByEventsList(t *testing.T) {
 	}
 }
 
+func TestImportPosterStoreLooksUpOnlyNewEventsAndCachesCanonicalPoster(t *testing.T) {
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	client := &Client{wait: func(context.Context) error { return nil }}
+	resolveCalls, fetchCalls := 0, 0
+	poster := providers.NormalizedImage{URL: "https://ucare.timepad.ru/recovered.jpg", Role: "card", Position: 0}
+	wrapper := &importPosterStore{
+		client: client, store: store, postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
+		resolveCanonicalID: func(_ context.Context, id int64, _ string) (int64, error) {
+			resolveCalls++
+			return 900, nil
+		},
+		fetchEventPoster: func(_ context.Context, id int64) ([]providers.NormalizedImage, error) {
+			fetchCalls++
+			return []providers.NormalizedImage{poster}, nil
+		},
+	}
+	cityID := uuid.New()
+	for _, id := range []string{"42", "43"} {
+		ticketURL := "https://timepad.ru/event/" + id
+		event := providers.NormalizedEvent{Source: timepadSource, ExternalID: id, TicketURL: &ticketURL}
+		result, err := wrapper.UpsertWithResult(context.Background(), cityID, event)
+		if err != nil || !result.Inserted {
+			t.Fatalf("first upsert result=%+v error=%v", result, err)
+		}
+	}
+	if resolveCalls != 2 || fetchCalls != 1 {
+		t.Fatalf("resolve calls=%d, fetch calls=%d, want 2 and 1", resolveCalls, fetchCalls)
+	}
+	if len(store.events) != 4 || len(store.events[1].Images) != 1 || store.events[1].Images[0] != poster || len(store.events[3].Images) != 1 || store.events[3].Images[0] != poster {
+		t.Fatalf("upserted events = %+v; expected initial records and recovered poster", store.events)
+	}
+	ticketURL := "https://timepad.ru/event/42"
+	_, err := wrapper.UpsertWithResult(context.Background(), cityID, providers.NormalizedEvent{
+		Source: timepadSource, ExternalID: "42", TicketURL: &ticketURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolveCalls != 2 || fetchCalls != 1 {
+		t.Fatalf("existing event triggered lookup: resolve calls=%d, fetch calls=%d", resolveCalls, fetchCalls)
+	}
+}
+
+func TestImportPosterLookupFailureDoesNotFailInsertedEvent(t *testing.T) {
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	client := &Client{wait: func(context.Context) error { return nil }}
+	var reported []error
+	ticketURL := "https://timepad.ru/event/44"
+	wrapper := &importPosterStore{
+		client: client, store: store, reportError: func(err error) { reported = append(reported, err) },
+		postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
+		resolveCanonicalID:   func(context.Context, int64, string) (int64, error) { return 0, fmt.Errorf("lookup failed") },
+		fetchEventPoster: func(context.Context, int64) ([]providers.NormalizedImage, error) {
+			t.Fatal("fetch should not run")
+			return nil, nil
+		},
+	}
+	result, err := wrapper.UpsertWithResult(context.Background(), uuid.New(), providers.NormalizedEvent{
+		Source: timepadSource, ExternalID: "44", TicketURL: &ticketURL,
+	})
+	if err != nil || !result.Inserted {
+		t.Fatalf("result=%+v error=%v, want successful insert", result, err)
+	}
+	if len(reported) != 1 || len(store.events) != 1 {
+		t.Fatalf("reported errors=%v persisted events=%d", reported, len(store.events))
+	}
+}
+
 func (s *memoryEventStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {
 	s.starts = append(s.starts, start)
 	return uuid.New(), nil
@@ -201,7 +269,7 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 
 func TestImportCancellationStopsPaginationWait(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"total":3,"values":[`+timepadImportEvent(10, "Москва")+`,`+timepadImportEvent(11, "Москва")+`]}`)
+		fmt.Fprint(w, `{"total":3,"values":[`+timepadImportEventWithoutTicketURL(10, "Москва")+`,`+timepadImportEventWithoutTicketURL(11, "Москва")+`]}`)
 	}))
 	defer server.Close()
 
@@ -230,6 +298,10 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 
 func timepadImportEvent(id int, city string) string {
 	return timepadImportEventAt(id, city, time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC))
+}
+
+func timepadImportEventWithoutTicketURL(id int, city string) string {
+	return strings.Replace(timepadImportEvent(id, city), fmt.Sprintf(`,"url":"https://timepad.ru/event/%d"`, id), "", 1)
 }
 
 func timepadImportEventAt(id int, city string, startsAt time.Time) string {

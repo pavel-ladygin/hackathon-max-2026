@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,7 +20,16 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 	if c == nil {
 		return ImportStats{}, errors.New("timepad client is required")
 	}
-	ingestion, err := providers.NewIngestion(cityID, store, reportError)
+	if store == nil {
+		return ImportStats{}, errors.New("provider event store is required")
+	}
+	posterStore := &importPosterStore{
+		client: c, store: store, reportError: reportError,
+		postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
+		resolveCanonicalID:   c.ResolveCanonicalEventID,
+		fetchEventPoster:     c.FetchEventPoster,
+	}
+	ingestion, err := providers.NewIngestion(cityID, posterStore, reportError)
 	if err != nil {
 		return ImportStats{}, err
 	}
@@ -87,6 +97,80 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 			return ingestion.Stats(), nil
 		}
 	}
+}
+
+// importPosterStore tries redirect poster recovery only after the normal upsert
+// confirms that the event is new. Timepad imports revisit the full horizon on
+// every run, so repeat syncs do not recheck existing image-less rows.
+type importPosterStore struct {
+	client               *Client
+	store                providers.EventStore
+	reportError          func(error)
+	postersByCanonicalID map[int64][]providers.NormalizedImage
+	resolveCanonicalID   func(context.Context, int64, string) (int64, error)
+	fetchEventPoster     func(context.Context, int64) ([]providers.NormalizedImage, error)
+}
+
+func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
+	result, err := s.store.UpsertWithResult(ctx, cityID, event)
+	if err != nil || !result.Inserted || !needsRedirectPosterLookup(event) {
+		return result, err
+	}
+	eventID, parseErr := strconv.ParseInt(event.ExternalID, 10, 64)
+	if parseErr != nil || eventID <= 0 {
+		s.report(fmt.Errorf("resolve timepad poster for event %q: invalid event ID", event.ExternalID))
+		return result, nil
+	}
+	if err := s.client.wait(ctx); err != nil {
+		return result, err
+	}
+	canonicalID, resolveErr := s.resolveCanonicalID(ctx, eventID, *event.TicketURL)
+	if resolveErr != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+		s.report(fmt.Errorf("resolve timepad poster for event %q: %w", event.ExternalID, resolveErr))
+		return result, nil
+	}
+	if canonicalID == 0 {
+		return result, nil
+	}
+	images, cached := s.postersByCanonicalID[canonicalID]
+	if !cached {
+		if err := s.client.wait(ctx); err != nil {
+			return result, err
+		}
+		images, err = s.fetchEventPoster(ctx, canonicalID)
+		if err != nil {
+			if ctx.Err() != nil {
+				return result, ctx.Err()
+			}
+			s.report(fmt.Errorf("fetch timepad poster for event %q: %w", event.ExternalID, err))
+			return result, nil
+		}
+		s.postersByCanonicalID[canonicalID] = images
+	}
+	if len(images) == 0 {
+		return result, nil
+	}
+	event.Images = images
+	if _, err := s.store.UpsertWithResult(ctx, cityID, event); err != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+		s.report(fmt.Errorf("persist recovered timepad poster for event %q: %w", event.ExternalID, err))
+	}
+	return result, nil
+}
+
+func (s *importPosterStore) report(err error) {
+	if s.reportError != nil {
+		s.reportError(err)
+	}
+}
+
+func needsRedirectPosterLookup(event providers.NormalizedEvent) bool {
+	return len(event.Images) == 0 && event.TicketURL != nil && strings.TrimSpace(*event.TicketURL) != ""
 }
 
 func isMoscowCity(city string) bool {

@@ -1,4 +1,6 @@
-export type CategorySlug = 'concerts' | 'cinema' | 'theatre' | 'standup' | 'exhibitions' | 'sports' | 'food' | 'parties' | 'festivals' | 'walks' | 'other'
+import type { components } from './generated/schema'
+
+export type CategorySlug = components['schemas']['CategorySlug']
 export type DayType = 'weekday' | 'weekend'
 export type TimeSlot = 'morning' | 'day' | 'evening' | 'night'
 export type VoteValue = 'like' | 'dislike'

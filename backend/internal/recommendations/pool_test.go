@@ -85,7 +85,7 @@ func TestPoolBuilderHardFiltersAndDeterministicOrdering(t *testing.T) {
 			t.Fatalf("candidate %s lacks ranking output: %+v", candidate.EventID, candidate)
 		}
 	}
-	if result.RankerVersion != "scoring-diversity-v5-unknown-price" {
+	if result.RankerVersion != "scoring-diversity-v6-behavioral" {
 		t.Fatalf("ranker version = %q", result.RankerVersion)
 	}
 	slices.Reverse(fake.snapshot.Events)

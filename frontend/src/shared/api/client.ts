@@ -24,7 +24,7 @@ export class ApiClient {
   async searchEvents(params: Record<string, string | number | boolean | string[] | undefined> = {}) { return this.discovery.searchEvents(params) }
   async getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>) { return this.discovery.getMapEvents(params) }
   async getEvent(eventId: string) { return this.discovery.getEvent(eventId) }
-  async recordBehavior(events: AnalyticsEvent[]) { return this.discovery.recordBehavior(events) }
+  async recordBehavior(events: AnalyticsEvent[], keepalive = false) { return this.discovery.recordBehavior(events, keepalive) }
   async setSaved(eventId: string, saved: boolean) { return this.discovery.setSaved(eventId, saved) }
   async getSaved(params: { tab?: 'saved' | 'matches'; limit?: number; cursor?: string } = {}) { return this.discovery.getSaved(params) }
   async createRoom(input: { name: string; city_id: string }, idempotencyKey = crypto.randomUUID()): Promise<{ room: ReturnType<typeof mapRoom>; invite: any }> { const x = await this.request<any>('/rooms', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) }); return { room: mapRoom(x.room), invite: x.invite } }

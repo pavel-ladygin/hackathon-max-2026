@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPage } from './CatalogPage'
@@ -39,6 +39,15 @@ describe('CatalogPage search', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows all API categories in the catalog filters', () => {
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    const group = screen.getByRole('group', { name: 'Категории' })
+    for (const label of ['Концерты', 'Кино', 'Театр', 'Стендап', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']) {
+      expect(within(group).getByRole('button', { name: label })).toBeInTheDocument()
+    }
   })
 
   it('debounces and trims search text before passing q to the query', () => {

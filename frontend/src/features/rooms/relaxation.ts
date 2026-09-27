@@ -1,13 +1,7 @@
 import type { CategorySlug, DayType, RoomIntentRequestDto, RoomSnapshot } from '../../shared/api/types'
+import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 
-export const RELAXATION_CATEGORIES: Array<{ slug: CategorySlug; label: string }> = [
-  { slug: 'concerts', label: 'Концерты' },
-  { slug: 'theatre', label: 'Театр' },
-  { slug: 'standup', label: 'Стендап' },
-  { slug: 'exhibitions', label: 'Выставки' },
-  { slug: 'cinema', label: 'Кино' },
-  { slug: 'food', label: 'Еда' },
-]
+export const RELAXATION_CATEGORIES = CATEGORY_OPTIONS
 
 const MAX_RELAXED_BUDGET_RUB = 10_000
 const BUDGET_STEP_RUB = 500

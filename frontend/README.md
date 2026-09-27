@@ -31,11 +31,11 @@ npm run dev
 
 ```dotenv
 VITE_API_BASE_URL=/api/v1
-VITE_TICKET_PROVIDER_ALLOWLIST=*.ru
+VITE_TICKET_PROVIDER_ALLOWLIST=kudago.com,*.kudago.com,timepad.ru,*.timepad.ru
 ```
 
 - Авторизация, bootstrap, preferences и health всегда отправляются в `VITE_API_BASE_URL`.
-- `VITE_TICKET_PROVIDER_ALLOWLIST` — frontend allowlist для покупки билетов. В production сейчас временно используется `*.ru`: это широкое правило по зоне домена, а не список доверенных билетных сервисов.
+- `VITE_TICKET_PROVIDER_ALLOWLIST` — frontend allowlist для перехода к провайдерам билетов. По умолчанию разрешены только KudaGo и Timepad, как и в backend. При добавлении нового доверенного билетного хоста обновите оба списка одновременно.
 - Переход выполняется только если URL одновременно разрешён frontend allowlist и backend `TICKET_PROVIDER_ALLOWLIST`. Списки должны быть синхронизированы; backend остаётся обязательной первой проверкой и источником доступных URL.
 
 `*.ru` — временный совместимый режим для неизвестных билетных провайдеров. Он допускает любой HTTPS-хост внутри зоны `.ru`, поэтому его нужно заменить на точные домены провайдеров, как только они определены. Правило проверяется по границе DNS-суффикса и не разрешает `example.ru.attacker.com`.
