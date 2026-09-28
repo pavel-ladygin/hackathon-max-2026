@@ -139,6 +139,7 @@ func (r *Repository) BeginSyncRun(ctx context.Context, start SyncRunStart) (uuid
 	created, err := platform.New(r.db).CreateProviderSyncRun(ctx, platform.CreateProviderSyncRunParams{
 		ID: runID, Provider: provider, CityID: start.CityID,
 		WindowStart: requiredTime(start.WindowStart), WindowEnd: requiredTime(start.WindowEnd),
+		ReconcileMissing: !start.UpsertOnly,
 	})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("create provider sync run: %w", err)
@@ -175,7 +176,7 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 			return nil
 		}
 
-		if finish.State == SyncRunSucceeded {
+		if finish.State == SyncRunSucceeded && run.ReconcileMissing {
 			newer, err := queries.HasNewerProviderSyncRun(ctx, platform.HasNewerProviderSyncRunParams{
 				Provider: run.Provider, CityID: run.CityID, StartedAt: run.StartedAt,
 			})
@@ -200,6 +201,11 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 			ErrorText: optionalTextValue(safeSyncErrorText(finish.ErrorText)),
 		}); err != nil {
 			return fmt.Errorf("complete provider sync run: %w", err)
+		}
+		if finish.State == SyncRunSucceeded || finish.Stats.Inserted+finish.Stats.Updated > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE event_sources SET mapping_locked=true WHERE source_key=$1`, run.Provider); err != nil {
+				return fmt.Errorf("lock source identity mapping: %w", err)
+			}
 		}
 		return nil
 	})

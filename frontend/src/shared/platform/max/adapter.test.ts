@@ -88,6 +88,22 @@ describe("MaxBridgeAdapterImpl navigation", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("opens only the exact same-origin Generic ticket route", async () => {
+    const eventId = "550e8400-e29b-41d4-a716-446655440000";
+    const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
+    const adapter = new MaxBridgeAdapterImpl();
+
+    await expect(adapter.openTicketLink(`/api/v1/events/${eventId}/ticket`)).resolves.toBe(true);
+    expect(open).toHaveBeenCalledWith(`${window.location.origin}/api/v1/events/${eventId}/ticket`, "_blank", "noopener,noreferrer");
+    for (const value of [
+      `https://attacker.example/api/v1/events/${eventId}/ticket`,
+      `/api/v1/events/${eventId}/ticket?url=https://attacker.example`,
+      `/api/v1/events/${eventId}/ticket/extra`,
+      "/api/v1/events/not-a-uuid/ticket",
+    ]) await expect(adapter.openTicketLink(value)).resolves.toBe(false);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   it("opens only exact max.ru links and rejects every other host without fallback", async () => {
     const openMaxLink = vi.fn().mockResolvedValue(undefined);
     const openLink = vi.fn();

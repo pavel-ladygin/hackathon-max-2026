@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providerpolicy"
 )
 
 // Config contains the configuration required to start a backend process.
@@ -61,7 +62,7 @@ func Load() (Config, error) {
 		TimepadTimeout:             30 * time.Second,
 		TimepadPageSize:            100,
 	}
-	cfg.TicketProviderAllowlist = append([]string{"kudago.com", "*.kudago.com", "timepad.ru", "*.timepad.ru"}, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
+	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
 		cfg.KudaGoBaseURL = value
 	}

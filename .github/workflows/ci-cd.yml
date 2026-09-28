@@ -57,11 +57,28 @@ jobs:
           TEST_DATABASE_URL: postgres://max_together:ci-only-password@127.0.0.1:5432/max_together_test?sslmode=disable
         run: |
           go run ./cmd/migrate
-          go test ./...
+          # Packages share one DB; credential fixtures intentionally use different keys.
+          go test -p 1 ./...
       - name: Vet
         run: go vet ./...
       - name: Build
         run: go build ./...
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install live browser dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Generic live browser acceptance
+        env:
+          TEST_DATABASE_URL: postgres://max_together:ci-only-password@127.0.0.1:5432/max_together_test?sslmode=disable
+          RUN_GENERIC_BROWSER_E2E: '1'
+        run: go test ./internal/eventsources -run '^TestGenericEventSourcesBrowserAgainstLiveHandler$' -count=1
+
 
   contract:
     name: OpenAPI contract
@@ -205,6 +222,8 @@ jobs:
           curl --fail --silent http://127.0.0.1:8081/ >/dev/null
           curl --fail --silent http://127.0.0.1:8081/api/v1/health/ready >/dev/null
           curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null
+      - name: Verify production internal namespace guards
+        run: bash deploy/test-internal-nginx.sh
       - name: Scan application images
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 
         with:

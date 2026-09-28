@@ -14,8 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalogseed"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/kudago"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/timepad"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
@@ -62,6 +64,19 @@ func run() error {
 	if err := migrations.CheckCurrent(ctx, db.Pool); err != nil {
 		return errors.New("event sync requires current migrations; run cmd/migrate first")
 	}
+	var sourceRepository *sourceconfig.Repository
+	secretCodec, err := sourceconfig.NewSecretCodec(cfg.InviteEncryptionKey, cfg.InviteEncryptionKeyVersion)
+	if err != nil {
+		logger.Warn("generic event sources disabled", "reason", "provider secret encryption key is not configured")
+	} else {
+		sourceRepository, err = sourceconfig.NewRepository(db, secretCodec)
+		if err != nil {
+			return err
+		}
+		if err := sourceRepository.CheckSecrets(ctx); err != nil {
+			return err
+		}
+	}
 
 	cityID := uuid.MustParse(catalogseed.MoscowCityID)
 	var cityExists bool
@@ -98,9 +113,25 @@ func run() error {
 	}
 
 	repository := providers.NewRepository(db)
+	var genericRunner *eventsources.Runner
+	if sourceRepository != nil {
+		genericRunner, err = eventsources.NewRunner(db, sourceRepository, cityID)
+		if err != nil {
+			return err
+		}
+	}
 	logger.Info("event sync starting", "providers", len(syncProviders), "city", "moscow", "interval", cfg.EventSyncInterval)
 	for {
-		if err := syncProvidersOnce(ctx, cityID, repository, syncProviders, logger); err != nil {
+		cycleProviders := append([]syncProvider(nil), syncProviders...)
+		if sourceRepository != nil {
+			genericSources, err := sourceRepository.List(ctx)
+			if err != nil {
+				logger.Error("generic event source list unavailable", "error", "could not load source configuration")
+			} else {
+				cycleProviders = append(cycleProviders, genericSyncProviders(genericSources, genericRunner)...)
+			}
+		}
+		if err := syncProvidersOnce(ctx, cityID, repository, cycleProviders, logger); err != nil {
 			logger.Info("event sync shutdown complete")
 			return nil
 		}
@@ -132,6 +163,10 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 	stats, syncErr := provider.importer.Import(ctx, cityID, repository, func(err error) {
 		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", "provider record persistence failed")
 	})
+	if errors.Is(syncErr, eventsources.ErrSyncRunning) || errors.Is(syncErr, eventsources.ErrSourceDisabled) {
+		logger.Info("event sync provider skipped", "provider", provider.name, "priority", provider.priority, "reason", "source sync is already running or disabled")
+		return nil
+	}
 	syncRunID := ""
 	if stats.SyncRunID != uuid.Nil {
 		syncRunID = stats.SyncRunID.String()

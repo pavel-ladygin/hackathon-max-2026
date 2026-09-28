@@ -75,17 +75,18 @@ func (q *Queries) CompleteProviderSyncRun(ctx context.Context, arg CompleteProvi
 }
 
 const createProviderSyncRun = `-- name: CreateProviderSyncRun :one
-INSERT INTO provider_sync_runs (id, provider, city_id, window_start, window_end)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO provider_sync_runs (id, provider, city_id, window_start, window_end, reconcile_missing)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id
 `
 
 type CreateProviderSyncRunParams struct {
-	ID          uuid.UUID
-	Provider    string
-	CityID      uuid.UUID
-	WindowStart pgtype.Timestamptz
-	WindowEnd   pgtype.Timestamptz
+	ID               uuid.UUID
+	Provider         string
+	CityID           uuid.UUID
+	WindowStart      pgtype.Timestamptz
+	WindowEnd        pgtype.Timestamptz
+	ReconcileMissing bool
 }
 
 func (q *Queries) CreateProviderSyncRun(ctx context.Context, arg CreateProviderSyncRunParams) (uuid.UUID, error) {
@@ -95,6 +96,7 @@ func (q *Queries) CreateProviderSyncRun(ctx context.Context, arg CreateProviderS
 		arg.CityID,
 		arg.WindowStart,
 		arg.WindowEnd,
+		arg.ReconcileMissing,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -102,7 +104,7 @@ func (q *Queries) CreateProviderSyncRun(ctx context.Context, arg CreateProviderS
 }
 
 const getProviderSyncRunForUpdate = `-- name: GetProviderSyncRunForUpdate :one
-SELECT id, provider, city_id, window_start, window_end, started_at, completed_at, state, pages_fetched, fetched, matched, normalized, inserted, updated, skipped, errors, reconciled, error_text FROM provider_sync_runs WHERE id = $1 FOR UPDATE
+SELECT id, provider, city_id, window_start, window_end, started_at, completed_at, state, pages_fetched, fetched, matched, normalized, inserted, updated, skipped, errors, reconciled, error_text, reconcile_missing FROM provider_sync_runs WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetProviderSyncRunForUpdate(ctx context.Context, id uuid.UUID) (ProviderSyncRun, error) {
@@ -127,6 +129,7 @@ func (q *Queries) GetProviderSyncRunForUpdate(ctx context.Context, id uuid.UUID)
 		&i.Errors,
 		&i.Reconciled,
 		&i.ErrorText,
+		&i.ReconcileMissing,
 	)
 	return i, err
 }
@@ -208,14 +211,15 @@ func (q *Queries) InsertProviderEventImage(ctx context.Context, arg InsertProvid
 
 const reconcileProviderSyncRun = `-- name: ReconcileProviderSyncRun :one
 WITH current_run AS (
-    SELECT id, provider, city_id, started_at
+    SELECT id, provider, city_id, started_at, reconcile_missing
     FROM provider_sync_runs
     WHERE provider_sync_runs.id = $1
 ), inactivated AS (
     UPDATE events e
     SET provider_active = false, updated_at = now()
     FROM venues v, current_run run
-    WHERE e.venue_id = v.id
+    WHERE run.reconcile_missing
+      AND e.venue_id = v.id
       AND e.source = run.provider
       AND v.city_id = run.city_id
       AND e.is_demo = false

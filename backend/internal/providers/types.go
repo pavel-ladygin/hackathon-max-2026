@@ -115,6 +115,9 @@ type SyncRunStart struct {
 	CityID      uuid.UUID
 	WindowStart time.Time
 	WindowEnd   time.Time
+	// UpsertOnly prevents this run from deactivating provider events that were
+	// not observed. Its zero value preserves reconciliation for built-in runs.
+	UpsertOnly bool
 }
 
 type SyncRunFinish struct {

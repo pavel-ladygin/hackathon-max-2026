@@ -19,8 +19,11 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalog"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventresources"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/saved"
@@ -140,6 +143,21 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	}
 	ticketHandler := tickets.NewHandler(ticketService)
 	analyticsHandler := analytics.NewHandler(db)
+	providerSecretCodec, err := sourceconfig.NewSecretCodec(cfg.InviteEncryptionKey, cfg.InviteEncryptionKeyVersion)
+	if err != nil {
+		return nil, err
+	}
+	sourceRepository, err := sourceconfig.NewRepository(db, providerSecretCodec)
+	if err != nil {
+		return nil, err
+	}
+	if err := sourceRepository.CheckSecrets(ctx); err != nil {
+		return nil, err
+	}
+	eventSourcesHandler, err := eventsources.NewHandler(ctx, db, sourceRepository, eventsources.HandlerOptions{BuiltInEnabled: map[string]bool{"kudago": true, "timepad": cfg.TimepadToken != ""}})
+	if err != nil {
+		return nil, err
+	}
 
 	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)
 	if err != nil {
@@ -168,6 +186,8 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { savedHandler.RegisterRoutes(r, authService.Middleware) },
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
 		analyticsHandler.RegisterRoutes,
+		eventSourcesHandler.RegisterRoutes,
+		eventresources.NewHandler(db).RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)

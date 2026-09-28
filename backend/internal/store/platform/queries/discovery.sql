@@ -1,4 +1,5 @@
 -- Discovery projections deliberately omit events.ticket_url. These queries are
+-- Trigram candidates need an explicit score: a common word alone must not match unrelated titles.
 -- Generated sqlc methods are consumed by internal/discovery.
 
 -- name: SearchDiscoveryEventCards :many
@@ -6,16 +7,16 @@ WITH search_candidates AS (
     SELECT e.id FROM events e WHERE sqlc.narg('query')::text IS NULL
     UNION
     SELECT e.id FROM events e WHERE e.title ILIKE '%' || sqlc.narg('query')::text || '%'
-       OR e.title % sqlc.narg('query')::text
+       OR (e.title % sqlc.narg('query')::text AND similarity(e.title, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || sqlc.narg('query')::text || '%'
-       OR e.subtitle % sqlc.narg('query')::text
+       OR (e.subtitle % sqlc.narg('query')::text AND similarity(e.subtitle, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT e.id FROM events e WHERE e.description ILIKE '%' || sqlc.narg('query')::text || '%'
     UNION
     SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
       WHERE v.name ILIKE '%' || sqlc.narg('query')::text || '%'
-         OR v.name % sqlc.narg('query')::text
+         OR (v.name % sqlc.narg('query')::text AND similarity(v.name, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT ec.event_id AS id FROM event_categories ec
       WHERE ec.category_slug = ANY(sqlc.arg('genre_slugs')::text[])
@@ -56,7 +57,7 @@ SELECT f.id, f.title, f.subtitle,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = f.id) AS saved
 FROM filtered f
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = f.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = f.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE (sqlc.narg('cursor_starts_at')::timestamptz IS NULL OR (f.starts_at, f.id) > (sqlc.narg('cursor_starts_at')::timestamptz, sqlc.narg('cursor_event_id')::uuid))
@@ -68,16 +69,16 @@ WITH search_candidates AS (
     SELECT e.id FROM events e WHERE sqlc.narg('query')::text IS NULL
     UNION
     SELECT e.id FROM events e WHERE e.title ILIKE '%' || sqlc.narg('query')::text || '%'
-       OR e.title % sqlc.narg('query')::text
+       OR (e.title % sqlc.narg('query')::text AND similarity(e.title, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || sqlc.narg('query')::text || '%'
-       OR e.subtitle % sqlc.narg('query')::text
+       OR (e.subtitle % sqlc.narg('query')::text AND similarity(e.subtitle, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT e.id FROM events e WHERE e.description ILIKE '%' || sqlc.narg('query')::text || '%'
     UNION
     SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
       WHERE v.name ILIKE '%' || sqlc.narg('query')::text || '%'
-         OR v.name % sqlc.narg('query')::text
+         OR (v.name % sqlc.narg('query')::text AND similarity(v.name, sqlc.narg('query')::text) >= 0.5)
     UNION
     SELECT ec.event_id AS id FROM event_categories ec
       WHERE ec.category_slug = ANY(sqlc.arg('genre_slugs')::text[])
@@ -113,14 +114,14 @@ SELECT e.id, e.title, e.subtitle,
        e.ticket_available, e.status, e.age_rating, e.source, e.source_updated_at, e.is_demo
 FROM events e JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE e.id = sqlc.arg('event_id') AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary);
 
 -- name: ListDiscoveryEventImages :many
-SELECT url, width, height, role FROM event_images WHERE event_id = sqlc.arg('event_id') ORDER BY CASE role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, position, id LIMIT 50;
+SELECT CASE WHEN e.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = sqlc.arg('event_id') ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50;
 
 -- name: GetDiscoveryUserCity :one
 SELECT city_id FROM users WHERE id = sqlc.arg('user_id') AND city_id IS NOT NULL;

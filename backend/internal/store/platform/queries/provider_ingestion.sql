@@ -62,8 +62,8 @@ ON CONFLICT (source, external_id) DO UPDATE SET
 RETURNING id, (xmax = 0) AS inserted;
 
 -- name: CreateProviderSyncRun :one
-INSERT INTO provider_sync_runs (id, provider, city_id, window_start, window_end)
-VALUES (sqlc.arg('id'), sqlc.arg('provider'), sqlc.arg('city_id'), sqlc.arg('window_start'), sqlc.arg('window_end'))
+INSERT INTO provider_sync_runs (id, provider, city_id, window_start, window_end, reconcile_missing)
+VALUES (sqlc.arg('id'), sqlc.arg('provider'), sqlc.arg('city_id'), sqlc.arg('window_start'), sqlc.arg('window_end'), sqlc.arg('reconcile_missing'))
 RETURNING id;
 
 -- name: GetProviderSyncRunForUpdate :one
@@ -79,14 +79,15 @@ SELECT EXISTS (
 
 -- name: ReconcileProviderSyncRun :one
 WITH current_run AS (
-    SELECT id, provider, city_id, started_at
+    SELECT id, provider, city_id, started_at, reconcile_missing
     FROM provider_sync_runs
     WHERE provider_sync_runs.id = sqlc.arg('run_id')
 ), inactivated AS (
     UPDATE events e
     SET provider_active = false, updated_at = now()
     FROM venues v, current_run run
-    WHERE e.venue_id = v.id
+    WHERE run.reconcile_missing
+      AND e.venue_id = v.id
       AND e.source = run.provider
       AND v.city_id = run.city_id
       AND e.is_demo = false

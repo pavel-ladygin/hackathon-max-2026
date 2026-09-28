@@ -71,24 +71,25 @@ type MetroStation struct {
 }
 
 type ProviderSyncRun struct {
-	ID           uuid.UUID
-	Provider     string
-	CityID       uuid.UUID
-	WindowStart  pgtype.Timestamptz
-	WindowEnd    pgtype.Timestamptz
-	StartedAt    pgtype.Timestamptz
-	CompletedAt  pgtype.Timestamptz
-	State        string
-	PagesFetched int32
-	Fetched      int32
-	Matched      int32
-	Normalized   int32
-	Inserted     int32
-	Updated      int32
-	Skipped      int32
-	Errors       int32
-	Reconciled   int32
-	ErrorText    pgtype.Text
+	ID               uuid.UUID
+	Provider         string
+	CityID           uuid.UUID
+	WindowStart      pgtype.Timestamptz
+	WindowEnd        pgtype.Timestamptz
+	StartedAt        pgtype.Timestamptz
+	CompletedAt      pgtype.Timestamptz
+	State            string
+	PagesFetched     int32
+	Fetched          int32
+	Matched          int32
+	Normalized       int32
+	Inserted         int32
+	Updated          int32
+	Skipped          int32
+	Errors           int32
+	Reconciled       int32
+	ErrorText        pgtype.Text
+	ReconcileMissing bool
 }
 
 type User struct {

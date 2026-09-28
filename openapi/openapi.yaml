@@ -17,6 +17,7 @@ tags:
 - name: Behavior
 - name: Saved
 - name: Rooms
+- name: EventSources
 security:
 - bearerAuth: []
 paths:
@@ -99,6 +100,217 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /internal/event-sources:
+    get:
+      tags: [EventSources]
+      operationId: listInternalEventSources
+      security: [{analyticsBasicAuth: []}]
+      summary: Список встроенных и конфигурируемых источников
+      responses:
+        '200':
+          description: Источники и состояние последней синхронизации
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items: {type: object, additionalProperties: true}
+                required: [sources]
+    post:
+      tags: [EventSources]
+      operationId: createInternalEventSource
+      security: [{analyticsBasicAuth: []}]
+      summary: Создать конфигурируемый источник
+      description: Требуются same-origin Origin и заголовок X-Admin-Request со значением 1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventSourceInput'}
+      responses:
+        '201':
+          description: Источник создан; секрет не возвращается
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventSourceResponse'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /internal/event-sources/{id}/domains:
+    parameters:
+    - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [EventSources]
+      operationId: listInternalEventSourceDomains
+      security: [{analyticsBasicAuth: []}]
+      summary: Текущие разрешённые домены конкретного Generic source
+      responses:
+        '200':
+          description: Разрешения без URL и credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [domains]
+                properties:
+                  domains: {type: array, items: {$ref: '#/components/schemas/EventSourceAllowedDomain'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      tags: [EventSources]
+      operationId: approveInternalEventSourceDomain
+      security: [{analyticsBasicAuth: []}]
+      summary: Явно разрешить hostname для image или ticket
+      description: 'Только hostname без wildcard, URL или IP. Требуются same-origin Origin и X-Admin-Request: 1. Повторное разрешение идемпотентно.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventSourceDomainInput'}
+      responses:
+        '200':
+          description: Домен разрешён только для указанного source и purpose
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [domain]
+                properties:
+                  domain: {$ref: '#/components/schemas/EventSourceAllowedDomain'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /internal/event-sources/{id}/domains/{domainId}:
+    parameters:
+    - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    - {name: domainId, in: path, required: true, schema: {type: string, format: uuid}}
+    delete:
+      tags: [EventSources]
+      operationId: revokeInternalEventSourceDomain
+      security: [{analyticsBasicAuth: []}]
+      summary: Отозвать approval без удаления сохранённых resource URL
+      description: 'Следующий запрос блокируется. Требуются same-origin Origin и X-Admin-Request: 1.'
+      responses:
+        '204': {description: Разрешение отозвано}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /event-images/{imageId}/content:
+    parameters:
+    - {name: imageId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Discovery]
+      operationId: getGenericEventImageContent
+      security: []
+      summary: Изображение по сохранённому ID через source-scoped runtime policy
+      description: Не принимает target URL или query. HTTPS upstream, public-IP-only dial, redirects запрещены. Cache-Control no-store обеспечивает revoke.
+      responses:
+        '200':
+          description: Проверенное raster image (JPEG, PNG, WebP, GIF, AVIF)
+          content:
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
+            image/avif: {schema: {type: string, format: binary}}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '403': {description: Resource hostname не approved для source и image purpose}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '502': {description: Upstream image недоступно или не прошло content validation}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /events/{eventId}/ticket:
+    parameters:
+    - {name: eventId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Discovery]
+      operationId: redirectGenericEventTicket
+      security: []
+      summary: Перейти на сохранённый Generic ticket URL после runtime approval проверки
+      description: Не принимает target URL или query. Проверяет HTTPS и точное разрешение source плюс ticket purpose при каждом переходе.
+      responses:
+        '302':
+          description: Разрешённый сохранённый HTTPS destination
+          headers:
+            Location: {schema: {type: string, format: uri}}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '403': {description: Ticket hostname не approved}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /internal/event-sources/test:
+    post:
+      tags: [EventSources]
+      operationId: testInternalEventSource
+      security: [{analyticsBasicAuth: []}]
+      summary: Проверить подключение и mapping без записи событий
+      description: 'Требуются same-origin Origin и X-Admin-Request: 1. source_id позволяет использовать сохранённый секрет.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventSourceTestInput'}
+      responses:
+        '200':
+          description: Статистика и ограниченный preview
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventSourcePreview'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /internal/event-sources/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [EventSources]
+      operationId: getInternalEventSource
+      security: [{analyticsBasicAuth: []}]
+      summary: Получить конфигурацию источника без секрета
+      responses:
+        '200':
+          description: Конфигурация источника
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventSourceResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [EventSources]
+      operationId: updateInternalEventSource
+      security: [{analyticsBasicAuth: []}]
+      summary: Обновить источник или выключить его
+      description: 'Полная конфигурация; пустой auth_secret сохраняет прежний секрет. Требуются same-origin Origin и X-Admin-Request: 1.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EventSourceInput'}
+      responses:
+        '200':
+          description: Источник обновлён
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventSourceResponse'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /internal/event-sources/{id}/sync:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [EventSources]
+      operationId: syncInternalEventSource
+      security: [{analyticsBasicAuth: []}]
+      summary: Запустить ручной upsert-only импорт
+      description: 'Требуются same-origin Origin и X-Admin-Request: 1. Второй одновременный запуск источника возвращает 409.'
+      responses:
+        '202':
+          description: Импорт запущен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [started]}
+                required: [status]
+        '409': {$ref: '#/components/responses/Conflict'}
   /auth/max/bootstrap:
     post:
       tags:
@@ -1014,6 +1226,154 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    EventSourceFieldMapping:
+      type: object
+      additionalProperties: false
+      properties:
+        path: {type: string}
+        transform:
+          type: string
+          enum: ['', string, number, iso_datetime, unix_timestamp, strip_html]
+        default: {type: string}
+      required: [path]
+    EventSourceDefaults:
+      type: object
+      properties:
+        category: {type: string}
+        timezone: {type: string}
+        currency: {type: string}
+        status: {type: string, enum: [published, sold_out, cancelled]}
+      required: [category, timezone, currency, status]
+    EventSourcePagination:
+      type: object
+      properties:
+        mode: {type: string, enum: [none, page, offset]}
+        page_param: {type: string}
+        page_size_param: {type: string}
+        page_size: {type: integer}
+        offset_param: {type: string}
+        limit_param: {type: string}
+        limit: {type: integer}
+      required: [mode]
+    EventSourceInput:
+      type: object
+      properties:
+        source_key: {type: string, description: 'Стабильный ключ вида generic:city-events'}
+        name: {type: string}
+        enabled: {type: boolean}
+        endpoint_url: {type: string, format: uri}
+        auth_type: {type: string, enum: [none, bearer, api_key_header, api_key_query]}
+        auth_name: {type: string}
+        auth_secret: {type: string, writeOnly: true}
+        query_params: {type: object, additionalProperties: {type: string}}
+        response_path: {type: string}
+        pagination: {$ref: '#/components/schemas/EventSourcePagination'}
+        mapping:
+          type: object
+          additionalProperties: false
+          properties:
+            external_id: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            title: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            description: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            subtitle: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            starts_at: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            ends_at: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            venue_name: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            venue_address: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            latitude: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            longitude: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            metro: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            image: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            ticket_url: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            ticket_available: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            price_from: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+            price_to: {$ref: '#/components/schemas/EventSourceFieldMapping'}
+        defaults: {$ref: '#/components/schemas/EventSourceDefaults'}
+        price_unit: {type: string, enum: [major, minor]}
+      required: [source_key, name, enabled, endpoint_url, auth_type, response_path, pagination, mapping, defaults, price_unit]
+    EventSource:
+      allOf:
+      - {$ref: '#/components/schemas/EventSourceInput'}
+      - type: object
+        properties:
+          id: {type: string, format: uuid}
+          secret_configured: {type: boolean}
+          mapping_locked: {type: boolean}
+          created_at: {type: string, format: date-time}
+          updated_at: {type: string, format: date-time}
+        required: [id, secret_configured, mapping_locked, created_at, updated_at]
+    EventSourceResponse:
+      type: object
+      properties:
+        source: {$ref: '#/components/schemas/EventSource'}
+      required: [source]
+    EventSourceTestInput:
+      allOf:
+      - {$ref: '#/components/schemas/EventSourceInput'}
+      - type: object
+        properties:
+          source_id: {type: string, format: uuid}
+    EventSourceDomainInput:
+      type: object
+      additionalProperties: false
+      required: [hostname, purpose]
+      properties:
+        hostname: {type: string, description: 'Exact DNS hostname; без URL, IP, wildcard или regex'}
+        purpose: {type: string, enum: [image, ticket]}
+    EventSourceAllowedDomain:
+      type: object
+      required: [id, source_id, hostname, purpose, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        source_id: {type: string, format: uuid}
+        hostname: {type: string}
+        purpose: {type: string, enum: [image, ticket]}
+        created_at: {type: string, format: date-time}
+    EventSourceResourceDomain:
+      type: object
+      required: [hostname, purpose, approved, count]
+      properties:
+        hostname: {type: string}
+        purpose: {type: string, enum: [image, ticket]}
+        approved: {type: boolean}
+        count: {type: integer}
+    EventSourcePreview:
+      type: object
+      properties:
+        resource_domains: {type: array, items: {$ref: '#/components/schemas/EventSourceResourceDomain'}}
+        connection_ok: {type: boolean}
+        http_status: {type: integer, description: 'HTTP status of the last fetched preview page'}
+        received: {type: integer}
+        valid: {type: integer}
+        invalid: {type: integer}
+        complete: {type: boolean}
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              code: {type: string}
+              count: {type: integer}
+            required: [code, count]
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              code: {type: string}
+              count: {type: integer}
+            required: [code, count]
+        preview:
+          type: array
+          items:
+            type: object
+            properties:
+              title: {type: string}
+              starts_at: {type: string, format: date-time}
+              venue: {type: string}
+              price_from_minor: {type: integer}
+            required: [title, starts_at, venue]
+      required: [connection_ok, http_status, received, valid, invalid, complete, errors, preview]
     HealthResponse:
       type: object
       required:
@@ -1376,7 +1736,7 @@ components:
           type:
           - string
           - 'null'
-          format: uri
+          format: uri-reference
         saved:
           type: boolean
         reasons:
@@ -1505,7 +1865,7 @@ components:
       properties:
         url:
           type: string
-          format: uri
+          format: uri-reference
         width:
           type:
           - integer
@@ -1848,8 +2208,8 @@ components:
       properties:
         external_url:
           type: string
-          format: uri
-          description: Внешний HTTPS URL провайдера из allowlist; не является внутренним redirect или временным токеном
+          format: uri-reference
+          description: Для built-in источников — проверенный внешний HTTPS URL; для Generic — same-origin /api/v1/events/{eventId}/ticket с повторной runtime-проверкой при переходе
     CreateRoomRequest:
       type: object
       additionalProperties: false
