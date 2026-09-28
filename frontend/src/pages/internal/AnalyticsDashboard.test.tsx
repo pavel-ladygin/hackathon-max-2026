@@ -33,7 +33,7 @@ describe('AnalyticsDashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '7 дней' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/internal/analytics/dashboard?days=7', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' })))
-    expect(screen.getByText('Данных пока нет')).toBeInTheDocument()
+    expect(await screen.findByText('Данных пока нет')).toBeInTheDocument()
   })
 
   it('shows an API error and retries the request', async () => {
