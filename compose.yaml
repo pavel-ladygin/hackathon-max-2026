@@ -79,6 +79,8 @@ services:
     command: ["/app/event-sync"]
     environment:
       <<: *backend-environment
+      INVITE_ENCRYPTION_KEY: ${INVITE_ENCRYPTION_KEY:?INVITE_ENCRYPTION_KEY is required; set it in .env}
+      INVITE_ENCRYPTION_KEY_VERSION: ${INVITE_ENCRYPTION_KEY_VERSION:-1}
       KUDAGO_BASE_URL: ${KUDAGO_BASE_URL:-https://kudago.com/public-api/v1.4}
       KUDAGO_TIMEOUT: ${KUDAGO_TIMEOUT:-30s}
       KUDAGO_LOCATION: ${KUDAGO_LOCATION:-msk}

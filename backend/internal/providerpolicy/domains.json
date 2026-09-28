@@ -1,0 +1,4 @@
+{
+  "images": ["images.unsplash.com", "api-maps.yandex.ru", "*.api-maps.yandex.ru", "*.maps.yandex.net", "yastatic.net", "ucare.timepad.ru", "kudago.com", "*.kudago.com"],
+  "tickets": ["kudago.com", "*.kudago.com", "timepad.ru", "*.timepad.ru"]
+}

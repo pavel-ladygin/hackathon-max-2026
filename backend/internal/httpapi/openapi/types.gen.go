@@ -246,13 +246,13 @@ func (e BootstrapResponseOnboardingState) Valid() bool {
 
 // Defines values for BootstrapResponseTokenType.
 const (
-	Bearer BootstrapResponseTokenType = "Bearer"
+	BootstrapResponseTokenTypeBearer BootstrapResponseTokenType = "Bearer"
 )
 
 // Valid indicates whether the value is a known member of the BootstrapResponseTokenType enum.
 func (e BootstrapResponseTokenType) Valid() bool {
 	switch e {
-	case Bearer:
+	case BootstrapResponseTokenTypeBearer:
 		return true
 	default:
 		return false
@@ -468,19 +468,19 @@ func (e EventDetailCurrency) Valid() bool {
 
 // Defines values for EventDetailStatus.
 const (
-	Cancelled EventDetailStatus = "cancelled"
-	Published EventDetailStatus = "published"
-	SoldOut   EventDetailStatus = "sold_out"
+	EventDetailStatusCancelled EventDetailStatus = "cancelled"
+	EventDetailStatusPublished EventDetailStatus = "published"
+	EventDetailStatusSoldOut   EventDetailStatus = "sold_out"
 )
 
 // Valid indicates whether the value is a known member of the EventDetailStatus enum.
 func (e EventDetailStatus) Valid() bool {
 	switch e {
-	case Cancelled:
+	case EventDetailStatusCancelled:
 		return true
-	case Published:
+	case EventDetailStatusPublished:
 		return true
-	case SoldOut:
+	case EventDetailStatusSoldOut:
 		return true
 	default:
 		return false
@@ -532,6 +532,258 @@ const (
 func (e EventMapPointKind) Valid() bool {
 	switch e {
 	case Event:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceAuthType.
+const (
+	EventSourceAuthTypeApiKeyHeader EventSourceAuthType = "api_key_header"
+	EventSourceAuthTypeApiKeyQuery  EventSourceAuthType = "api_key_query"
+	EventSourceAuthTypeBearer       EventSourceAuthType = "bearer"
+	EventSourceAuthTypeNone         EventSourceAuthType = "none"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceAuthType enum.
+func (e EventSourceAuthType) Valid() bool {
+	switch e {
+	case EventSourceAuthTypeApiKeyHeader:
+		return true
+	case EventSourceAuthTypeApiKeyQuery:
+		return true
+	case EventSourceAuthTypeBearer:
+		return true
+	case EventSourceAuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourcePriceUnit.
+const (
+	EventSourcePriceUnitMajor EventSourcePriceUnit = "major"
+	EventSourcePriceUnitMinor EventSourcePriceUnit = "minor"
+)
+
+// Valid indicates whether the value is a known member of the EventSourcePriceUnit enum.
+func (e EventSourcePriceUnit) Valid() bool {
+	switch e {
+	case EventSourcePriceUnitMajor:
+		return true
+	case EventSourcePriceUnitMinor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceAllowedDomainPurpose.
+const (
+	EventSourceAllowedDomainPurposeImage  EventSourceAllowedDomainPurpose = "image"
+	EventSourceAllowedDomainPurposeTicket EventSourceAllowedDomainPurpose = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceAllowedDomainPurpose enum.
+func (e EventSourceAllowedDomainPurpose) Valid() bool {
+	switch e {
+	case EventSourceAllowedDomainPurposeImage:
+		return true
+	case EventSourceAllowedDomainPurposeTicket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceDefaultsStatus.
+const (
+	EventSourceDefaultsStatusCancelled EventSourceDefaultsStatus = "cancelled"
+	EventSourceDefaultsStatusPublished EventSourceDefaultsStatus = "published"
+	EventSourceDefaultsStatusSoldOut   EventSourceDefaultsStatus = "sold_out"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceDefaultsStatus enum.
+func (e EventSourceDefaultsStatus) Valid() bool {
+	switch e {
+	case EventSourceDefaultsStatusCancelled:
+		return true
+	case EventSourceDefaultsStatusPublished:
+		return true
+	case EventSourceDefaultsStatusSoldOut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceDomainInputPurpose.
+const (
+	EventSourceDomainInputPurposeImage  EventSourceDomainInputPurpose = "image"
+	EventSourceDomainInputPurposeTicket EventSourceDomainInputPurpose = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceDomainInputPurpose enum.
+func (e EventSourceDomainInputPurpose) Valid() bool {
+	switch e {
+	case EventSourceDomainInputPurposeImage:
+		return true
+	case EventSourceDomainInputPurposeTicket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceFieldMappingTransform.
+const (
+	Empty         EventSourceFieldMappingTransform = ""
+	IsoDatetime   EventSourceFieldMappingTransform = "iso_datetime"
+	Number        EventSourceFieldMappingTransform = "number"
+	String        EventSourceFieldMappingTransform = "string"
+	StripHtml     EventSourceFieldMappingTransform = "strip_html"
+	UnixTimestamp EventSourceFieldMappingTransform = "unix_timestamp"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceFieldMappingTransform enum.
+func (e EventSourceFieldMappingTransform) Valid() bool {
+	switch e {
+	case Empty:
+		return true
+	case IsoDatetime:
+		return true
+	case Number:
+		return true
+	case String:
+		return true
+	case StripHtml:
+		return true
+	case UnixTimestamp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceInputAuthType.
+const (
+	EventSourceInputAuthTypeApiKeyHeader EventSourceInputAuthType = "api_key_header"
+	EventSourceInputAuthTypeApiKeyQuery  EventSourceInputAuthType = "api_key_query"
+	EventSourceInputAuthTypeBearer       EventSourceInputAuthType = "bearer"
+	EventSourceInputAuthTypeNone         EventSourceInputAuthType = "none"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceInputAuthType enum.
+func (e EventSourceInputAuthType) Valid() bool {
+	switch e {
+	case EventSourceInputAuthTypeApiKeyHeader:
+		return true
+	case EventSourceInputAuthTypeApiKeyQuery:
+		return true
+	case EventSourceInputAuthTypeBearer:
+		return true
+	case EventSourceInputAuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceInputPriceUnit.
+const (
+	EventSourceInputPriceUnitMajor EventSourceInputPriceUnit = "major"
+	EventSourceInputPriceUnitMinor EventSourceInputPriceUnit = "minor"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceInputPriceUnit enum.
+func (e EventSourceInputPriceUnit) Valid() bool {
+	switch e {
+	case EventSourceInputPriceUnitMajor:
+		return true
+	case EventSourceInputPriceUnitMinor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourcePaginationMode.
+const (
+	EventSourcePaginationModeNone   EventSourcePaginationMode = "none"
+	EventSourcePaginationModeOffset EventSourcePaginationMode = "offset"
+	EventSourcePaginationModePage   EventSourcePaginationMode = "page"
+)
+
+// Valid indicates whether the value is a known member of the EventSourcePaginationMode enum.
+func (e EventSourcePaginationMode) Valid() bool {
+	switch e {
+	case EventSourcePaginationModeNone:
+		return true
+	case EventSourcePaginationModeOffset:
+		return true
+	case EventSourcePaginationModePage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceResourceDomainPurpose.
+const (
+	EventSourceResourceDomainPurposeImage  EventSourceResourceDomainPurpose = "image"
+	EventSourceResourceDomainPurposeTicket EventSourceResourceDomainPurpose = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceResourceDomainPurpose enum.
+func (e EventSourceResourceDomainPurpose) Valid() bool {
+	switch e {
+	case EventSourceResourceDomainPurposeImage:
+		return true
+	case EventSourceResourceDomainPurposeTicket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceTestInputAuthType.
+const (
+	EventSourceTestInputAuthTypeApiKeyHeader EventSourceTestInputAuthType = "api_key_header"
+	EventSourceTestInputAuthTypeApiKeyQuery  EventSourceTestInputAuthType = "api_key_query"
+	EventSourceTestInputAuthTypeBearer       EventSourceTestInputAuthType = "bearer"
+	EventSourceTestInputAuthTypeNone         EventSourceTestInputAuthType = "none"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceTestInputAuthType enum.
+func (e EventSourceTestInputAuthType) Valid() bool {
+	switch e {
+	case EventSourceTestInputAuthTypeApiKeyHeader:
+		return true
+	case EventSourceTestInputAuthTypeApiKeyQuery:
+		return true
+	case EventSourceTestInputAuthTypeBearer:
+		return true
+	case EventSourceTestInputAuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSourceTestInputPriceUnit.
+const (
+	EventSourceTestInputPriceUnitMajor EventSourceTestInputPriceUnit = "major"
+	EventSourceTestInputPriceUnitMinor EventSourceTestInputPriceUnit = "minor"
+)
+
+// Valid indicates whether the value is a known member of the EventSourceTestInputPriceUnit enum.
+func (e EventSourceTestInputPriceUnit) Valid() bool {
+	switch e {
+	case EventSourceTestInputPriceUnitMajor:
+		return true
+	case EventSourceTestInputPriceUnitMinor:
 		return true
 	default:
 		return false
@@ -925,6 +1177,21 @@ func (e GetInternalAnalyticsDashboardParamsDays) Valid() bool {
 	}
 }
 
+// Defines values for SyncInternalEventSource202JSONResponseBodyStatus.
+const (
+	Started SyncInternalEventSource202JSONResponseBodyStatus = "started"
+)
+
+// Valid indicates whether the value is a known member of the SyncInternalEventSource202JSONResponseBodyStatus enum.
+func (e SyncInternalEventSource202JSONResponseBodyStatus) Valid() bool {
+	switch e {
+	case Started:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetMySavedEventsParamsTab.
 const (
 	GetMySavedEventsParamsTabMatches GetMySavedEventsParamsTab = "matches"
@@ -1210,13 +1477,250 @@ type EventMapResponse_Items_Item struct {
 	union json.RawMessage
 }
 
+// EventSearchCountResponse defines model for EventSearchCountResponse.
+type EventSearchCountResponse struct {
+	Total int `json:"total"`
+}
+
 // EventSearchResponse defines model for EventSearchResponse.
 type EventSearchResponse struct {
 	AppliedFilters map[string]interface{}    `json:"applied_filters"`
 	Items          []EventCard               `json:"items"`
 	NextCursor     nullable.Nullable[string] `json:"next_cursor"`
-	TotalEstimate  int                       `json:"total_estimate"`
+	TotalEstimate  nullable.Nullable[int]    `json:"total_estimate"`
 }
+
+// EventSource defines model for EventSource.
+type EventSource struct {
+	AuthName    *string             `json:"auth_name,omitempty"`
+	AuthSecret  *string             `json:"auth_secret,omitempty"`
+	AuthType    EventSourceAuthType `json:"auth_type"`
+	CreatedAt   time.Time           `json:"created_at"`
+	Defaults    EventSourceDefaults `json:"defaults"`
+	Enabled     bool                `json:"enabled"`
+	EndpointUrl string              `json:"endpoint_url"`
+	Id          openapi_types.UUID  `json:"id"`
+	Mapping     struct {
+		Description     *EventSourceFieldMapping `json:"description,omitempty"`
+		EndsAt          *EventSourceFieldMapping `json:"ends_at,omitempty"`
+		ExternalId      *EventSourceFieldMapping `json:"external_id,omitempty"`
+		Image           *EventSourceFieldMapping `json:"image,omitempty"`
+		Latitude        *EventSourceFieldMapping `json:"latitude,omitempty"`
+		Longitude       *EventSourceFieldMapping `json:"longitude,omitempty"`
+		Metro           *EventSourceFieldMapping `json:"metro,omitempty"`
+		PriceFrom       *EventSourceFieldMapping `json:"price_from,omitempty"`
+		PriceTo         *EventSourceFieldMapping `json:"price_to,omitempty"`
+		StartsAt        *EventSourceFieldMapping `json:"starts_at,omitempty"`
+		Subtitle        *EventSourceFieldMapping `json:"subtitle,omitempty"`
+		TicketAvailable *EventSourceFieldMapping `json:"ticket_available,omitempty"`
+		TicketUrl       *EventSourceFieldMapping `json:"ticket_url,omitempty"`
+		Title           *EventSourceFieldMapping `json:"title,omitempty"`
+		VenueAddress    *EventSourceFieldMapping `json:"venue_address,omitempty"`
+		VenueName       *EventSourceFieldMapping `json:"venue_name,omitempty"`
+	} `json:"mapping"`
+	MappingLocked    bool                  `json:"mapping_locked"`
+	Name             string                `json:"name"`
+	Pagination       EventSourcePagination `json:"pagination"`
+	PriceUnit        EventSourcePriceUnit  `json:"price_unit"`
+	QueryParams      *map[string]string    `json:"query_params,omitempty"`
+	ResponsePath     string                `json:"response_path"`
+	SecretConfigured bool                  `json:"secret_configured"`
+
+	// SourceKey Стабильный ключ вида generic:city-events
+	SourceKey string    `json:"source_key"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EventSourceAuthType defines model for EventSource.AuthType.
+type EventSourceAuthType string
+
+// EventSourcePriceUnit defines model for EventSource.PriceUnit.
+type EventSourcePriceUnit string
+
+// EventSourceAllowedDomain defines model for EventSourceAllowedDomain.
+type EventSourceAllowedDomain struct {
+	CreatedAt time.Time                       `json:"created_at"`
+	Hostname  string                          `json:"hostname"`
+	Id        openapi_types.UUID              `json:"id"`
+	Purpose   EventSourceAllowedDomainPurpose `json:"purpose"`
+	SourceId  openapi_types.UUID              `json:"source_id"`
+}
+
+// EventSourceAllowedDomainPurpose defines model for EventSourceAllowedDomain.Purpose.
+type EventSourceAllowedDomainPurpose string
+
+// EventSourceDefaults defines model for EventSourceDefaults.
+type EventSourceDefaults struct {
+	Category string                    `json:"category"`
+	Currency string                    `json:"currency"`
+	Status   EventSourceDefaultsStatus `json:"status"`
+	Timezone string                    `json:"timezone"`
+}
+
+// EventSourceDefaultsStatus defines model for EventSourceDefaults.Status.
+type EventSourceDefaultsStatus string
+
+// EventSourceDomainInput defines model for EventSourceDomainInput.
+type EventSourceDomainInput struct {
+	// Hostname Exact DNS hostname; без URL, IP, wildcard или regex
+	Hostname string                        `json:"hostname"`
+	Purpose  EventSourceDomainInputPurpose `json:"purpose"`
+}
+
+// EventSourceDomainInputPurpose defines model for EventSourceDomainInput.Purpose.
+type EventSourceDomainInputPurpose string
+
+// EventSourceFieldMapping defines model for EventSourceFieldMapping.
+type EventSourceFieldMapping struct {
+	Default   *string                           `json:"default,omitempty"`
+	Path      string                            `json:"path"`
+	Transform *EventSourceFieldMappingTransform `json:"transform,omitempty"`
+}
+
+// EventSourceFieldMappingTransform defines model for EventSourceFieldMapping.Transform.
+type EventSourceFieldMappingTransform string
+
+// EventSourceInput defines model for EventSourceInput.
+type EventSourceInput struct {
+	AuthName    *string                  `json:"auth_name,omitempty"`
+	AuthSecret  *string                  `json:"auth_secret,omitempty"`
+	AuthType    EventSourceInputAuthType `json:"auth_type"`
+	Defaults    EventSourceDefaults      `json:"defaults"`
+	Enabled     bool                     `json:"enabled"`
+	EndpointUrl string                   `json:"endpoint_url"`
+	Mapping     struct {
+		Description     *EventSourceFieldMapping `json:"description,omitempty"`
+		EndsAt          *EventSourceFieldMapping `json:"ends_at,omitempty"`
+		ExternalId      *EventSourceFieldMapping `json:"external_id,omitempty"`
+		Image           *EventSourceFieldMapping `json:"image,omitempty"`
+		Latitude        *EventSourceFieldMapping `json:"latitude,omitempty"`
+		Longitude       *EventSourceFieldMapping `json:"longitude,omitempty"`
+		Metro           *EventSourceFieldMapping `json:"metro,omitempty"`
+		PriceFrom       *EventSourceFieldMapping `json:"price_from,omitempty"`
+		PriceTo         *EventSourceFieldMapping `json:"price_to,omitempty"`
+		StartsAt        *EventSourceFieldMapping `json:"starts_at,omitempty"`
+		Subtitle        *EventSourceFieldMapping `json:"subtitle,omitempty"`
+		TicketAvailable *EventSourceFieldMapping `json:"ticket_available,omitempty"`
+		TicketUrl       *EventSourceFieldMapping `json:"ticket_url,omitempty"`
+		Title           *EventSourceFieldMapping `json:"title,omitempty"`
+		VenueAddress    *EventSourceFieldMapping `json:"venue_address,omitempty"`
+		VenueName       *EventSourceFieldMapping `json:"venue_name,omitempty"`
+	} `json:"mapping"`
+	Name         string                    `json:"name"`
+	Pagination   EventSourcePagination     `json:"pagination"`
+	PriceUnit    EventSourceInputPriceUnit `json:"price_unit"`
+	QueryParams  *map[string]string        `json:"query_params,omitempty"`
+	ResponsePath string                    `json:"response_path"`
+
+	// SourceKey Стабильный ключ вида generic:city-events
+	SourceKey string `json:"source_key"`
+}
+
+// EventSourceInputAuthType defines model for EventSourceInput.AuthType.
+type EventSourceInputAuthType string
+
+// EventSourceInputPriceUnit defines model for EventSourceInput.PriceUnit.
+type EventSourceInputPriceUnit string
+
+// EventSourcePagination defines model for EventSourcePagination.
+type EventSourcePagination struct {
+	Limit         *int                      `json:"limit,omitempty"`
+	LimitParam    *string                   `json:"limit_param,omitempty"`
+	Mode          EventSourcePaginationMode `json:"mode"`
+	OffsetParam   *string                   `json:"offset_param,omitempty"`
+	PageParam     *string                   `json:"page_param,omitempty"`
+	PageSize      *int                      `json:"page_size,omitempty"`
+	PageSizeParam *string                   `json:"page_size_param,omitempty"`
+}
+
+// EventSourcePaginationMode defines model for EventSourcePagination.Mode.
+type EventSourcePaginationMode string
+
+// EventSourcePreview defines model for EventSourcePreview.
+type EventSourcePreview struct {
+	Complete     bool `json:"complete"`
+	ConnectionOk bool `json:"connection_ok"`
+	Errors       []struct {
+		Code  string `json:"code"`
+		Count int    `json:"count"`
+	} `json:"errors"`
+
+	// HttpStatus HTTP status of the last fetched preview page
+	HttpStatus int `json:"http_status"`
+	Invalid    int `json:"invalid"`
+	Preview    []struct {
+		PriceFromMinor *int      `json:"price_from_minor,omitempty"`
+		StartsAt       time.Time `json:"starts_at"`
+		Title          string    `json:"title"`
+		Venue          string    `json:"venue"`
+	} `json:"preview"`
+	Received        int                          `json:"received"`
+	ResourceDomains *[]EventSourceResourceDomain `json:"resource_domains,omitempty"`
+	Valid           int                          `json:"valid"`
+	Warnings        *[]struct {
+		Code  string `json:"code"`
+		Count int    `json:"count"`
+	} `json:"warnings,omitempty"`
+}
+
+// EventSourceResourceDomain defines model for EventSourceResourceDomain.
+type EventSourceResourceDomain struct {
+	Approved bool                             `json:"approved"`
+	Count    int                              `json:"count"`
+	Hostname string                           `json:"hostname"`
+	Purpose  EventSourceResourceDomainPurpose `json:"purpose"`
+}
+
+// EventSourceResourceDomainPurpose defines model for EventSourceResourceDomain.Purpose.
+type EventSourceResourceDomainPurpose string
+
+// EventSourceResponse defines model for EventSourceResponse.
+type EventSourceResponse struct {
+	Source EventSource `json:"source"`
+}
+
+// EventSourceTestInput defines model for EventSourceTestInput.
+type EventSourceTestInput struct {
+	AuthName    *string                      `json:"auth_name,omitempty"`
+	AuthSecret  *string                      `json:"auth_secret,omitempty"`
+	AuthType    EventSourceTestInputAuthType `json:"auth_type"`
+	Defaults    EventSourceDefaults          `json:"defaults"`
+	Enabled     bool                         `json:"enabled"`
+	EndpointUrl string                       `json:"endpoint_url"`
+	Mapping     struct {
+		Description     *EventSourceFieldMapping `json:"description,omitempty"`
+		EndsAt          *EventSourceFieldMapping `json:"ends_at,omitempty"`
+		ExternalId      *EventSourceFieldMapping `json:"external_id,omitempty"`
+		Image           *EventSourceFieldMapping `json:"image,omitempty"`
+		Latitude        *EventSourceFieldMapping `json:"latitude,omitempty"`
+		Longitude       *EventSourceFieldMapping `json:"longitude,omitempty"`
+		Metro           *EventSourceFieldMapping `json:"metro,omitempty"`
+		PriceFrom       *EventSourceFieldMapping `json:"price_from,omitempty"`
+		PriceTo         *EventSourceFieldMapping `json:"price_to,omitempty"`
+		StartsAt        *EventSourceFieldMapping `json:"starts_at,omitempty"`
+		Subtitle        *EventSourceFieldMapping `json:"subtitle,omitempty"`
+		TicketAvailable *EventSourceFieldMapping `json:"ticket_available,omitempty"`
+		TicketUrl       *EventSourceFieldMapping `json:"ticket_url,omitempty"`
+		Title           *EventSourceFieldMapping `json:"title,omitempty"`
+		VenueAddress    *EventSourceFieldMapping `json:"venue_address,omitempty"`
+		VenueName       *EventSourceFieldMapping `json:"venue_name,omitempty"`
+	} `json:"mapping"`
+	Name         string                        `json:"name"`
+	Pagination   EventSourcePagination         `json:"pagination"`
+	PriceUnit    EventSourceTestInputPriceUnit `json:"price_unit"`
+	QueryParams  *map[string]string            `json:"query_params,omitempty"`
+	ResponsePath string                        `json:"response_path"`
+	SourceId     *openapi_types.UUID           `json:"source_id,omitempty"`
+
+	// SourceKey Стабильный ключ вида generic:city-events
+	SourceKey string `json:"source_key"`
+}
+
+// EventSourceTestInputAuthType defines model for EventSourceTestInput.AuthType.
+type EventSourceTestInputAuthType string
+
+// EventSourceTestInputPriceUnit defines model for EventSourceTestInput.PriceUnit.
+type EventSourceTestInputPriceUnit string
 
 // GeoPoint defines model for GeoPoint.
 type GeoPoint struct {
@@ -1524,7 +2028,7 @@ type TicketClickRequestSource string
 
 // TicketClickResponse defines model for TicketClickResponse.
 type TicketClickResponse struct {
-	// ExternalUrl Внешний HTTPS URL провайдера из allowlist; не является внутренним redirect или временным токеном
+	// ExternalUrl Для built-in источников — проверенный внешний HTTPS URL; для Generic — same-origin /api/v1/events/{eventId}/ticket с повторной runtime-проверкой при переходе
 	ExternalUrl string `json:"external_url"`
 }
 
@@ -1629,8 +2133,11 @@ type GetEventMapParams struct {
 
 // SearchEventsParams defines parameters for SearchEvents.
 type SearchEventsParams struct {
-	// Q Поиск по названию, описанию и площадке
+	// Q Поиск по названию, описанию, площадке и жанру; поддерживаются близкие написания
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// IncludeTotal При false total_estimate возвращается как null
+	IncludeTotal *bool `form:"include_total,omitempty" json:"include_total,omitempty"`
 
 	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
 	CityId   *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
@@ -1658,6 +2165,28 @@ type SearchEventsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// CountSearchEventsParams defines parameters for CountSearchEvents.
+type CountSearchEventsParams struct {
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	CityId        *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
+	DateFrom      *openapi_types.Date `form:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo        *openapi_types.Date `form:"date_to,omitempty" json:"date_to,omitempty"`
+	DayTypes      *[]DayType          `form:"day_types,omitempty" json:"day_types,omitempty"`
+	TimeSlots     *[]TimeSlot         `form:"time_slots,omitempty" json:"time_slots,omitempty"`
+	CategorySlugs *[]CategorySlug     `form:"category_slugs,omitempty" json:"category_slugs,omitempty"`
+	PriceMaxMinor *int                `form:"price_max_minor,omitempty" json:"price_max_minor,omitempty"`
+	DistanceM     *int                `form:"distance_m,omitempty" json:"distance_m,omitempty"`
+	Lat           *float32            `form:"lat,omitempty" json:"lat,omitempty"`
+	Lng           *float32            `form:"lng,omitempty" json:"lng,omitempty"`
+	FreeOnly      *bool               `form:"free_only,omitempty" json:"free_only,omitempty"`
+	West          *float32            `form:"west,omitempty" json:"west,omitempty"`
+	South         *float32            `form:"south,omitempty" json:"south,omitempty"`
+	East          *float32            `form:"east,omitempty" json:"east,omitempty"`
+	North         *float32            `form:"north,omitempty" json:"north,omitempty"`
+}
+
 // GetHomeFeedParams defines parameters for GetHomeFeed.
 type GetHomeFeedParams struct {
 	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
@@ -1679,6 +2208,9 @@ type GetInternalAnalyticsDashboardParams struct {
 
 // GetInternalAnalyticsDashboardParamsDays defines parameters for GetInternalAnalyticsDashboard.
 type GetInternalAnalyticsDashboardParamsDays int
+
+// SyncInternalEventSource202JSONResponseBodyStatus defines parameters for SyncInternalEventSource.
+type SyncInternalEventSource202JSONResponseBodyStatus string
 
 // GetMySavedEventsParams defines parameters for GetMySavedEvents.
 type GetMySavedEventsParams struct {
@@ -1723,6 +2255,18 @@ type IngestBehaviorEventsJSONRequestBody = BehaviorBatchRequest
 
 // RecordTicketClickJSONRequestBody defines body for RecordTicketClick for application/json ContentType.
 type RecordTicketClickJSONRequestBody = TicketClickRequest
+
+// CreateInternalEventSourceJSONRequestBody defines body for CreateInternalEventSource for application/json ContentType.
+type CreateInternalEventSourceJSONRequestBody = EventSourceInput
+
+// TestInternalEventSourceJSONRequestBody defines body for TestInternalEventSource for application/json ContentType.
+type TestInternalEventSourceJSONRequestBody = EventSourceTestInput
+
+// UpdateInternalEventSourceJSONRequestBody defines body for UpdateInternalEventSource for application/json ContentType.
+type UpdateInternalEventSourceJSONRequestBody = EventSourceInput
+
+// ApproveInternalEventSourceDomainJSONRequestBody defines body for ApproveInternalEventSourceDomain for application/json ContentType.
+type ApproveInternalEventSourceDomainJSONRequestBody = EventSourceDomainInput
 
 // UpdateMyNotificationPreferencesJSONRequestBody defines body for UpdateMyNotificationPreferences for application/json ContentType.
 type UpdateMyNotificationPreferencesJSONRequestBody = NotificationPreferencesRequest

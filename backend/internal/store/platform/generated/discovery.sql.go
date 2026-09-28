@@ -13,32 +13,46 @@ import (
 )
 
 const countDiscoveryEventCards = `-- name: CountDiscoveryEventCards :one
-WITH base AS (
+WITH search_candidates AS (
+    SELECT e.id FROM events e WHERE $13::text IS NULL
+    UNION
+    SELECT e.id FROM events e WHERE e.title ILIKE '%' || $13::text || '%'
+       OR (e.title % $13::text AND similarity(e.title, $13::text) >= 0.5)
+    UNION
+    SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || $13::text || '%'
+       OR (e.subtitle % $13::text AND similarity(e.subtitle, $13::text) >= 0.5)
+    UNION
+    SELECT e.id FROM events e WHERE e.description ILIKE '%' || $13::text || '%'
+    UNION
+    SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
+      WHERE v.name ILIKE '%' || $13::text || '%'
+         OR (v.name % $13::text AND similarity(v.name, $13::text) >= 0.5)
+    UNION
+    SELECT ec.event_id AS id FROM event_categories ec
+      WHERE ec.category_slug = ANY($14::text[])
+), base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at AT TIME ZONE e.timezone AS local_starts_at, e.price_from_minor, v.name AS venue_name, v.latitude, v.longitude,
-           CASE WHEN $14::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $14::double precision) / 2), 2) + cos(radians($14::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $15::double precision) / 2), 2)))) END AS distance_m
+           CASE WHEN $15::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - $15::double precision) / 2), 2) + cos(radians($15::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - $16::double precision) / 2), 2)))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
-    WHERE v.city_id = $16 AND e.status = 'published'
+    JOIN search_candidates sc ON sc.id = e.id
+    WHERE v.city_id = $17 AND e.status = 'published'
       AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 )
 SELECT count(*)::integer FROM base b
-WHERE ($1::text IS NULL OR
-       (setweight(to_tsvector('simple', b.title || ' ' || coalesce(b.subtitle, '') || ' ' || b.venue_name), 'A') || setweight(to_tsvector('simple', b.description), 'C')) @@ websearch_to_tsquery('simple', $1::text) OR
-       similarity(concat_ws(' ', b.title, b.subtitle, b.venue_name), $1::text) > 0.1 OR concat_ws(' ', b.title, b.subtitle, b.venue_name, b.description) ILIKE '%' || $1::text || '%')
-  AND ($2::date IS NULL OR b.local_starts_at::date >= $2::date) AND ($3::date IS NULL OR b.local_starts_at::date <= $3::date)
-  AND (cardinality($4::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY($4::text[]))
-  AND (cardinality($5::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY($5::text[]))
-  AND (cardinality($6::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY($6::text[])))
-  AND ($7::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $7::integer)) AND (NOT $8::boolean OR b.price_from_minor = 0)
-  AND ($9::integer IS NULL OR b.distance_m <= $9::integer)
-  AND ($10::double precision IS NULL OR
-       (($10::double precision < $11::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN $10::double precision AND $11::double precision) OR
-        ($10::double precision > $11::double precision AND b.latitude IS NOT NULL AND (b.longitude >= $10::double precision OR b.longitude <= $11::double precision))))
-  AND ($12::double precision IS NULL OR b.latitude BETWEEN $12::double precision AND $13::double precision)
+WHERE ($1::date IS NULL OR b.local_starts_at::date >= $1::date) AND ($2::date IS NULL OR b.local_starts_at::date <= $2::date)
+  AND (cardinality($3::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY($3::text[]))
+  AND (cardinality($4::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY($4::text[]))
+  AND (cardinality($5::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY($5::text[])))
+  AND ($6::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $6::integer)) AND (NOT $7::boolean OR b.price_from_minor = 0)
+  AND ($8::integer IS NULL OR b.distance_m <= $8::integer)
+  AND ($9::double precision IS NULL OR
+       (($9::double precision < $10::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN $9::double precision AND $10::double precision) OR
+        ($9::double precision > $10::double precision AND b.latitude IS NOT NULL AND (b.longitude >= $9::double precision OR b.longitude <= $10::double precision))))
+  AND ($11::double precision IS NULL OR b.latitude BETWEEN $11::double precision AND $12::double precision)
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 `
 
 type CountDiscoveryEventCardsParams struct {
-	Query          pgtype.Text
 	DateFrom       pgtype.Date
 	DateTo         pgtype.Date
 	DayTypes       []string
@@ -51,6 +65,8 @@ type CountDiscoveryEventCardsParams struct {
 	BoundsEast     pgtype.Float8
 	BoundsSouth    pgtype.Float8
 	BoundsNorth    pgtype.Float8
+	Query          pgtype.Text
+	GenreSlugs     []string
 	Latitude       pgtype.Float8
 	Longitude      pgtype.Float8
 	CityID         uuid.UUID
@@ -58,7 +74,6 @@ type CountDiscoveryEventCardsParams struct {
 
 func (q *Queries) CountDiscoveryEventCards(ctx context.Context, arg CountDiscoveryEventCardsParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countDiscoveryEventCards,
-		arg.Query,
 		arg.DateFrom,
 		arg.DateTo,
 		arg.DayTypes,
@@ -71,6 +86,8 @@ func (q *Queries) CountDiscoveryEventCards(ctx context.Context, arg CountDiscove
 		arg.BoundsEast,
 		arg.BoundsSouth,
 		arg.BoundsNorth,
+		arg.Query,
+		arg.GenreSlugs,
 		arg.Latitude,
 		arg.Longitude,
 		arg.CityID,
@@ -120,7 +137,7 @@ SELECT e.id, e.title, e.subtitle,
        e.ticket_available, e.status, e.age_rating, e.source, e.source_updated_at, e.is_demo
 FROM events e JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE e.id = $4 AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
@@ -214,7 +231,7 @@ func (q *Queries) GetDiscoveryUserCity(ctx context.Context, userID uuid.UUID) (p
 }
 
 const listDiscoveryEventImages = `-- name: ListDiscoveryEventImages :many
-SELECT url, width, height, role FROM event_images WHERE event_id = $1 ORDER BY CASE role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, position, id LIMIT 50
+SELECT CASE WHEN e.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = $1 ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50
 `
 
 type ListDiscoveryEventImagesRow struct {
@@ -251,38 +268,51 @@ func (q *Queries) ListDiscoveryEventImages(ctx context.Context, eventID uuid.UUI
 
 const searchDiscoveryEventCards = `-- name: SearchDiscoveryEventCards :many
 
-WITH base AS (
+WITH search_candidates AS (
+    SELECT e.id FROM events e WHERE $5::text IS NULL
+    UNION
+    SELECT e.id FROM events e WHERE e.title ILIKE '%' || $5::text || '%'
+       OR (e.title % $5::text AND similarity(e.title, $5::text) >= 0.5)
+    UNION
+    SELECT e.id FROM events e WHERE e.subtitle ILIKE '%' || $5::text || '%'
+       OR (e.subtitle % $5::text AND similarity(e.subtitle, $5::text) >= 0.5)
+    UNION
+    SELECT e.id FROM events e WHERE e.description ILIKE '%' || $5::text || '%'
+    UNION
+    SELECT e.id FROM events e JOIN venues v ON v.id = e.venue_id
+      WHERE v.name ILIKE '%' || $5::text || '%'
+         OR (v.name % $5::text AND similarity(v.name, $5::text) >= 0.5)
+    UNION
+    SELECT ec.event_id AS id FROM event_categories ec
+      WHERE ec.category_slug = ANY($6::text[])
+), base AS (
     SELECT e.id, e.title, e.subtitle, e.description, e.starts_at, e.timezone, e.price_from_minor,
            e.currency, v.name AS venue_name, v.latitude, v.longitude,
            e.starts_at AT TIME ZONE e.timezone AS local_starts_at,
-           CASE WHEN $5::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL
+           CASE WHEN $7::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL
                 ELSE 6371000.0 * 2 * asin(sqrt(least(1.0,
-                    power(sin(radians(v.latitude - $5::double precision) / 2), 2) +
-                    cos(radians($5::double precision)) * cos(radians(v.latitude)) *
-                    power(sin(radians(v.longitude - $6::double precision) / 2), 2)
+                    power(sin(radians(v.latitude - $7::double precision) / 2), 2) +
+                    cos(radians($7::double precision)) * cos(radians(v.latitude)) *
+                    power(sin(radians(v.longitude - $8::double precision) / 2), 2)
                 ))) END AS distance_m
     FROM events e JOIN venues v ON v.id = e.venue_id
-    WHERE v.city_id = $7 AND e.status = 'published'
+    JOIN search_candidates sc ON sc.id = e.id
+    WHERE v.city_id = $9 AND e.status = 'published'
       AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
 ), filtered AS (
     SELECT b.id, b.title, b.subtitle, b.description, b.starts_at, b.timezone, b.price_from_minor, b.currency, b.venue_name, b.latitude, b.longitude, b.local_starts_at, b.distance_m FROM base b
-    WHERE ($8::text IS NULL OR
-           (setweight(to_tsvector('simple', b.title || ' ' || coalesce(b.subtitle, '') || ' ' || b.venue_name), 'A') ||
-           setweight(to_tsvector('simple', b.description), 'C')) @@ websearch_to_tsquery('simple', $8::text) OR
-           similarity(concat_ws(' ', b.title, b.subtitle, b.venue_name), $8::text) > 0.1 OR
-           concat_ws(' ', b.title, b.subtitle, b.venue_name, b.description) ILIKE '%' || $8::text || '%')
-      AND ($9::date IS NULL OR b.local_starts_at::date >= $9::date)
-      AND ($10::date IS NULL OR b.local_starts_at::date <= $10::date)
-      AND (cardinality($11::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY($11::text[]))
-      AND (cardinality($12::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY($12::text[]))
-      AND (cardinality($13::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY($13::text[])))
-      AND ($14::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $14::integer))
-      AND (NOT $15::boolean OR b.price_from_minor = 0)
-      AND ($16::integer IS NULL OR b.distance_m <= $16::integer)
-      AND ($17::double precision IS NULL OR
-           (($17::double precision < $18::double precision AND b.longitude BETWEEN $17::double precision AND $18::double precision) OR
-            ($17::double precision > $18::double precision AND (b.longitude >= $17::double precision OR b.longitude <= $18::double precision))))
-      AND ($19::double precision IS NULL OR b.latitude BETWEEN $19::double precision AND $20::double precision)
+    WHERE ($10::date IS NULL OR b.local_starts_at::date >= $10::date)
+      AND ($11::date IS NULL OR b.local_starts_at::date <= $11::date)
+      AND (cardinality($12::text[]) = 0 OR CASE WHEN extract(isodow FROM b.local_starts_at) IN (6, 7) THEN 'weekend' ELSE 'weekday' END = ANY($12::text[]))
+      AND (cardinality($13::text[]) = 0 OR CASE WHEN extract(hour FROM b.local_starts_at) >= 6 AND extract(hour FROM b.local_starts_at) < 12 THEN 'morning' WHEN extract(hour FROM b.local_starts_at) >= 12 AND extract(hour FROM b.local_starts_at) < 17 THEN 'day' WHEN extract(hour FROM b.local_starts_at) >= 17 AND extract(hour FROM b.local_starts_at) < 22 THEN 'evening' ELSE 'night' END = ANY($13::text[]))
+      AND (cardinality($14::text[]) = 0 OR EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.category_slug = ANY($14::text[])))
+      AND ($15::integer IS NULL OR (b.price_from_minor IS NOT NULL AND b.price_from_minor <= $15::integer))
+      AND (NOT $16::boolean OR b.price_from_minor = 0)
+      AND ($17::integer IS NULL OR b.distance_m <= $17::integer)
+      AND ($18::double precision IS NULL OR
+           (($18::double precision < $19::double precision AND b.latitude IS NOT NULL AND b.longitude BETWEEN $18::double precision AND $19::double precision) OR
+            ($18::double precision > $19::double precision AND b.latitude IS NOT NULL AND (b.longitude >= $18::double precision OR b.longitude <= $19::double precision))))
+      AND ($20::double precision IS NULL OR b.latitude BETWEEN $20::double precision AND $21::double precision)
       AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = b.id AND ec.is_primary)
 )
 SELECT f.id, f.title, f.subtitle,
@@ -292,7 +322,7 @@ SELECT f.id, f.title, f.subtitle,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = $1 AND se.event_id = f.id) AS saved
 FROM filtered f
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = f.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = f.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE ($2::timestamptz IS NULL OR (f.starts_at, f.id) > ($2::timestamptz, $3::uuid))
@@ -305,10 +335,11 @@ type SearchDiscoveryEventCardsParams struct {
 	CursorStartsAt pgtype.Timestamptz
 	CursorEventID  pgtype.UUID
 	LimitCount     int32
+	Query          pgtype.Text
+	GenreSlugs     []string
 	Latitude       pgtype.Float8
 	Longitude      pgtype.Float8
 	CityID         uuid.UUID
-	Query          pgtype.Text
 	DateFrom       pgtype.Date
 	DateTo         pgtype.Date
 	DayTypes       []string
@@ -348,10 +379,11 @@ func (q *Queries) SearchDiscoveryEventCards(ctx context.Context, arg SearchDisco
 		arg.CursorStartsAt,
 		arg.CursorEventID,
 		arg.LimitCount,
+		arg.Query,
+		arg.GenreSlugs,
 		arg.Latitude,
 		arg.Longitude,
 		arg.CityID,
-		arg.Query,
 		arg.DateFrom,
 		arg.DateTo,
 		arg.DayTypes,

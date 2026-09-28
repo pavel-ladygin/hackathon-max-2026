@@ -94,7 +94,7 @@ JOIN users participant_user ON participant_user.id = participant.user_id
 LEFT JOIN room_member_round_state round_state
   ON round_state.room_id = participant.room_id AND round_state.user_id = participant.user_id AND round_state.round_no = r.round_no
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary)
@@ -185,7 +185,7 @@ FROM saved_events se
 JOIN events e ON e.id = se.event_id
 JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT ei.url FROM event_images ei WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE se.user_id = $1

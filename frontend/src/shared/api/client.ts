@@ -21,7 +21,8 @@ export class ApiClient {
   async replacePreferences(input: PreferencesRequestDto): Promise<Preferences> { return mapPreferences(await this.request('/me/preferences', { method: 'PUT', body: JSON.stringify(input) })) }
   async updateNotificationPreferences(input: NotificationPreferencesRequestDto): Promise<NotificationPreferencesDto> { return this.request('/me/notification-preferences', { method: 'PATCH', body: JSON.stringify(input) }) }
   async getHomeFeed(params: Record<string, string | number | undefined> = {}) { return this.discovery.getHomeFeed(params) }
-  async searchEvents(params: Record<string, string | number | boolean | string[] | undefined> = {}) { return this.discovery.searchEvents(params) }
+  async searchEvents(params: Record<string, string | number | boolean | string[] | undefined> = {}, signal?: AbortSignal) { return this.discovery.searchEvents(params, signal) }
+  async getSearchCount(params: Record<string, string | number | boolean | string[] | undefined> = {}, signal?: AbortSignal) { return this.discovery.getSearchCount(params, signal) }
   async getMapEvents(params: MapBounds & { zoom: number } & Omit<DiscoverySearchParams, 'limit' | 'cursor'>) { return this.discovery.getMapEvents(params) }
   async getEvent(eventId: string) { return this.discovery.getEvent(eventId) }
   async recordBehavior(events: AnalyticsEvent[], keepalive = false) { return this.discovery.recordBehavior(events, keepalive) }

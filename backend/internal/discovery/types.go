@@ -23,6 +23,7 @@ type SearchFilter struct {
 	DayTypes       []string
 	TimeSlots      []string
 	CategorySlugs  []string
+	GenreSlugs     []string
 	PriceMaxMinor  *int32
 	FreeOnly       bool
 	Location       *Location
@@ -30,6 +31,7 @@ type SearchFilter struct {
 	Limit          int
 	Cursor         *Cursor
 	Bounds         *Bounds
+	IncludeTotal   bool
 }
 
 // Bounds is a geographic bounding box. West greater than east denotes an

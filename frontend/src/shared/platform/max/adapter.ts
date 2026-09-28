@@ -1,3 +1,4 @@
+import providerPolicy from "../../api/generated/provider-policy.json";
 import type {
   InviteSharePayload,
   MaxPlatformAdapter,
@@ -74,7 +75,7 @@ const validExternalUrl = (value: string): URL | null => {
 };
 
 const configuredTicketProviders = (): string[] =>
-  (import.meta.env.VITE_TICKET_PROVIDER_ALLOWLIST ?? "")
+  [...providerPolicy.tickets, ...(import.meta.env.VITE_TICKET_PROVIDER_ALLOWLIST ?? "").split(",")].join(",")
     .split(",")
     .map((rule) => rule.trim().toLowerCase().replace(/^\.+/, "."))
     .filter(Boolean);
@@ -97,6 +98,9 @@ export const isAllowedTicketUrl = (value: string, rules = configuredTicketProvid
         .some((rule) => matchesHostRule(url.hostname.toLowerCase(), rule)),
   );
 };
+
+const isControlledTicketPath = (value: string): boolean =>
+  /^\/api\/v1\/events\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/ticket$/i.test(value);
 
 export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
   get environment(): "browser" | "max" {
@@ -197,6 +201,19 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
   }
 
   async openTicketLink(url: string): Promise<boolean> {
+    if (isControlledTicketPath(url)) {
+      if (typeof window === "undefined") return false;
+      const destination = `${window.location.origin}${url}`;
+      try {
+        if (getWebApp()?.openLink) {
+          await getWebApp()!.openLink!(destination);
+          return true;
+        }
+      } catch {
+        return false;
+      }
+      return window.open(destination, "_blank", "noopener,noreferrer") !== null;
+    }
     if (!isAllowedTicketUrl(url)) return false;
     const parsed = validExternalUrl(url);
     if (!parsed) return false;

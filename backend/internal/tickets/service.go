@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/resourcedomains"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
@@ -88,11 +89,29 @@ func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID, roomIDs 
 		if availability.Status != "published" || !availability.StartsAt.Valid || !availability.StartsAt.Time.After(s.now()) || !availability.TicketAvailable || !availability.TicketUrl.Valid {
 			return ErrUnavailable
 		}
-		if !s.isAllowedURL(availability.TicketUrl.String) {
-			return ErrUnavailable
+		var source string
+		if err := tx.QueryRow(ctx, `SELECT source FROM events WHERE id=$1`, eventID).Scan(&source); err != nil {
+			return err
 		}
-
-		externalURL = availability.TicketUrl.String
+		if strings.HasPrefix(source, "generic:") {
+			host, err := resourcedomains.ResourceHostname(availability.TicketUrl.String)
+			if err != nil {
+				return ErrUnavailable
+			}
+			var allowed bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM event_sources s JOIN event_source_allowed_domains d ON d.source_id=s.id WHERE s.source_key=$1 AND d.hostname=$2 AND d.purpose='ticket' AND d.enabled)`, source, host).Scan(&allowed); err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrUnavailable
+			}
+			externalURL = "/api/v1/events/" + eventID.String() + "/ticket"
+		} else {
+			if !s.isAllowedURL(availability.TicketUrl.String) {
+				return ErrUnavailable
+			}
+			externalURL = availability.TicketUrl.String
+		}
 		return s.recorder.Record(ctx, tx, contracts.ServerBehaviorEvent{
 			ID: uuid.New(), UserID: userID, Type: "ticket_click", EventID: &eventID,
 			RoomID:    matchedRoomID,

@@ -27,7 +27,7 @@ export interface MatchDto { id: string; matched_at: string; event: EventCardDto;
 export interface HomeFeedSectionDto { type: 'hero' | 'popular' | 'for_you' | 'nearby'; title: string; items: EventCardDto[] }
 export interface RoomClosedNoticeDto { room_id: string; room_name: string; closed_by: { id: string; display_name: string }; closed_at: string }
 export interface HomeFeedResponseDto { feed_id: string; generated_at: string; sections: HomeFeedSectionDto[]; active_room: { id: string; name: string; city_id: string; state: RoomState } | null; room_closed_notice?: RoomClosedNoticeDto | null }
-export interface EventSearchResponseDto { items: EventCardDto[]; applied_filters: Record<string, unknown>; total_estimate: number; next_cursor: string | null }
+export interface EventSearchResponseDto { items: EventCardDto[]; applied_filters: Record<string, unknown>; total_estimate: number | null; next_cursor: string | null }
 export interface MapBounds { west: number; south: number; east: number; north: number }
 export type EventMapPointDto = { kind: 'event'; id: string; longitude: number; latitude: number; event: EventCardDto }
 export type EventMapItemDto = EventMapPointDto | { kind: 'cluster'; id: string; longitude: number; latitude: number; west: number; south: number; east: number; north: number; count: number; members: EventMapPointDto[] }

@@ -41,6 +41,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/event-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список встроенных и конфигурируемых источников */
+        get: operations["listInternalEventSources"];
+        put?: never;
+        /**
+         * Создать конфигурируемый источник
+         * @description Требуются same-origin Origin и заголовок X-Admin-Request со значением 1.
+         */
+        post: operations["createInternalEventSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/event-sources/{id}/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Текущие разрешённые домены конкретного Generic source */
+        get: operations["listInternalEventSourceDomains"];
+        put?: never;
+        /**
+         * Явно разрешить hostname для image или ticket
+         * @description Только hostname без wildcard, URL или IP. Требуются same-origin Origin и X-Admin-Request: 1. Повторное разрешение идемпотентно.
+         */
+        post: operations["approveInternalEventSourceDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/event-sources/{id}/domains/{domainId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                domainId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Отозвать approval без удаления сохранённых resource URL
+         * @description Следующий запрос блокируется. Требуются same-origin Origin и X-Admin-Request: 1.
+         */
+        delete: operations["revokeInternalEventSourceDomain"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/event-images/{imageId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Изображение по сохранённому ID через source-scoped runtime policy
+         * @description Не принимает target URL или query. HTTPS upstream, public-IP-only dial, redirects запрещены. Cache-Control no-store обеспечивает revoke.
+         */
+        get: operations["getGenericEventImageContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/{eventId}/ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Перейти на сохранённый Generic ticket URL после runtime approval проверки
+         * @description Не принимает target URL или query. Проверяет HTTPS и точное разрешение source плюс ticket purpose при каждом переходе.
+         */
+        get: operations["redirectGenericEventTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/event-sources/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Проверить подключение и mapping без записи событий
+         * @description Требуются same-origin Origin и X-Admin-Request: 1. source_id позволяет использовать сохранённый секрет.
+         */
+        post: operations["testInternalEventSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/event-sources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Получить конфигурацию источника без секрета */
+        get: operations["getInternalEventSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Обновить источник или выключить его
+         * @description Полная конфигурация; пустой auth_secret сохраняет прежний секрет. Требуются same-origin Origin и X-Admin-Request: 1.
+         */
+        patch: operations["updateInternalEventSource"];
+        trace?: never;
+    };
+    "/internal/event-sources/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Запустить ручной upsert-only импорт
+         * @description Требуются same-origin Origin и X-Admin-Request: 1. Второй одновременный запуск источника возвращает 409.
+         */
+        post: operations["syncInternalEventSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/max/bootstrap": {
         parameters: {
             query?: never;
@@ -124,6 +300,23 @@ export interface paths {
         };
         /** Найти события по тексту и фильтрам */
         get: operations["searchEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/search/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Подсчитать события по фильтрам поиска */
+        get: operations["countSearchEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -383,6 +576,133 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        EventSourceFieldMapping: {
+            path: string;
+            /** @enum {string} */
+            transform?: "" | "string" | "number" | "iso_datetime" | "unix_timestamp" | "strip_html";
+            default?: string;
+        };
+        EventSourceDefaults: {
+            category: string;
+            timezone: string;
+            currency: string;
+            /** @enum {string} */
+            status: "published" | "sold_out" | "cancelled";
+        };
+        EventSourcePagination: {
+            /** @enum {string} */
+            mode: "none" | "page" | "offset";
+            page_param?: string;
+            page_size_param?: string;
+            page_size?: number;
+            offset_param?: string;
+            limit_param?: string;
+            limit?: number;
+        };
+        EventSourceInput: {
+            /** @description Стабильный ключ вида generic:city-events */
+            source_key: string;
+            name: string;
+            enabled: boolean;
+            /** Format: uri */
+            endpoint_url: string;
+            /** @enum {string} */
+            auth_type: "none" | "bearer" | "api_key_header" | "api_key_query";
+            auth_name?: string;
+            auth_secret?: string;
+            query_params?: {
+                [key: string]: string;
+            };
+            response_path: string;
+            pagination: components["schemas"]["EventSourcePagination"];
+            mapping: {
+                external_id?: components["schemas"]["EventSourceFieldMapping"];
+                title?: components["schemas"]["EventSourceFieldMapping"];
+                description?: components["schemas"]["EventSourceFieldMapping"];
+                subtitle?: components["schemas"]["EventSourceFieldMapping"];
+                starts_at?: components["schemas"]["EventSourceFieldMapping"];
+                ends_at?: components["schemas"]["EventSourceFieldMapping"];
+                venue_name?: components["schemas"]["EventSourceFieldMapping"];
+                venue_address?: components["schemas"]["EventSourceFieldMapping"];
+                latitude?: components["schemas"]["EventSourceFieldMapping"];
+                longitude?: components["schemas"]["EventSourceFieldMapping"];
+                metro?: components["schemas"]["EventSourceFieldMapping"];
+                image?: components["schemas"]["EventSourceFieldMapping"];
+                ticket_url?: components["schemas"]["EventSourceFieldMapping"];
+                ticket_available?: components["schemas"]["EventSourceFieldMapping"];
+                price_from?: components["schemas"]["EventSourceFieldMapping"];
+                price_to?: components["schemas"]["EventSourceFieldMapping"];
+            };
+            defaults: components["schemas"]["EventSourceDefaults"];
+            /** @enum {string} */
+            price_unit: "major" | "minor";
+        };
+        EventSource: components["schemas"]["EventSourceInput"] & {
+            /** Format: uuid */
+            id: string;
+            secret_configured: boolean;
+            mapping_locked: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        EventSourceResponse: {
+            source: components["schemas"]["EventSource"];
+        };
+        EventSourceTestInput: components["schemas"]["EventSourceInput"] & {
+            /** Format: uuid */
+            source_id?: string;
+        };
+        EventSourceDomainInput: {
+            /** @description Exact DNS hostname; без URL, IP, wildcard или regex */
+            hostname: string;
+            /** @enum {string} */
+            purpose: "image" | "ticket";
+        };
+        EventSourceAllowedDomain: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            source_id: string;
+            hostname: string;
+            /** @enum {string} */
+            purpose: "image" | "ticket";
+            /** Format: date-time */
+            created_at: string;
+        };
+        EventSourceResourceDomain: {
+            hostname: string;
+            /** @enum {string} */
+            purpose: "image" | "ticket";
+            approved: boolean;
+            count: number;
+        };
+        EventSourcePreview: {
+            resource_domains?: components["schemas"]["EventSourceResourceDomain"][];
+            connection_ok: boolean;
+            /** @description HTTP status of the last fetched preview page */
+            http_status: number;
+            received: number;
+            valid: number;
+            invalid: number;
+            complete: boolean;
+            warnings?: {
+                code: string;
+                count: number;
+            }[];
+            errors: {
+                code: string;
+                count: number;
+            }[];
+            preview: {
+                title: string;
+                /** Format: date-time */
+                starts_at: string;
+                venue: string;
+                price_from_minor?: number;
+            }[];
+        };
         HealthResponse: {
             /** @enum {string} */
             status: "ready";
@@ -509,7 +829,7 @@ export interface components {
             currency: "RUB";
             /** @example от 1 800 ₽ */
             price_label: string;
-            /** Format: uri */
+            /** Format: uri-reference */
             image_url: string | null;
             saved: boolean;
             reasons: components["schemas"]["RecommendationReason"][];
@@ -551,7 +871,7 @@ export interface components {
             district?: string | null;
         };
         EventImage: {
-            /** Format: uri */
+            /** Format: uri-reference */
             url: string;
             width?: number | null;
             height?: number | null;
@@ -590,8 +910,11 @@ export interface components {
             applied_filters: {
                 [key: string]: unknown;
             };
-            total_estimate: number;
+            total_estimate: number | null;
             next_cursor: string | null;
+        };
+        EventSearchCountResponse: {
+            total: number;
         };
         EventMapResponse: {
             items: (components["schemas"]["EventMapPoint"] | components["schemas"]["EventMapCluster"])[];
@@ -689,8 +1012,8 @@ export interface components {
         };
         TicketClickResponse: {
             /**
-             * Format: uri
-             * @description Внешний HTTPS URL провайдера из allowlist; не является внутренним redirect или временным токеном
+             * Format: uri-reference
+             * @description Для built-in источников — проверенный внешний HTTPS URL; для Generic — same-origin /api/v1/events/{eventId}/ticket с повторной runtime-проверкой при переходе
              */
             external_url: string;
         };
@@ -1048,6 +1371,308 @@ export interface operations {
             };
         };
     };
+    listInternalEventSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Источники и состояние последней синхронизации */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sources: {
+                            [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    createInternalEventSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceInput"];
+            };
+        };
+        responses: {
+            /** @description Источник создан; секрет не возвращается */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+        };
+    };
+    listInternalEventSourceDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Разрешения без URL и credentials */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        domains: components["schemas"]["EventSourceAllowedDomain"][];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveInternalEventSourceDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceDomainInput"];
+            };
+        };
+        responses: {
+            /** @description Домен разрешён только для указанного source и purpose */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        domain: components["schemas"]["EventSourceAllowedDomain"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeInternalEventSourceDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                domainId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Разрешение отозвано */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getGenericEventImageContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Проверенное raster image (JPEG, PNG, WebP, GIF, AVIF) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
+                    "image/gif": string;
+                    "image/avif": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description Resource hostname не approved для source и image purpose */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Upstream image недоступно или не прошло content validation */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    redirectGenericEventTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Разрешённый сохранённый HTTPS destination */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description Ticket hostname не approved */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    testInternalEventSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceTestInput"];
+            };
+        };
+        responses: {
+            /** @description Статистика и ограниченный preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourcePreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+        };
+    };
+    getInternalEventSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Конфигурация источника */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateInternalEventSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceInput"];
+            };
+        };
+        responses: {
+            /** @description Источник обновлён */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    syncInternalEventSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Импорт запущен */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "started";
+                    };
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
     bootstrapMaxSession: {
         parameters: {
             query?: never;
@@ -1183,8 +1808,10 @@ export interface operations {
     searchEvents: {
         parameters: {
             query?: {
-                /** @description Поиск по названию, описанию и площадке */
+                /** @description Поиск по названию, описанию, площадке и жанру; поддерживаются близкие написания */
                 q?: string;
+                /** @description При false total_estimate возвращается как null */
+                include_total?: boolean;
                 /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
                 date_from?: string;
@@ -1220,6 +1847,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventSearchResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    countSearchEvents: {
+        parameters: {
+            query?: {
+                q?: string;
+                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                city_id?: components["parameters"]["CityId"];
+                date_from?: string;
+                date_to?: string;
+                day_types?: components["schemas"]["DayType"][];
+                time_slots?: components["schemas"]["TimeSlot"][];
+                category_slugs?: components["schemas"]["CategorySlug"][];
+                price_max_minor?: number;
+                distance_m?: number;
+                lat?: number;
+                lng?: number;
+                free_only?: boolean;
+                west?: number;
+                south?: number;
+                east?: number;
+                north?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Точное количество подходящих событий */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSearchCountResponse"];
                 };
             };
             400: components["responses"]["ValidationError"];

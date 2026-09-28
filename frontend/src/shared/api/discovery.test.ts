@@ -10,6 +10,23 @@ describe('http discovery adapter', () => {
     expect((await api.searchEvents()).items).toHaveLength(1)
   })
 
+  it('disables inline totals for search and requests the separate count with abort signals', async () => {
+    const request = vi.fn(async (path: string) => path.startsWith('/events/search/count')
+      ? { total: 42 }
+      : { items: [], applied_filters: {}, total_estimate: null, next_cursor: null })
+    const api = createHttpDiscoveryApi(request as never)
+    const searchSignal = new AbortController().signal
+    const countSignal = new AbortController().signal
+
+    const page = await api.searchEvents({ q: 'jazz', limit: 24 }, searchSignal)
+    const count = await api.getSearchCount({ q: 'jazz' }, countSignal)
+
+    expect(page.totalEstimate).toBeNull()
+    expect(count).toBe(42)
+    expect(request).toHaveBeenNthCalledWith(1, '/events/search?q=jazz&limit=24&include_total=false', { signal: searchSignal })
+    expect(request).toHaveBeenNthCalledWith(2, '/events/search/count?q=jazz', { signal: countSignal })
+  })
+
   it('requests map bounds with integer zoom and maps wrapped singleton events', async () => {
     const event = { id: 'map-1', title: 'Map event', subtitle: null, category_slug: 'concerts', starts_at: '2026-01-01T00:00:00Z', timezone: 'Europe/Moscow', date_label: '1 января', venue_name: 'Venue', distance_m: null, distance_label: null, price_from_minor: 0, currency: 'RUB', price_label: 'Бесплатно', image_url: null, saved: false, reasons: [], latitude: 55.75, longitude: 37.61 }
     const request = vi.fn(async (path: string) => path.startsWith('/events/map?') ? { items: [{ kind: 'event', id: 'map-1', latitude: 55.75, longitude: 37.61, event }] } : { items: [], applied_filters: {}, total_estimate: 0, next_cursor: null })

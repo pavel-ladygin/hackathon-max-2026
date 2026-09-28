@@ -5,10 +5,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// CleanText decodes HTML character references from provider text before it is
+// stored and later rendered as ordinary text by clients.
+func CleanText(value string) string {
+	return strings.TrimSpace(html.UnescapeString(value))
+}
+
+// CleanOptionalText is CleanText for optional provider fields.
+func CleanOptionalText(value string) *string {
+	value = CleanText(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
 
 const (
 	EventStatusPublished = "published"
@@ -98,6 +115,9 @@ type SyncRunStart struct {
 	CityID      uuid.UUID
 	WindowStart time.Time
 	WindowEnd   time.Time
+	// UpsertOnly prevents this run from deactivating provider events that were
+	// not observed. Its zero value preserves reconciliation for built-in runs.
+	UpsertOnly bool
 }
 
 type SyncRunFinish struct {
