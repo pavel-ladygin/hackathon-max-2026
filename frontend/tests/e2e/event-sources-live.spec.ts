@@ -85,11 +85,24 @@ test('internal event sources work through the live Go handler and PostgreSQL', a
   await permission.getByRole('button', { name: 'Отозвать' }).click()
   const imageId = imagePath?.match(/event-images\/([^/]+)\/content/)?.[1]
   expect(imageId).toBeTruthy()
-  expect((await page.request.get(`/api/v1/event-images/${imageId}/content`)).status()).toBe(403)
+  // click() waits for the input action, not the asynchronous domain mutation.
+  // The permission disappears only after DELETE and the refreshed domain list.
   await expect(permission).toHaveCount(0)
+  expect((await page.request.get(`/api/v1/event-images/${imageId}/content`)).status()).toBe(403)
   await expect(editDialog.locator('li').filter({ hasText: 'tickets.example.test' })).toBeVisible()
+  // Keep the mutation observably asynchronous even on a fast local runner,
+  // so this scenario also covers the slower request scheduling seen in CI.
+  await page.route('**/api/v1/internal/event-sources/*/domains', async (route) => {
+    if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, 250))
+    await route.continue()
+  })
   await editDialog.getByLabel('Hostname').fill('images.example.test')
-  await editDialog.getByRole('button', { name: 'Разрешить домен' }).click()
+  const [reapproval] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/domains')),
+    editDialog.getByRole('button', { name: 'Разрешить домен' }).click(),
+  ])
+  expect(reapproval.status()).toBe(200)
+  await expect(permission).toBeVisible()
   expect((await page.request.get(`/api/v1/event-images/${imageId}/content`)).status()).toBe(200)
   await editDialog.getByRole('button', { name: 'Отмена' }).click()
 
