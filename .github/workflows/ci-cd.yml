@@ -191,8 +191,9 @@ jobs:
       - name: Validate Compose configuration
         working-directory: .
         run: |
-          docker compose config --quiet
+          docker compose --env-file .env.submission.example config --quiet
           docker compose -f compose.production.yaml config --quiet
+          docker compose --env-file .env.submission.example -f compose.yaml -f compose.maintenance.yaml --profile maintenance config --quiet
       - uses: docker/setup-buildx-action@v3.10.0
       - name: Build application images
         working-directory: .
@@ -206,7 +207,7 @@ jobs:
         env:
           TICKET_PROVIDER_ALLOWLIST: tickets.example.invalid
         run: |
-          docker compose up --detach --no-build postgres migrate seed backend frontend
+          docker compose --env-file .env.submission.example up --detach --no-build
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8080/api/v1/health/ready >/dev/null \
               && curl --fail --silent http://127.0.0.1:8081/health >/dev/null; then
@@ -214,8 +215,8 @@ jobs:
             fi
             sleep 2
           done
-          docker compose ps
-          docker compose logs --no-color backend migrate seed frontend postgres
+          docker compose --env-file .env.submission.example ps
+          docker compose --env-file .env.submission.example logs --no-color backend migrate submission-fixture frontend postgres
           exit 1
       - name: Smoke test frontend and API
         run: |
@@ -242,7 +243,7 @@ jobs:
         if: always()
         working-directory: .
         run: |
-          docker compose down --volumes
+          docker compose --env-file .env.submission.example down --volumes
 
   secrets:
     name: Secret scan

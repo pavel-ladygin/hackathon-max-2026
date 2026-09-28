@@ -53,7 +53,7 @@ WITH search_candidates AS (
 SELECT f.id, f.title, f.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = f.id AND ec.is_primary) AS category_slug,
        f.starts_at, f.timezone, f.venue_name, f.latitude, f.longitude, f.distance_m, f.price_from_minor, f.currency,
-       coalesce(image.url, '') AS image_url,
+       coalesce(image.url, '')::text AS image_url,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = f.id) AS saved
 FROM filtered f
 LEFT JOIN LATERAL (
@@ -108,20 +108,20 @@ SELECT e.id, e.title, e.subtitle,
        (SELECT ec.category_slug FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary) AS category_slug,
        e.starts_at, e.timezone, v.name,
        CASE WHEN sqlc.narg('latitude')::double precision IS NULL OR v.latitude IS NULL OR v.longitude IS NULL THEN NULL ELSE 6371000.0 * 2 * asin(sqrt(least(1.0, power(sin(radians(v.latitude - sqlc.narg('latitude')::double precision) / 2), 2) + cos(radians(sqlc.narg('latitude')::double precision)) * cos(radians(v.latitude)) * power(sin(radians(v.longitude - sqlc.narg('longitude')::double precision) / 2), 2)))) END,
-       e.price_from_minor, e.currency, coalesce(image.url, '') AS image_url,
+       e.price_from_minor, e.currency, coalesce(image.url, '')::text AS image_url,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = e.id),
        e.description, e.ends_at, v.id, v.address, v.latitude, v.longitude, v.metro, v.district,
        e.ticket_available, e.status, e.age_rating, e.source, e.source_updated_at, e.is_demo
 FROM events e JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE e.id = sqlc.arg('event_id') AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
   AND EXISTS (SELECT 1 FROM event_categories ec WHERE ec.event_id = e.id AND ec.is_primary);
 
 -- name: ListDiscoveryEventImages :many
-SELECT CASE WHEN e.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = sqlc.arg('event_id') ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50;
+SELECT CASE WHEN e.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = sqlc.arg('event_id') ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50;
 
 -- name: GetDiscoveryUserCity :one
 SELECT city_id FROM users WHERE id = sqlc.arg('user_id') AND city_id IS NOT NULL;

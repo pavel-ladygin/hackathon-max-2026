@@ -1,5 +1,8 @@
 # Хакатонное описание проверок API. Локальная структура версии 1;
 # организаторы не опубликовали машинную схему или официальный номер версии.
+# Это чеклист по репозиторному OpenAPI, не утверждение о формате организаторов.
+# Организаторские логины/пароли и способ выдачи двух MAX-аккаунтов пока не определены.
+# Не сохраняйте в этом файле raw initData или выданные bootstrap Bearer-токены.
 config_version: 1
 solution: MAX Together
 base_url: https://worknet.team/api/v1
@@ -35,7 +38,7 @@ checks:
       constraints:
         token_type: Bearer
         expires_in: 86400
-    notes: Сохранить access_token как Bearer для последующих запросов пользователя A.
+    notes: Сохранить временный access_token как Bearer только на время проверки пользователя A. Успешный bootstrap создаёт новую 24-часовую сессию; raw initData не сохранять и не передавать как credential.
 
   - id: max-bootstrap-user-b
     purpose: Открыть сессию второго участника из Mini App MAX
@@ -53,7 +56,57 @@ checks:
       content_type: application/json
       required_fields: [access_token, token_type, expires_in, user, onboarding_state, preferences, daily_notifications_enabled, invite_context, shared_event_id]
       constraints: {token_type: Bearer, expires_in: 86400}
-    notes: Токен B используется только для запросов второго участника.
+    notes: Каждый bootstrap проверяет текущие подписанные MAX init data и создаёт новую 24-часовую сессию. Токен B временный, используется только для запросов B; не публиковать его как постоянный тестовый логин.
+
+  # Обязательные discovery-проверки до room flow, поля сверены с OpenAPI 3.1.
+  - id: discovery-home-feed
+    purpose: Получить домашнюю ленту авторизованного пользователя
+    method: GET
+    path: /feed/home
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {}
+      query: {city_id: a0f625ee-2154-5a45-8afe-37adf955ec24, limit: 20}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [feed_id, generated_at, sections]
+    notes: Проверить, что лента содержит доступные карточки событий.
+
+  - id: discovery-search-events
+    purpose: Найти событие в каталоге
+    method: GET
+    path: /events/search
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {}
+      query: {city_id: a0f625ee-2154-5a45-8afe-37adf955ec24, limit: 20}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [items, applied_filters, total_estimate, next_cursor]
+      item_required_fields: [id, title, category_slug, starts_at, timezone, date_label, venue_name, price_from_minor, currency, price_label, image_url, saved, reasons]
+    notes: Передайте ID карточки из items в discovery-event-detail.
+
+  - id: discovery-event-detail
+    purpose: Открыть полную карточку найденного события
+    method: GET
+    path: /events/{eventId}
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {eventId: "<items[0].id из discovery-search-events>"}
+      query: {}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [id, title, category_slug, starts_at, timezone, date_label, venue_name, price_from_minor, currency, price_label, image_url, saved, reasons, description, venue, images, ticket_available, status, data_provenance]
+    notes: Если поиск вернул пустой каталог, проверка блокируется нехваткой данных; не подменяйте результат неподтверждённым событием.
 
   - id: create-room
     purpose: Создать комнату и получить приглашение
@@ -76,7 +129,7 @@ checks:
       required_fields: [room, invite]
       room_required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
       invite_required_fields: [token, url, max_deep_link, expires_at]
-    notes: Сохранить room.id и invite.token для последующих шагов.
+    notes: Сохранить room.id и invite.token для последующих шагов. Проверить кнопку «Пригласить через MAX» и копирование URL в интерфейсе; max_deep_link передаёт токен приглашения через startapp.
 
   - id: join-room
     purpose: Второму участнику вступить по приглашению

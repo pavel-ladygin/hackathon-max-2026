@@ -1,374 +1,293 @@
-# hackathon-max-2026
+# MAX Together
 
-## Назначение и основной сценарий
+MAX Together is a MAX Mini App for discovering events and choosing one together. A participant can browse and save events, create a private room, invite one other person through MAX or a shareable link, set private preferences, and vote on a shared event pool. A mutual like creates a match. Ticket links open the event provider; this project does not sell tickets, accept payment, or issue tickets.
 
-MAX Together помогает двум людям выбрать общее мероприятие: пользователь открывает
-мини-приложение из MAX, создаёт комнату и отправляет приглашение; второй участник
-вступает по приглашению; оба указывают условия, просматривают общий пул и голосуют.
-Совпадение показывает карточку мероприятия и ссылку на страницу провайдера билетов.
-Приложение не продаёт билеты и не подтверждает оплату.
+## Architecture and current data
 
-Состав: React/Vite frontend, Go HTTP API, PostgreSQL, миграции Goose, seed московского
-справочника и `event-sync` для KudaGo и, при настроенном `TIMEPAD_TOKEN`, Timepad.
-Канонический контракт — OpenAPI 3.1 в [`openapi/openapi.yaml`](openapi/openapi.yaml).
-Сценарий требует работающего MAX Mini App и подписанных MAX init data. Локальный
-frontend, открытый обычным браузером, показывает инструкцию открыть приложение в MAX;
-авторизованный UI проверяется в MAX по HTTPS. API локально доступен для проверки отдельно.
+- `frontend/`: React 19, TypeScript, Vite, MAX UI and MAX Bridge adapter.
+- `backend/`: Go HTTP API and workers; PostgreSQL via pgx; versioned Goose migrations.
+- `openapi/openapi.yaml`: canonical OpenAPI 3.1 contract used for generated Go and TypeScript types.
+- `compose.yaml`: isolated local review stack, migrations, fixture loader, API and frontend. Live provider synchronization is opt-in.
+- `compose.production.yaml`: PostgreSQL, migration, API, frontend, event synchronization and daily notifications.
+- `compose.maintenance.yaml`: manual Timepad poster recovery service; not part of normal deployment.
 
-## Разработка backend и frontend
+Live events are imported from KudaGo and optionally Timepad. The default local review stack loads a fixed small catalog from `backend/seed/submission.json` into the isolated `max_together_submission` database. Those records use `source=submission-fixture` and `is_demo=false` so discovery and room eligibility filters exercise the normal API path. Their `tickets.example.invalid` URLs are non-purchasable demonstration links, not real provider offers. The separate Go demo seed (`go run ./cmd/seed`) creates 44 `is_demo=true` events; normal discovery and room pools exclude those records.
 
-Требования: Docker Desktop/Engine с Compose v2; Go 1.26 для backend.
-Для повторной генерации типов OpenAPI нужен Go 1.25+ (генератор запускается отдельно
-от модуля приложения). Для проверки контракта нужны Python 3.10+ и pip.
+## Run the local review stack
 
-### Локальный стек
-
-Из этой директории один раз создайте локальную конфигурацию (существующий `.env` сохраните):
+Requirements: Docker Engine/Desktop with Compose v2. From this directory:
 
 ```sh
-cp .env.example .env
-# Задайте обязательные MAX_BOT_TOKEN, INVITE_ENCRYPTION_KEY,
-# INVITE_URL_TEMPLATE и MAX_DEEP_LINK_TEMPLATE в .env.
-docker compose up --build
-curl http://localhost:8080/api/v1/health/ready
+docker compose --env-file .env.submission.example build
+docker compose --env-file .env.submission.example up -d
 ```
 
-Compose выполняет последовательность PostgreSQL → миграции → идемпотентный seed
-московского справочника → backend и `event-sync` → frontend. Backend доступен на
-`127.0.0.1:8080`, frontend на `127.0.0.1:8081`, PostgreSQL на `127.0.0.1:5432`.
-Откройте `http://localhost:8081`; локальный API — `http://localhost:8080/api/v1`.
-Readiness возвращает HTTP 200, когда PostgreSQL доступен и миграции совпадают с бинарным
-файлом. Бизнес-обработчики MAX bootstrap, preferences, discovery, saved events,
-ticket click и двухпользовательского room/match flow зарегистрированы в сервере;
-OpenAPI описывает методы и форматы запросов/ответов.
-
-```json
-{"status":"ready","database":"ready","migrations":"current"}
-```
-
-`event-sync` запускается после seed, немедленно начинает live-синхронизацию и затем
-повторяет её с `EVENT_SYNC_INTERVAL` (по умолчанию 60 минут). KudaGo включён по
-умолчанию; Timepad включается при наличии `TIMEPAD_TOKEN`. Seed содержит отдельные
-`is_demo=true` фикстуры; продуктовая выдача и room pool их не смешивают с live-данными.
-Ошибка провайдера или успешный старт контейнеров сами по себе не подтверждают пригодность
-каталога. При запуске фиксируйте время первого импорта, актуальные live-события и число
-кандидатов, прошедших базовую проверку room-допуска. Эти показатели зависят от данных
-источников и должны измеряться, а не предполагаться заранее. Время и результаты импорта
-смотрите в логах:
+The API is at `http://localhost:8080/api/v1`; the frontend is at `http://localhost:8081`. Check readiness and the frontend:
 
 ```sh
-docker compose logs --since=1h event-sync
+curl --fail http://localhost:8080/api/v1/health/ready
+curl --fail http://localhost:8081/health
 ```
 
-Лог `event sync provider finished` содержит `duration`, `fetched`, `inserted`, `updated`,
-`errors` и итоговый статус по каждому провайдеру. Для числа актуальных live-событий и
-событий, проходящих базовые условия комнаты, выполните read-only запрос (имя пользователя
-и БД замените, если они отличаются от значений Compose по умолчанию):
+The Compose stack waits for PostgreSQL, applies migrations, loads the isolated submission fixture, then starts the API and frontend. The example values are disposable local placeholders. `MAX_BOT_TOKEN=submission-only-bot-token` is not a MAX bot credential, so genuine signed MAX init data will not authenticate in this local configuration. Use a bot token authorized for the Mini App and open it through MAX to verify signed user sessions. Do not add real tokens, signed init data, session tokens, passwords or production configuration to the repository.
+
+Stop containers and retain the local database:
 
 ```sh
-docker compose exec -T postgres psql -U max_together -d max_together -c "SELECT count(*) FILTER (WHERE provider_active = true AND status = 'published' AND starts_at > now()) AS current_live_events, count(*) FILTER (WHERE provider_active = true AND status = 'published' AND starts_at > now() AND ticket_available = true AND ticket_url IS NOT NULL AND btrim(ticket_url) <> '') AS basic_room_candidates FROM events WHERE is_demo = false;"
+docker compose --env-file .env.submission.example down
 ```
 
-Это верхняя граница до проверки конкретных дат, бюджета, категорий и условий обоих
-участников; запрос не подтверждает фактический размер пула отдельной комнаты.
-
-Backend pruning продуктовой аналитики при старте и затем раз в 24 часа; миграция
-определяет удаляемые данные. Ticket URL проверяются allowlist-конфигурацией backend и
-frontend. При ручном запуске Vite вне Compose задайте `VITE_TICKET_PROVIDER_ALLOWLIST`
-в соответствии с backend allowlist, чтобы локальная сборка одинаково проверяла ссылки.
-
-Обязательны `MAX_BOT_TOKEN`, `INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` и
-`MAX_DEEP_LINK_TEMPLATE`; `MAX_INIT_DATA_MAX_AGE` по умолчанию `1h`. Секреты задаются
-только в локальном `.env`; не коммитьте его. `TIMEPAD_TOKEN` и
-`VITE_YANDEX_MAPS_API_KEY` необязательны. Значения базы по умолчанию предназначены
-только для разработки.
-
-Чтобы сбросить локальную базу этого проекта (удалит сохранённые данные):
+Remove the isolated database volume as well:
 
 ```sh
-docker compose down -v
-# Повторите приведённые выше команды запуска.
+docker compose --env-file .env.submission.example down -v
 ```
 
-### Прямой запуск Go
+Compose project name and database are `max-together-submission` and `max_together_submission`; the fixture loader refuses any other database. Compose namespaces the PostgreSQL volume under this project name, so this stack gets a separate volume and leaves the older project's volume untouched. Default ports are 5432, 8080 and 8081. If a port is occupied, change its `*_PORT` value in a copied env file and pass that file with `--env-file`.
 
-Запустите PostgreSQL командой `docker compose up -d postgres`. Экспортируйте эти
-переменные окружения в оболочке; процесс Go не загружает `.env` автоматически:
+### Optional live event imports
+
+The normal review stack does not contact event providers. To enable the periodic importer:
 
 ```sh
-export APP_ENV=local
-export HTTP_ADDR=:8080
-export DATABASE_URL='postgres://max_together:local-dev-only@localhost:5432/max_together?sslmode=disable'
-export LOG_LEVEL=info
-# Перед запуском сервера безопасно задайте MAX_BOT_TOKEN в этой оболочке.
-export MAX_INIT_DATA_MAX_AGE=1h
-export INVITE_ENCRYPTION_KEY='(локальный base64 ключ; не хранить в репозитории)'
-export INVITE_ENCRYPTION_KEY_VERSION=1
-export INVITE_URL_TEMPLATE='https://localhost/join/{token}'
-export MAX_DEEP_LINK_TEMPLATE='https://max.ru/<bot>?startapp={token}'
-cd backend
+docker compose --env-file .env.submission.example --profile live up -d event-sync
+docker compose --env-file .env.submission.example logs --since=1h event-sync
+```
+
+KudaGo sync runs by default; set a real `TIMEPAD_TOKEN` in a private local env file to enable Timepad as well. The worker syncs immediately and then on `EVENT_SYNC_INTERVAL` (default 60 minutes). Provider availability, current event dates and room-eligible counts depend on live source data; fixture presence and container readiness do not prove live catalog availability.
+
+### Optional Timepad poster recovery
+
+Poster recovery is separate from normal local startup and normal production deploy. The utility in `backend/cmd/backfill-timepad-posters` has dry-run behavior unless `--apply` is specified. On the production host, from the directory containing the Compose files and private env file, inspect candidates first:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yaml -f compose.maintenance.yaml --profile maintenance run --build --rm timepad-image-recovery
+```
+
+Only after reviewing the output, apply a one-shot repair:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yaml -f compose.maintenance.yaml --profile maintenance run --build --rm timepad-image-recovery /app/backfill-timepad-posters --apply --limit 50
+```
+
+This is a separate manual maintenance deployment action; the optional backfill image target is not built or started by the ordinary deploy path. `TIMEPAD_TOKEN` is required for this command; without it the utility exits with `DATABASE_URL and TIMEPAD_TOKEN are required`, before contacting the provider. Do not enable continuous recovery as a default submission service. The production deployment retains `daily-notifications` and `event-sync`.
+
+## MAX authentication and privacy boundary
+
+For each user, the Mini App sends the current MAX-signed `initData` to `POST /api/v1/auth/max/bootstrap`. The backend verifies the signature and freshness against `MAX_BOT_TOKEN`; it does not trust `initDataUnsafe` as authentication. A successful bootstrap upserts the user and issues a new opaque 24-hour application session. API calls use that session as a Bearer token. The client holds the session in memory. Raw `initData` is neither stored nor treated as a reusable app credential; never put it in a README, DATA-API file, logs, screenshots or a public handoff. Verify the two participants independently with two real MAX identities (A and B).
+
+The user ID/display fields needed to resolve an account are persisted by the application; MAX signature material and the raw bootstrap payload are not. Geolocation coordinates are sent only when the user grants location access and are used for nearby discovery. Ticket provider links are allowlist-checked before use. The app is not a ticket seller, and each external ticket provider owns its purchase, cancellation and refund flow.
+
+### Inspecting MAX bootstrap in Network tools
+
+In an authorized MAX WebView session, inspect the request to `POST /api/v1/auth/max/bootstrap` in the platform's Network tools. Its JSON request has a required `init_data` string copied from the platform bridge, plus an optional `start_param` hint. The response has `access_token`, `token_type: "Bearer"`, `expires_in: 86400`, `user`, `onboarding_state`, `preferences`, `daily_notifications_enabled`, `invite_context`, and `shared_event_id`. A successful bootstrap creates a fresh app session for that user. Do not export HAR files or screenshots with `init_data`, the response `access_token`, or Authorization headers; redact them before sharing diagnostics. `start_param` is trusted only after the backend validates the signed `init_data` and verifies the hint matches it.
+
+### Reproducible local auth and HTTP walkthrough
+
+The following commands use only the **synthetic local** `submission-only-bot-token` in `.env.submission.example`; they do not authenticate with MAX. The helper creates a fresh timestamp and HMAC signature in memory for every bootstrap and emits the JSON body directly to `curl`. Keep the shell session private and close it when finished so its temporary Bearer-token variables are discarded. Never substitute a production token or signed MAX `init_data` into this test helper.
+
+From the repository root, after starting the stack:
+
+```sh
+API=http://127.0.0.1:8080/api/v1
+CITY_ID=a0f625ee-2154-5a45-8afe-37adf955ec24
+FIXTURE_EVENT_ID=ce8f2695-324f-52b0-abba-4de56e9114c1
+
+bootstrap_body() {
+  python3 - "$1" "${2:-}" <<'PY'
+import hashlib, hmac, json, sys, time, urllib.parse
+user_id, start = sys.argv[1], sys.argv[2]
+fields = {
+    "auth_date": str(int(time.time())),
+    "user": json.dumps({"id": int(user_id), "first_name": "Submission"}, separators=(",", ":")),
+}
+if start:
+    fields["start_param"] = start
+key = hmac.new(b"WebAppData", b"submission-only-bot-token", hashlib.sha256).digest()
+payload = "\n".join(f"{name}={fields[name]}" for name in sorted(fields)).encode()
+fields["hash"] = hmac.new(key, payload, hashlib.sha256).hexdigest()
+body = {"init_data": urllib.parse.urlencode(fields)}
+if start:
+    body["start_param"] = start
+print(json.dumps(body, separators=(",", ":")))
+PY
+}
+
+# Fresh local bootstrap for user A; response and access token stay in shell memory.
+A_RESPONSE=$(curl --fail --silent --show-error -X POST "$API/auth/max/bootstrap" \
+  -H 'Content-Type: application/json' --data "$(bootstrap_body 900000001)")
+A_TOKEN=$(printf '%s' "$A_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+# Home, search and detail routes are authenticated. The fixture event ID is stable.
+curl --fail --silent --show-error "$API/feed/home?city_id=$CITY_ID" -H "Authorization: Bearer $A_TOKEN"
+curl --fail --silent --show-error "$API/events/search?city_id=$CITY_ID&limit=20" -H "Authorization: Bearer $A_TOKEN"
+curl --fail --silent --show-error "$API/events/$FIXTURE_EVENT_ID" -H "Authorization: Bearer $A_TOKEN"
+
+# Create room as A; keep room/invite/session tokens only in this shell.
+ROOM_RESPONSE=$(curl --fail --silent --show-error -X POST "$API/rooms" \
+  -H "Authorization: Bearer $A_TOKEN" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(python3 -c 'import uuid; print(uuid.uuid4())')" \
+  --data "{\"name\":\"Submission walkthrough\",\"city_id\":\"$CITY_ID\"}")
+ROOM_ID=$(printf '%s' "$ROOM_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["room"]["id"])')
+INVITE_TOKEN=$(printf '%s' "$ROOM_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["invite"]["token"])')
+
+# A real UI test shares invite.max_deep_link using MAX share APIs. This direct
+# local API walkthrough bootstraps B with the same signed start_param instead.
+B_RESPONSE=$(curl --fail --silent --show-error -X POST "$API/auth/max/bootstrap" \
+  -H 'Content-Type: application/json' --data "$(bootstrap_body 900000002 "$INVITE_TOKEN")")
+B_TOKEN=$(printf '%s' "$B_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+curl --fail --silent --show-error -X POST "$API/room-invites/$INVITE_TOKEN/join" \
+  -H "Authorization: Bearer $B_TOKEN" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(python3 -c 'import uuid; print(uuid.uuid4())')" --data '{}'
+
+# Both participants submit a matching future intent, read the pool and like its first card.
+EVENT_DAY=$(docker compose --env-file .env.submission.example exec -T postgres psql -U max_together_submission -d max_together_submission -Atc 'SELECT CURRENT_DATE + 7')
+INTENT="{\"dates\":[\"$EVENT_DAY\"],\"day_types\":[],\"time_slots\":[],\"category_slugs\":[\"concerts\"],\"budget_max_minor\":300000,\"exclusion_slugs\":[]}"
+for TOKEN in "$A_TOKEN" "$B_TOKEN"; do
+  curl --fail --silent --show-error -X PUT "$API/rooms/$ROOM_ID/intent/me" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data "$INTENT"
+done
+POOL=$(curl --fail --silent --show-error "$API/rooms/$ROOM_ID/events" -H "Authorization: Bearer $A_TOKEN")
+POOL_VERSION=$(printf '%s' "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pool_version"])')
+EVENT_ID=$(printf '%s' "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["event"]["id"])')
+VOTE="{\"pool_version\":$POOL_VERSION,\"vote\":\"like\"}"
+for TOKEN in "$A_TOKEN" "$B_TOKEN"; do
+  curl --fail --silent --show-error -X PUT "$API/rooms/$ROOM_ID/events/$EVENT_ID/vote" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data "$VOTE"
+done
+curl --fail --silent --show-error "$API/rooms/$ROOM_ID" -H "Authorization: Bearer $A_TOKEN"
+curl --fail --silent --show-error -X POST "$API/events/$EVENT_ID/ticket-click" \
+  -H "Authorization: Bearer $A_TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"source\":\"match\",\"room_id\":\"$ROOM_ID\"}"
+```
+
+The fixture date is derived from the database's current date plus seven days. If the pool is not ready yet (`409 POOL_NOT_READY`), retry its GET after the response's retry guidance or wait briefly. Fixture ticket-click deliberately resolves only to the reserved `.invalid` host.
+
+### MAX invitation sharing by client
+
+The invitation screen sends the same `{text, link}` payload to `shareMaxContent` when available, falls back to `shareContent`, then to the browser Web Share API. It also offers copy-link as a separate fallback. The URL includes the invitation token; the MAX deep link carries that token in `startapp`. When a user opens a link outside MAX, the UI offers `openMaxLink` then `openLink` where available (and an external-window fallback); it does not treat a normal browser's empty init data as authenticated.
+
+Manual checklist: verify create/share/copy/open/join on a **mobile MAX client** and a **MAX Web client** if available; verify `shareMaxContent` on clients that expose it, `shareContent` fallback where exposed, and browser Web Share/copy in a normal browser separately. On both MAX clients confirm B joins the intended room, sees the shared pool, and can reach the match. A plain browser may test layout/fallback only and cannot perform real MAX auth with the placeholder token.
+
+## Official submission checklist and known blockers
+
+The current technical slide draft still has placeholders for the bot link, repository link and commit SHA; it does not yet contain short run/check steps or a complete required-env list. Before submission, fill and verify these fields:
+
+- working MAX bot/Mini App URL;
+- repository URL and the exact 40-character release commit SHA;
+- HTTPS API base URL and an external availability check;
+- short instructions to open the Mini App and run the main two-user scenario;
+- names/roles and access method for test users A and B, if organizers require them;
+- required env names and a safe way to supply any real API keys/tokens needed for verification.
+
+The application does not implement username/password test accounts: organizer/API access uses MAX-signed init data followed by a short-lived Bearer session. The organizer-provided test-login/password/role and token/API-key requirements therefore need clarification with the organizers. An official machine-readable DATA-API schema/version has not been provided either. `DATA-API.yaml` is a repository checklist aligned to the current OpenAPI and handlers, not a claim of compatibility with an unknown organizer validator. These access/schema questions are manual submission blockers; do not resolve them by inventing credentials or an official schema.
+
+## API and submission scenario
+
+`DATA-API.yaml` lists the checked API flow: bootstrap users A and B; read the home feed, search events and open an event detail; create a room; share the invitation through MAX or copy its URL/deep link; join as B; set private intents; load the common pool; vote; confirm a mutual-like match; open the provider ticket page. Required checks use existing public routes in `openapi/openapi.yaml`. Bootstrap requires valid, current, signed MAX init data for each test user; bearer session tokens returned by bootstrap are temporary and must not be distributed as reusable test credentials.
+
+Recommended manual review in MAX:
+
+1. Open the app as A, finish onboarding, browse/search and open an event.
+2. Save or unsave an event, then create a room and share the invite from MAX.
+3. Open the deep link as B and join the room.
+4. Set a different private intent for each user, then review the common pool from both devices.
+5. Vote on the same event with both users; confirm a match and open the provider link.
+6. Reopen the room to confirm state recovery. Also review the empty-pool and provider-failure UI when those conditions are available.
+
+## Environment and service configuration
+
+`.env.submission.example` contains only disposable values for the isolated local stack; use it directly for the commands above or copy it to a private env file. **Never use it for production.** `.env.example` is the general local template. Never edit or replace an existing `.env` without preserving its local secrets. Production secrets belong in `/opt/worknet/.env.production` with mode `0600`, not in this repository.
+
+Required API settings include `APP_ENV`, `HTTP_ADDR`, `DATABASE_URL`, `LOG_LEVEL`, `MAX_BOT_TOKEN`, `INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` and `MAX_DEEP_LINK_TEMPLATE`. The invitation key must be base64 encoding of 32 bytes and remain stable for stored invitations. Each URL template must be HTTPS and contain `{token}` exactly once. The local example uses `.invalid` hostnames intentionally. Optional settings include `TIMEPAD_TOKEN`, `VITE_YANDEX_MAPS_API_KEY`, provider sync endpoints/timeouts and interval. Frontend and backend ticket allowlists must remain aligned; current local allowed ticket domains are `kudago.com`, `*.kudago.com`, `timepad.ru`, `*.timepad.ru`, and fixture-only `tickets.example.invalid`.
+
+Production Compose configuration, provisioned only in `/opt/worknet/.env.production`:
+
+| Variables | Production value / source |
+| --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Dedicated production database/user and a strong private password. |
+| `BACKEND_IMAGE`, `FRONTEND_IMAGE` | SHA-tagged GHCR images; the CI deploy script sets these from the selected release SHA. |
+| `MAX_BOT_TOKEN`, `MAX_APP_URL` | Real MAX bot token and the public Mini App/bot URL. |
+| `INVITE_ENCRYPTION_KEY`, `INVITE_ENCRYPTION_KEY_VERSION` | Stable base64 encoding of 32 secret bytes and its key version; do not rotate while stored invitations rely on it. |
+| `INVITE_URL_TEMPLATE`, `MAX_DEEP_LINK_TEMPLATE` | HTTPS public invite and MAX deep-link templates, each with exactly one `{token}` placeholder. |
+| `TICKET_PROVIDER_ALLOWLIST` | `kudago.com,*.kudago.com,timepad.ru,*.timepad.ru`; omit fixture-only `tickets.example.invalid`. |
+| `TIMEPAD_TOKEN` | Optional real provider token; leave unset to use KudaGo only. |
+| `TRUSTED_PROXY_CIDRS`, `LOG_LEVEL`, `MAX_INIT_DATA_MAX_AGE` | Set to match the real proxy network and operating policy; `APP_ENV=production` is set by Compose. |
+
+For frontend build, `YANDEX_MAPS_API_KEY` is an optional GitHub production secret passed as a Docker build argument. Never copy the submission example's local credentials or `.invalid` invitation templates into production.
+
+## Existing checks
+
+The CI workflow (`.github/workflows/ci-cd.yml`) runs the established checks. The release review ran the checks listed here; results are recorded below.
+
+Backend, from `backend/` with PostgreSQL 17 migrated and `TEST_DATABASE_URL` set:
+
+```sh
 go run ./cmd/migrate
-go run ./cmd/server
+go test -p 1 ./...
+go vet ./...
+go build ./...
 ```
 
-В PowerShell используется `$env:APP_ENV='local'` (и аналогичная запись для каждой переменной).
-Сначала остановите backend из Compose, если он уже занял порт 8080.
-`cmd/migrate` применяет версионный SQL, встроенный в бинарный файл; его можно безопасно
-запускать повторно. После добавления миграции пересоберите бинарный файл/образ.
-Изменения схемы требуют согласования между обоими владельцами backend; новые миграции
-используют следующий свободный номер.
+The CI uses `-p 1` because backend test packages share a database. Compose's `integration-tests` service is configured to use the same serial package mode. The real-catalog E2E tests are opt-in: `RUN_KUDAGO_REAL_E2E=1` requires imported eligible KudaGo events; `RUN_REAL_PROVIDER_ROOM_E2E=1` requires eligible future events from both KudaGo and Timepad. They are not required for the local fixture-only run.
 
-### Демо-каталог
-
-Compose запускает seed автоматически после миграций. Для отдельного ручного запуска
-или обновления demo-фикстур экспортируйте локальное окружение и выполните из `backend`:
+Contracts and generated types:
 
 ```sh
-go run ./cmd/migrate
-# Необязательно: зафиксируйте дату для полностью воспроизводимого каталога.
-export DEMO_BASE_DATE=2026-09-18
-go run ./cmd/seed
-```
-
-В PowerShell используется `$env:DEMO_BASE_DATE='2026-09-18'`. Seed читает только
-окружение процесса и требует `APP_ENV=local` или `test` и `DATABASE_URL`; токен бота
-не нужен. Если `DEMO_BASE_DATE` не задана, она один раз устанавливается равной текущей
-дате в `Europe/Moscow`, а фактическая дата выводится в консоль. Начало событий — через
-1–20 дней после этой даты. Для свежего демо используйте текущую дату (или не задавайте
-переменную); явно зафиксированная прошлая дата намеренно воспроизводится без изменений.
-
-Каталог содержит Москву, 12 станций метро, 12 демонстрационных площадок, 11
-slug категорий, 44 события и 44 изображения. У каждого события есть одна основная
-категория; у некоторых есть также дополнительная. Данные включают бесплатные,
-неизвестные и платные цены, все статусы событий и уровни громкости, а также доступные
-и недоступные состояния демо-билетов. Все события имеют `source=demo` и `is_demo=true`.
-URL билетов используют зарезервированный хост `tickets.example.invalid` и не могут
-продавать настоящие билеты.
-
-UUID выводятся из фиксированных ключей фикстур (у Москвы фиксированный UUID) независимо
-от дат. Одна транзакция сериализует запуски seed и синхронизирует только эти демо-фикстуры;
-одинаковые базовые даты воспроизводят временные метки, а изменение базовой даты обновляет
-те же ID событий без дубликатов. Миграции схемы остаются отдельными. Образ backend также
-содержит `/app/seed`, принимающий те же переменные окружения.
-
-### Реальные источники событий и provenance
-
-Рабочий каталог наполняется из двух внешних источников: публичного API KudaGo и API
-Timepad. Поле `events.source` хранит происхождение строки (`kudago`, `timepad` или
-`demo`), а `external_id` — идентификатор события/occurrence внутри этого источника.
-`source_updated_at` предназначено для времени последнего изменения, сообщённого самим
-провайдером; если используемый provider response такого значения не даёт, поле остаётся
-`NULL` и не подменяется временем локального импорта. `is_demo=true` означает только
-синтетическую seed-фикстуру. Импортированные KudaGo и Timepad события всегда имеют
-`is_demo=false`.
-
-REAL и DEMO — разные режимы данных. Обычная продуктовая выдача и новые room pools
-используют только `is_demo=false`; demo-события не должны смешиваться с реальным
-каталогом. Поле `provider_active` независимо от lifecycle-статуса показывает, что
-событие было пригодно у провайдера или было увидено последней полностью успешной
-синхронизацией. Исчезнувшие из полного ответа occurrence деактивируются, но не удаляются,
-чтобы сохранить saved, room pool, vote и match history.
-
-`status` (`published`, `sold_out`, `cancelled`), `provider_active` и
-`ticket_available` описывают разные факты. Закрытая регистрация или непубличная карточка
-Timepad не доказывает отмену или sold out: lifecycle остаётся `published`, а доступность
-регистрации и provider activity меняются отдельно. Для KudaGo семантика CTA слабее:
-API предоставляет проверенную HTTPS-ссылку на страницу события, но не подтверждает
-остаток билетов или открытую регистрацию. Поэтому `ticket_available=true` для KudaGo
-означает наличие допустимого CTA, а не гарантированную возможность покупки.
-
-`cmd/event-sync` и `cmd/import-events` выполняют live-синхронизацию. Reconciliation
-запускается только после полного успешного прохода всех страниц; partial, failed или
-cancelled run не деактивирует unseen rows. `cmd/import-timepad-snapshot` нужен для
-локального воспроизводимого импорта заранее сохранённых `page-<skip>.json` без обращения
-к Timepad. Snapshot может быть неполным, поэтому он намеренно не создаёт sync run и не
-выполняет reconciliation. Raw snapshot-файлы могут содержать provider data и не должны
-попадать в Git.
-
-Приложение не является продавцом билетов. Выбор тарифа, оформление заказа, оплата,
-выдача билета, отмена и возврат происходят на HTTPS-странице KudaGo или Timepad и
-регулируются правилами соответствующего провайдера.
-
-### Генерация кода доступа к SQL
-
-Из директории `backend`:
-
-```sh
-go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate
-```
-
-Или используйте зафиксированный официальный образ из `backend` (оболочка POSIX):
-
-```sh
-docker run --rm -v "${PWD}:/src" -w /src sqlc/sqlc:1.29.0 generate
-```
-
-В PowerShell используйте `-v "${PWD}:/src"` с той же командой.
-
-В `sqlc.yaml` настроены два независимых результата: `internal/store/platform` для данных
-платформы/авторизации и `internal/store/rooms` для данных комнат/совпадений. Оба используют
-`migrations` как схему. Каждый владелец редактирует свои `queries/*.sql`; сгенерированные
-файлы Go коммитятся. Пакет platform включает health, пользователя/сессию, чтение каталога
-и запросы демо-seed. Пакет rooms сохраняет health-запрос и содержит примитивы транзакций
-и хранения, описанные в
-[`backend/internal/rooms/README.md`](backend/internal/rooms/README.md).
-
-### Проверка и генерация OpenAPI
-
-`openapi/openapi.yaml` — канонический контракт OpenAPI 3.1. Из корня репозитория:
-
-```sh
-python -m venv .venv
-# Активируйте .venv в оболочке, затем:
 python -m pip install -r backend/tests/contract/requirements.txt
 python -m unittest discover -s backend/tests/contract -v
-cd backend
-go generate ./internal/httpapi/openapi
+(cd backend && go generate ./internal/httpapi/openapi)
+(cd frontend && npm ci && npm run generate:api)
 ```
 
-Проверка использует `openapi-spec-validator` и проверки JSON Schema 2020-12 для
-примеров и локальных ссылок. `oapi-codegen v2.8.0` создаёт только типы по
-`openapi/oapi-codegen.yaml`. После генерации коммитьте `internal/httpapi/openapi/types.gen.go`.
-Обычные сборки и тесты используют уже закоммиченные файлы и не требуют инструментов
-генерации кода, Python или Node.
-
-### Тесты и общие контракты
+Frontend, from `frontend/`:
 
 ```sh
-cd backend
-go build ./...
-go test ./...
-go vet ./...
+npm ci
+npm run check
+npx playwright install chromium
+npm run test:e2e
 ```
 
-Для полного suite на отдельной временной PostgreSQL используйте Compose test profile:
+`npm run check` runs provider-policy verification, typecheck, lint, unit tests and production build. `npm run test:motion` is an extra existing animation suite outside standard CI. CI also enables `RUN_GENERIC_BROWSER_E2E=1` for `go test ./internal/eventsources -run '^TestGenericEventSourcesBrowserAgainstLiveHandler$' -count=1`.
+
+Docker/release workflow additionally checks both Compose configurations, builds backend/frontend images, starts the migration/fixture/API/frontend smoke stack, checks API/frontend health, runs `deploy/test-internal-nginx.sh`, scans images with Trivy, and scans the repository with Trufflehog. Deploy/publish occurs on `main` push and on same-repository merged `dev` PRs labeled `deploy-dev`; ordinary `dev` pushes run CI without publishing/deploying. Rollback is a manual workflow using a published full commit SHA.
+
+### Release review results
+
+- Backend: full serial `go test -p 1 -count=1 ./...`, `go vet ./...` and `go build ./...` passed against the isolated submission database. Migration readiness reported version 24 current.
+- Generated contracts: OpenAPI Go generation and sqlc v1.29.0 generation passed without inferred Go model type drift after explicit SQL text casts. OpenAPI contract validation passed all 4 cases. The local `DATA-API.yaml` flow matched 13 existing OpenAPI routes/methods/statuses; official organizer schema compatibility remains unknown.
+- Frontend: `npm run check` passed 159 tests/checks; browser E2E passed 46 tests. Motion E2E passed 4/4 on repeat after an initial intermittent 3/4 run.
+- Runtime smoke: generic live-handler browser acceptance passed (119.658 s); Nginx namespace smoke passed. Restart preserved both fixture records and the matched-room record; readiness stayed healthy.
+- Docker: local and production Compose config checks and `linux/amd64` application image builds passed. Trivy 0.70.0 passed all four final backend/frontend ARM64/AMD64 images with the existing CI policy (HIGH/CRITICAL, ignore-unfixed); no matching vulnerabilities were reported. The ARM64 cold/warm measured build details are below; production AMD64 build time was not measured.
+- Secret scanning: TruffleHog ran on delivery files with networking and credential verification disabled; its 8 unverified candidates were synthetic PostgreSQL examples and URI test fixtures. Dependencies/build output and `.git` were excluded. Local verified scanning was blocked by automatic approval review because credential verification can send candidates to external provider APIs. The existing verified/full-history CI scan remains required before merge; local Git operations were prohibited during this review.
+- Manual limitations: real MAX A/B identities and organizer-provided credentials/schema are still needed for official access validation. Poster recovery is opt-in and needs a real Timepad token.
+
+### Docker build measurement
+
+Measured with the submission env file and the command used for the cold/warm comparison:
 
 ```sh
-docker compose --profile test up --build --abort-on-container-exit --exit-code-from integration-tests integration-tests
+docker compose --env-file .env.submission.example build
 ```
 
-`postgres-test` хранит данные в tmpfs; `migrate-test` применяет миграции перед
-`integration-tests`, который запускает `go test -count=1 ./...` с `TEST_DATABASE_URL`.
-Пропуски тестов реальных провайдеров ожидаемы, если не заданы
-`RUN_KUDAGO_REAL_E2E` или `RUN_REAL_PROVIDER_ROOM_E2E`. Пропуски PostgreSQL-тестов при
-этом запуске suite неожидаемы. Без `TEST_DATABASE_URL` PostgreSQL-тесты при прямом
-`go test` пропускаются. Границы интеграционных проверок описаны в
-`backend/tests/integration`; прохождение тестов не заменяет проверку сценария в MAX.
+- Cold: **78.642 s**; warm: **7.116 s**; both completed successfully.
+- The final cold run used a fresh Buildx `docker-container` builder with only base-image preparation; Go module download, `npm ci`, compilation and image export were included in the measured build. It ran against final source, including the SQL type casts.
+- Host/runtime: Docker 28.5.1, Linux `aarch64` / `linux/arm64`, 8 CPUs, about 3.83 GiB RAM.
+- Against the 300-second build limit, the measured ARM64 build passes. Production `linux/amd64` build time has not been measured separately.
 
-Остановка локального стека: `docker compose down`. Удаление БД вместе со всеми локальными
-данными: `docker compose down -v`. Основной ручной сценарий: (1) пользователь A открывает
-приложение в MAX и создаёт комнату; (2) A отправляет приглашение пользователю B; (3) B
-вступает в комнату; (4) оба выбирают дату, время, категории, бюджет и подтверждают intent;
-(5) оба голосуют по общему пулу; (6) при совпадении оба видят один match и открывают
-карточку/страницу провайдера. Повторно откройте комнату у обоих, чтобы проверить
-восстановление состояния. Отдельно проверьте отсутствие пригодных событий и отказ одного
-провайдера. Локальный Compose не заменяет проверку MAX Mini App и production HTTPS.
+## Production deployment
 
-### Аутентификация
+The advertised service is `https://worknet.team`; its API base is `https://worknet.team/api/v1`. Public availability, TLS, bot configuration, provider sync and two-user behavior must be verified against the actual environment before release. Production Nginx terminates TLS and proxies frontend/API to loopback ports; PostgreSQL is not published on the host.
 
-Подписи MAX проверяются по [официальному алгоритму валидации](https://dev.max.ru/docs/webapps/validation):
-значения декодируются из percent-кодирования один раз, `hash` исключается, ключи
-сортируются, пары `key=value` объединяются переводами строк, ключ HMAC-SHA256
-выводится из `WebAppData` и токена бота, после чего HMAC полезной нагрузки проверяется
-за постоянное время. Литеральный `+` остаётся плюсом согласно примеру MAX с
-`decodeURIComponent`. Дублирующиеся параметры, некорректная идентификация, будущие
-временные метки и init data старше `MAX_INIT_DATA_MAX_AGE` (по умолчанию 1h) отклоняются.
+`deploy/deploy.sh <40-character-commit-sha>` backs up PostgreSQL, applies migrations, updates app images and performs public smoke checks with image rollback on failure. It deploys backend, frontend, `event-sync` and `daily-notifications`; poster recovery remains a deliberate maintenance operation. Required GitHub production secrets are `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` and `DEPLOY_HOST_KEY`; `YANDEX_MAPS_API_KEY` is optional. Configure the production env privately on the server and authorize Docker to pull the release images from GHCR.
 
-Bootstrap атомарно обновляет или создаёт пользователя и добавляет сессию на 24 часа.
-В ответе используется непрозрачный случайный bearer-токен длиной 256 бит; PostgreSQL
-хранит только его SHA-256 хеш. Повторный вход сохраняет внутренний UUID и состояние
-города/онбординга, принадлежащее приложению. `preferences` и `invite_context` сейчас
-равны `null`; их интеграция с доменной логикой отложена. Переданная ненулевая подсказка
-`start_param` должна совпадать с подписанным значением, иначе запрос возвращает
-`400 VALIDATION_FAILED`. На этом этапе поиск приглашений не выполняется.
+If the previous release left a continuous recovery container running, removing it is a separate manual host action; the normal deployment script does not remove it. Review the matching Compose project/service first, then stop and remove only those containers:
 
-Защищённые маршруты комнат могут повторно использовать `authService.Middleware` и
-`contracts.PrincipalFromContext`; через эту границу передаётся только внутренний UUID.
-Неизвестные или отозванные токены возвращают `401 UNAUTHENTICATED`, просроченные —
-`401 TOKEN_EXPIRED`, а ошибки базы — общий `500 INTERNAL`. Публичный bootstrap-маршрут
-ограничивает запросы до 20 в минуту на IP клиента для каждого процесса и возвращает
-`429 RATE_LIMITED` с `Retry-After`. Пересланные IP-заголовки используются только когда
-прямой узел входит в `TRUSTED_PROXY_CIDRS`; по умолчанию список пуст, поэтому локальная
-разработка доверяет только IP узла соединения. Продакшен-Nginx также применяет лимит
-на границе. Учётные данные и необработанные init data не журналируются и не сохраняются.
-
-`cmd/server` требует `MAX_BOT_TOKEN`; `cmd/migrate` — нет. TTL сессии зафиксирован
-HTTP-контрактом на 24 часа. Свежесть init-data остаётся настраиваемой для тестирования
-сценария возобновления MAX. Интеграционные тесты используют только синтетические
-учётные данные бота и существующую инфраструктуру `TEST_DATABASE_URL`.
-
-`internal/contracts` определяет principal с внутренним UUID, `PoolBuilder`,
-`EventAvailability` и `BehaviorRecorder`. Слой рекомендаций вычисляет упорядоченные
-кандидаты и безопасные снимки; слой rooms сохраняет пулы и управляет переходами состояний
-комнаты. При записи поведения сервера транзакции комнат передают текущий `pgx.Tx` как
-`store.DBTX`, поэтому оба изменения фиксируются атомарно. Кандидату комнаты MVP нужны
-опубликованный статус, доступные билеты и URL билета/бронирования; одна только нулевая
-цена не подтверждает допустимость.
-
-## Продакшен-деплой
-
-Заявленный публичный адрес — `https://worknet.team`, базовый URL API —
-`https://worknet.team/api/v1` (также указан в OpenAPI). Перед сдачей проверьте
-доступность из внешней сети. Nginx завершает TLS и проксирует только на loopback-привязки
-frontend (`127.0.0.1:8081`) и backend (`127.0.0.1:8080`).
-У PostgreSQL нет порта на хосте.
-
-Frontend использует HTTP API для MAX-аутентификации, ленты, каталога, карты, страницы
-события, избранного, предпочтений и комнатного сценария. Production Compose содержит
-PostgreSQL, миграции, backend, `event-sync`, `daily-notifications`, восстановление постеров
-Timepad и frontend. Фактическая доступность сайта, MAX Mini App и внешних интеграций
-проверяется отдельно в период сдачи.
-
-Файлы деплоя:
-
-- `compose.production.yaml` — PostgreSQL, миграции, backend, frontend, синхронизация
-  событий, ежедневные уведомления и восстановление постеров Timepad;
-- `deploy/nginx/` — уже установленная конфигурация Nginx на хосте;
-- `deploy/deploy.sh <40-character-commit-sha>` — резервное копирование, миграции,
-  развёртывание, публичные smoke-проверки и откат образов приложения.
-
-Создайте `/opt/worknet/.env.production` непосредственно на сервере с правами `0600`.
-Файл должен содержать как минимум `POSTGRES_PASSWORD`, `MAX_BOT_TOKEN`,
-`MAX_APP_URL`, `INVITE_ENCRYPTION_KEY`, `INVITE_URL_TEMPLATE` и `MAX_DEEP_LINK_TEMPLATE`.
-Сгенерируйте стабильный ключ приглашений один раз командой `openssl rand -base64 32`;
-оба URL-шаблона должны содержать `{token}` ровно один раз. Для текущего продакшена:
-
-```env
-INVITE_ENCRYPTION_KEY_VERSION=1
-INVITE_URL_TEMPLATE=https://worknet.team/join/{token}
-MAX_DEEP_LINK_TEMPLATE=https://max.ru/t255_hakaton_max_bot?startapp={token}
-MAX_APP_URL=https://max.ru/t255_hakaton_max_bot
+```sh
+legacy_recovery_ids=$(docker ps -q --filter label=com.docker.compose.project=max-together-production --filter label=com.docker.compose.service=timepad-image-recovery)
+if [ -n "$legacy_recovery_ids" ]; then
+  docker stop $legacy_recovery_ids
+  docker rm $legacy_recovery_ids
+fi
 ```
-
-Сервис `daily-notifications` отправляет подписавшимся пользователям одно сообщение
-ежедневно в 12:00 по Москве. `MAX_APP_URL` задаёт публичную ссылку или имя бота для
-кнопки `open_app`. Временные сетевые ошибки и ответы 5xx MAX отмечаются как
-неопределённые и автоматически не повторяются: Bot API не предоставляет ключ
-идемпотентности, поэтому повтор мог бы доставить дубликат. Подтверждённый ответ 429
-повторяется с учётом `Retry-After`; незавершённая запись `sending` после аварийного
-завершения также не переотправляется автоматически.
-
-Также можно задать `POSTGRES_DB`, `POSTGRES_USER`, `LOG_LEVEL`,
-`MAX_INIT_DATA_MAX_AGE` и `TRUSTED_PROXY_CIDRS`. Никогда не коммитьте этот файл.
-Авторизуйте Docker в GHCR токеном, ограниченным правом `read:packages`.
-
-GitHub Actions запускает проверки для запросов на слияние и отправок в `main` или `dev`.
-Только успешная отправка в `main` публикует образы с SHA коммита и вызывает скрипт
-деплоя на VPS. Обязательные секреты окружения GitHub: `DEPLOY_HOST`, `DEPLOY_USER`,
-`DEPLOY_SSH_KEY` и зафиксированная строка known-hosts `DEPLOY_HOST_KEY`.
-Ручной процесс отката принимает полный SHA ранее опубликованного коммита.
-
-Для выборочного деплоя merge-коммита из `dev` добавьте PR label `deploy-dev` до слияния.
-После merge workflow повторно прогонит backend, frontend, контракты, secret scan и полный
-Docker build/smoke/scan, затем опубликует SHA-образы с дополнительным тегом `dev` и
-развернёт их тем же production-процессом на `worknet.team`. Без label обычный merge в
-`dev` выполняет стандартный CI на push, но ничего не публикует и не развёртывает.
-Production-деплои из `main` и помеченных PR в `dev` используют одну concurrency-группу,
-поэтому выполняются последовательно; откат работает по SHA одинаково для обоих источников.
-
-`DATA-API.yaml` перечисляет проверки MAX bootstrap, создания/вступления в комнату,
-настройки intent, получения пула, голосования/match и перехода к билету. Перечень
-сверен с OpenAPI и обработчиками. Правила хакатона требуют версию структуры, название
-решения, HTTPS base URL и сведения о каждой проверке, но не задают машинную схему или
-официальный номер версии. Поэтому файл использует локальную версию структуры `1`;
-совместимость с неизвестным валидатором организаторов не подтверждена.

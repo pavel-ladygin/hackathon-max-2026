@@ -7,6 +7,8 @@
 *.dll
 *.so
 *.dylib
+/backend/server
+/backend/event-sync
 
 # Test binary, built with `go test -c`
 *.test

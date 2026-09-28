@@ -6,6 +6,8 @@ backend/**/.env*
 backend/**/__pycache__/
 backend/**/.venv/
 backend/**/*.exe
+backend/server
+backend/event-sync
 backend/**/*.test
 backend/**/*.log
 backend/**/.cache/
