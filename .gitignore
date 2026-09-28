@@ -1,7 +1,7 @@
-# If you prefer the allow list template instead of the deny list, see community template:
+# Альтернативный шаблон с явным списком разрешённых файлов:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
-# Binaries for programs and plugins
+# Бинарники программ и плагинов
 *.exe
 *.exe~
 *.dll
@@ -10,29 +10,29 @@
 /backend/server
 /backend/event-sync
 
-# Test binary, built with `go test -c`
+# Тестовые бинарники, собранные через `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Отчёты покрытия и другие результаты тестов
 *.out
 coverage.*
 *.coverprofile
 profile.cov
 
-# Dependency directories (remove the comment below to include it)
+# Каталог зависимостей (раскомментируйте при необходимости)
 # vendor/
 
-# Go workspace file
+# Файлы Go workspace
 go.work
 go.work.sum
 
-# Local environment files (keep templates in Git)
+# Локальные env-файлы; шаблоны сохраняем в репозитории
 .env
 .env.*
 !.env.example
 !.env.*.example
 
-# Frontend dependencies and build output
+# Зависимости frontend и результаты сборки
 node_modules/
 dist/
 coverage/
@@ -41,7 +41,7 @@ blob-report/
 test-results/
 *.tsbuildinfo
 
-# Tool caches and logs
+# Кеши инструментов и логи
 .cache/
 .eslintcache
 .vite/
@@ -52,17 +52,17 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Editor/IDE
+# Настройки редакторов и IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# OS metadata
+# Служебные файлы ОС
 .DS_Store
 Thumbs.db
 
-# Local Python contract-validation environment
+# Локальное Python-окружение для проверки API-контракта
 .venv/
 __pycache__/
 *.pyc

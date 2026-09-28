@@ -1,4 +1,4 @@
-# Only the backend enters the product build context.
+# В контекст сборки backend входят только файлы backend.
 **
 !backend/
 !backend/**

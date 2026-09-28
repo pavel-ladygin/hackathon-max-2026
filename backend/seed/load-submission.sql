@@ -1,5 +1,5 @@
--- Load only the small, synthetic submission dataset. This file is intentionally
--- guarded because the fixture is not suitable for a shared or production DB.
+-- Загрузка небольшого набора вымышленных событий для сдачи.
+-- Проверка имени БД защищает общую и production-БД от загрузки этих данных.
 BEGIN;
 
 DO $$
@@ -13,8 +13,8 @@ $$;
 CREATE TEMP TABLE submission_fixture_data ON COMMIT DROP AS
 SELECT :'dataset'::jsonb AS doc;
 
--- The city is shared catalog identity. Preserve an existing row; fail if the
--- fixed UUID is already occupied by a different city.
+-- Существующий город сохраняем. Если его UUID занят другим городом,
+-- прерываем загрузку.
 INSERT INTO cities (id, name, timezone, center_lat, center_lng)
 SELECT (doc->'city'->>'id')::uuid,
        doc->'city'->>'name',

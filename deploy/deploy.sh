@@ -30,8 +30,8 @@ internal_auth_is_enforced() {
   done
 }
 
-# Fail before migrations, backups, or image changes if the public endpoints are
-# reachable without the Nginx Basic Auth challenge.
+# Если закрытые маршруты доступны без Nginx Basic Auth, прерываем запуск
+# до миграций, резервного копирования и обновления образов.
 internal_auth_is_enforced || {
   echo "deployment aborted; configure Nginx Basic Auth for all internal paths" >&2
   exit 1

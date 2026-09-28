@@ -1,10 +1,10 @@
-# MAX Together frontend
+# Фронтенд MAX Together
 
-React/Vite Mini App for event discovery and a two-person shared choice flow. The app calls the Go API for MAX bootstrap, home feed, search, event details, saved events, preferences, and rooms. A room creator can share the invitation through MAX or copy its URL; the invite token is also passed as a MAX `startapp` deep link. Tickets are opened on the event provider's HTTPS page; the app does not sell or issue tickets.
+React/Vite Mini App помогает находить мероприятия и выбирать подходящее вместе с другим человеком. Приложение обращается к Go API для входа через MAX, главной ленты, поиска, карточек событий, избранного, настроек и комнат. Создатель комнаты может отправить приглашение через MAX или скопировать ссылку; токен приглашения также передаётся в MAX deep link через `startapp`. Ссылки на билеты ведут на HTTPS-страницы организаторов. Приложение не продаёт билеты и не оформляет их.
 
-## Run locally
+## Локальный запуск
 
-Use the repository-root submission stack so the API and its isolated fixture catalog are available:
+Запускайте стек из корня репозитория: в нём доступны API и изолированный тестовый каталог.
 
 ```sh
 cd ..
@@ -12,23 +12,23 @@ docker compose --env-file .env.submission.example build
 docker compose --env-file .env.submission.example up -d
 ```
 
-Frontend: `http://localhost:8081`; API: `http://localhost:8080/api/v1`. This sample includes a dummy bot token, so real MAX signed init data will not authenticate. For a real MAX session, configure an authorized bot token and use the HTTPS Mini App configured for that bot. A regular browser opens the guidance page instead of authenticating as a MAX user.
+Фронтенд доступен по адресу `http://localhost:8081`, API — `http://localhost:8080/api/v1`. В примере задан фиктивный токен бота, поэтому настоящие подписанные MAX init data с ним не пройдут проверку. Чтобы проверить вход через MAX, задайте токен бота, которому разрешено это Mini App, и откройте приложение в MAX по HTTPS. В обычном браузере отобразится инструкция: войти как пользователь MAX там нельзя.
 
-For frontend-only development, install dependencies with `npm ci`, copy `.env.example` to `.env.local`, and run `npm run dev`. The dev server still needs a reachable Go API. Its defaults are `/api/v1`, the MAX app URL, and the reviewed ticket-provider allowlist.
+Для разработки только фронтенда установите зависимости командой `npm ci`, скопируйте `.env.example` в `.env.local` и запустите `npm run dev`. Dev-серверу нужен доступный Go API. По умолчанию он использует `/api/v1`, URL приложения MAX и список разрешённых ticket-провайдеров.
 
-## Data and external services
+## Данные и внешние сервисы
 
-The default Compose stack loads the small deterministic local submission fixture after migrations. Those events are identified as `source=submission-fixture` and `is_demo=false` so they exercise the runtime discovery and room filters, but their ticket URLs use the reserved `tickets.example.invalid` domain and are demonstration links only. They are not real provider listings or purchasable tickets.
+После миграций Compose загружает небольшой детерминированный набор тестовых событий. У них `source=submission-fixture` и `is_demo=false`, поэтому они проходят те же фильтры каталога и комнат, что и обычные события. Ссылки на билеты используют зарезервированный домен `tickets.example.invalid`: это демонстрационные ссылки, а не реальные предложения организаторов и не ссылки для покупки.
 
-Live KudaGo synchronization is opt-in with the `live` Compose profile. Set `TIMEPAD_TOKEN` to enable Timepad ingestion as well. Both frontend and backend enforce their ticket URL allowlists; keep them aligned. `VITE_YANDEX_MAPS_API_KEY` is optional and should be restricted to the app's HTTPS origin.
+Синхронизация событий из KudaGo включается профилем Compose `live`. Чтобы также импортировать события Timepad, задайте `TIMEPAD_TOKEN`. Фронтенд и бэкенд проверяют ссылки на билеты по allowlist; списки разрешённых доменов должны совпадать. `VITE_YANDEX_MAPS_API_KEY` можно не задавать; если он используется, ограничьте ключ HTTPS-адресом приложения.
 
-## API contract and structure
+## Описание API и структура
 
-`../openapi/openapi.yaml` is the canonical OpenAPI 3.1 contract. Generated TypeScript API types are in `src/shared/api/generated/schema.ts`; regenerate with `npm run generate:api`. The app obtains MAX init data from the platform bridge and submits it to the backend for signature and freshness checks. The backend issues a fresh opaque 24-hour app session for each successful bootstrap. The client keeps the session token in memory; it does not persist raw init data as an app credential.
+Описание API по OpenAPI 3.1 находится в `../openapi/openapi.yaml`. Сгенерированные TypeScript-типы API лежат в `src/shared/api/generated/schema.ts`; обновить их можно командой `npm run generate:api`. Приложение получает MAX init data через MAX Bridge и отправляет их на бэкенд для проверки подписи и срока действия. После успешного bootstrap бэкенд выдаёт новый случайный токен сессии сроком на 24 часа. Токен хранится в памяти клиента; исходные init data не используются для входа в приложение и не сохраняются.
 
-Main routes are declared in `src/app/App.tsx`: home, events, event detail, saved items, preferences, room creation/invitation/join, and room flow. The share and clipboard integration is implemented by the MAX platform adapter and `InvitePage` in `src/pages/rooms/RoomPages.tsx`.
+Основные маршруты объявлены в `src/app/App.tsx`: главная страница, каталог и карточка события, избранное, настройки, создание комнаты, приглашение и вступление в комнату. Отправка приглашения и работа с буфером обмена реализованы в адаптере платформы MAX и `InvitePage` в `src/pages/rooms/RoomPages.tsx`.
 
-## Checks
+## Проверки
 
 ```sh
 npm run check
@@ -36,4 +36,4 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run check` runs provider-policy verification, TypeScript, ESLint, Vitest, and production build. `npm run test:motion` is an additional animation regression suite and is not part of the standard CI workflow.
+`npm run check` проверяет список разрешённых доменов, TypeScript-типы, ESLint, Vitest и production-сборку. `npm run test:motion` запускает дополнительный набор регрессионных проверок анимаций; в стандартный CI он не входит.

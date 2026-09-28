@@ -25,5 +25,5 @@ CMD ["/app/server"]
 FROM runtime AS maintenance
 COPY --from=maintenance-build /out/backfill-timepad-posters ./
 
-# Keep the default image free of the optional poster-recovery executable.
+# В стандартный образ не входит утилита восстановления постеров.
 FROM runtime AS product

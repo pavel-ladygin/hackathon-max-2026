@@ -1230,12 +1230,12 @@ type BehaviorEvent struct {
 	EventId       nullable.Nullable[openapi_types.UUID]      `json:"event_id,omitempty"`
 	EventVersion  BehaviorEventEventVersion                  `json:"event_version"`
 
-	// Metadata Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены.
+	// Metadata Разрешены только перечисленные метаданные. Персональные данные, исходные URL, initData MAX, координаты и произвольный текст передавать нельзя.
 	Metadata   *BehaviorMetadata                        `json:"metadata,omitempty"`
 	OccurredAt time.Time                                `json:"occurred_at"`
 	Platform   nullable.Nullable[BehaviorEventPlatform] `json:"platform,omitempty"`
 
-	// Properties Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited.
+	// Properties Разрешённый список свойств события без персональных данных. Исходный текст поиска, точные координаты и секреты передавать нельзя.
 	Properties *map[string]interface{}               `json:"properties,omitempty"`
 	RoomId     nullable.Nullable[openapi_types.UUID] `json:"room_id,omitempty"`
 	SessionId  nullable.Nullable[openapi_types.UUID] `json:"session_id,omitempty"`
@@ -1254,7 +1254,7 @@ type BehaviorEventPlatform string
 // BehaviorEventType defines model for BehaviorEvent.Type.
 type BehaviorEventType string
 
-// BehaviorMetadata Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены.
+// BehaviorMetadata Разрешены только перечисленные метаданные. Персональные данные, исходные URL, initData MAX, координаты и произвольный текст передавать нельзя.
 type BehaviorMetadata struct {
 	Position  *int    `json:"position,omitempty"`
 	RequestId *string `json:"request_id,omitempty"`
@@ -1265,7 +1265,7 @@ type BehaviorMetadata struct {
 type BootstrapRequest struct {
 	InitData string `json:"init_data"`
 
-	// StartParam Необязательный client hint; backend не доверяет ему без совпадения с start_param из проверенного init_data
+	// StartParam Необязательная подсказка от клиента. Сервер использует её, только если она совпадает с start_param из проверенных init_data.
 	StartParam nullable.Nullable[string] `json:"start_param,omitempty"`
 }
 
@@ -1318,10 +1318,10 @@ type CreateRoomResponse struct {
 
 // DataProvenance defines model for DataProvenance.
 type DataProvenance struct {
-	// IsDemo true означает тестовые или подготовленные данные, а не реальную интеграцию
+	// IsDemo Значение true обозначает тестовые или подготовленные данные, а не реальную интеграцию.
 	IsDemo bool `json:"is_demo"`
 
-	// Source Источник каталожной записи; demo для подготовленных данных
+	// Source Источник записи каталога; значение demo обозначает подготовленные данные.
 	Source          string                       `json:"source"`
 	SourceUpdatedAt nullable.Nullable[time.Time] `json:"source_updated_at,omitempty"`
 }
@@ -1562,7 +1562,7 @@ type EventSourceDefaultsStatus string
 
 // EventSourceDomainInput defines model for EventSourceDomainInput.
 type EventSourceDomainInput struct {
-	// Hostname Exact DNS hostname; без URL, IP, wildcard или regex
+	// Hostname Точное DNS-имя узла: без URL, IP-адреса, маски или регулярного выражения
 	Hostname string                        `json:"hostname"`
 	Purpose  EventSourceDomainInputPurpose `json:"purpose"`
 }
@@ -1645,7 +1645,7 @@ type EventSourcePreview struct {
 		Count int    `json:"count"`
 	} `json:"errors"`
 
-	// HttpStatus HTTP status of the last fetched preview page
+	// HttpStatus Код HTTP последней загруженной страницы предпросмотра
 	HttpStatus int `json:"http_status"`
 	Invalid    int `json:"invalid"`
 	Preview    []struct {
@@ -1791,7 +1791,7 @@ type MatchSummary struct {
 	Id        openapi_types.UUID `json:"id"`
 	MatchedAt time.Time          `json:"matched_at"`
 
-	// Participants Только безопасные display_name/avatar/role; MAX ID и intent не раскрываются
+	// Participants Передаются только безопасные поля display_name, avatar и role. Идентификатор MAX и условия подбора не раскрываются.
 	Participants []PublicParticipant `json:"participants"`
 	RoomId       openapi_types.UUID  `json:"room_id"`
 }
@@ -1807,10 +1807,10 @@ type MyIntent struct {
 	ExclusionSlugs []MyIntentExclusionSlugs  `json:"exclusion_slugs"`
 	FreeText       nullable.Nullable[string] `json:"free_text,omitempty"`
 
-	// Location При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются дольше необходимого ranking
+	// Location При заданном radius это поле задаёт точку отсчёта. Значение null вместе с радиусом означает центр города комнаты. Координаты не сохраняются дольше, чем это требуется для ранжирования.
 	Location nullable.Nullable[GeoPoint] `json:"location,omitempty"`
 
-	// RadiusM null означает отсутствие distance filter; с location считается от координат, без location — от центра room city
+	// RadiusM Значение null отключает фильтр расстояния. Если заданы координаты location, расстояние считается от них; иначе — от центра города комнаты.
 	RadiusM     nullable.Nullable[int] `json:"radius_m,omitempty"`
 	RoundNo     int                    `json:"round_no"`
 	SubmittedAt time.Time              `json:"submitted_at"`
@@ -1841,14 +1841,14 @@ type PoolSummary struct {
 		Text string                           `json:"text"`
 	} `json:"exhaustion_reasons,omitempty"`
 
-	// IsSmall true, если в pool только 1–2 доступных события
+	// IsSmall Значение true означает, что в пуле доступно только одно или два события.
 	IsSmall bool `json:"is_small"`
 
 	// MyPoolFinished Текущий участник проголосовал по всем доступным карточкам
 	MyPoolFinished    bool                   `json:"my_pool_finished"`
 	RetryAfterSeconds nullable.Nullable[int] `json:"retry_after_seconds,omitempty"`
 
-	// RoomExhausted Оба участника завершили текущий pool без match
+	// RoomExhausted Оба участника просмотрели текущий пул без совпадения.
 	RoomExhausted bool             `json:"room_exhausted"`
 	RoundNo       int              `json:"round_no"`
 	State         PoolSummaryState `json:"state"`
@@ -1889,7 +1889,7 @@ type PublicParticipant struct {
 	DisplayName string                    `json:"display_name"`
 	Id          openapi_types.UUID        `json:"id"`
 
-	// IntentReady Подтверждение intent для текущего round; не раскрывает содержимое intent
+	// IntentReady Подтверждение условий подбора текущего раунда; сами условия не раскрываются.
 	IntentReady bool                  `json:"intent_ready"`
 	Role        PublicParticipantRole `json:"role"`
 }
@@ -1917,7 +1917,7 @@ type RoomClosedNotice struct {
 // RoomEventsResponse defines model for RoomEventsResponse.
 type RoomEventsResponse struct {
 	Items []struct {
-		// Cursor Opaque pagination cursor; не передаётся в vote
+		// Cursor Указатель следующей страницы; не передавайте его в запросе vote.
 		Cursor   string    `json:"cursor"`
 		Event    EventCard `json:"event"`
 		Position int       `json:"position"`
@@ -1935,18 +1935,18 @@ type RoomIntentRequest struct {
 	CategorySlugs  []CategorySlug       `json:"category_slugs"`
 	Dates          []openapi_types.Date `json:"dates"`
 
-	// DayTypes Пустой массив означает любой день; значения объединяются OR
+	// DayTypes Пустой массив означает любой день. Условия внутри массива объединяются по правилу «ИЛИ».
 	DayTypes       []DayType                         `json:"day_types"`
 	ExclusionSlugs []RoomIntentRequestExclusionSlugs `json:"exclusion_slugs"`
 	FreeText       nullable.Nullable[string]         `json:"free_text,omitempty"`
 
-	// Location При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются дольше необходимого ranking
+	// Location Если задан радиус, это поле задаёт точку отсчёта. Значение null вместе с радиусом означает центр города комнаты. Координаты не сохраняются. дольше необходимого ranking
 	Location nullable.Nullable[GeoPoint] `json:"location,omitempty"`
 
-	// RadiusM null означает отсутствие distance filter; с location считается от координат, без location — от центра room city
+	// RadiusM Значение null отключает фильтр расстояния. Если заданы координаты location, расстояние считается от них; иначе — от центра города.
 	RadiusM nullable.Nullable[int] `json:"radius_m,omitempty"`
 
-	// TimeSlots Пустой массив означает любое время; значения объединяются OR
+	// TimeSlots Пустой массив означает любое время. Условия внутри массива объединяются по правилу «ИЛИ».
 	TimeSlots []TimeSlot `json:"time_slots"`
 }
 
@@ -1968,11 +1968,11 @@ type RoomSnapshot struct {
 	ClosedBy       nullable.Nullable[ClosedBy]  `json:"closed_by,omitempty"`
 	CreatedAt      time.Time                    `json:"created_at"`
 
-	// ExpiresAt Invite и room истекают через 48 часов
+	// ExpiresAt Приглашение и комната перестают действовать через 48 часов.
 	ExpiresAt time.Time          `json:"expires_at"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Invite Только creator; null для participant
+	// Invite Доступно только создателю; для остальных участников значение null.
 	Invite       nullable.Nullable[RoomInvite]   `json:"invite"`
 	Match        nullable.Nullable[MatchSummary] `json:"match"`
 	MyIntent     nullable.Nullable[MyIntent]     `json:"my_intent"`
@@ -1980,7 +1980,7 @@ type RoomSnapshot struct {
 	Participants []PublicParticipant             `json:"participants"`
 	Pool         nullable.Nullable[PoolSummary]  `json:"pool"`
 
-	// RoundNo Текущий round подтверждения intent и построения pool
+	// RoundNo Текущий раунд подтверждения условий и формирования пула событий.
 	RoundNo int       `json:"round_no"`
 	State   RoomState `json:"state"`
 	Version int       `json:"version"`
@@ -2028,7 +2028,7 @@ type TicketClickRequestSource string
 
 // TicketClickResponse defines model for TicketClickResponse.
 type TicketClickResponse struct {
-	// ExternalUrl Для built-in источников — проверенный внешний HTTPS URL; для Generic — same-origin /api/v1/events/{eventId}/ticket с повторной runtime-проверкой при переходе
+	// ExternalUrl Для встроенных источников возвращается проверенная внешняя HTTPS-ссылка. Для настраиваемого источника возвращается путь /api/v1/events/{eventId}/ticket на этом же сайте; разрешение проверяется повторно при каждом переходе.
 	ExternalUrl string `json:"external_url"`
 }
 
@@ -2111,7 +2111,7 @@ type ValidationError = ErrorResponse
 
 // GetEventMapParams defines parameters for GetEventMap.
 type GetEventMapParams struct {
-	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
 	CityId        *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
 	West          float32             `form:"west" json:"west"`
 	South         float32             `form:"south" json:"south"`
@@ -2139,12 +2139,12 @@ type SearchEventsParams struct {
 	// IncludeTotal При false total_estimate возвращается как null
 	IncludeTotal *bool `form:"include_total,omitempty" json:"include_total,omitempty"`
 
-	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
 	CityId   *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
 	DateFrom *openapi_types.Date `form:"date_from,omitempty" json:"date_from,omitempty"`
 	DateTo   *openapi_types.Date `form:"date_to,omitempty" json:"date_to,omitempty"`
 
-	// DayTypes Значения внутри массива объединяются OR; вместе с time_slots применяется AND
+	// DayTypes Значения внутри массива объединяются по условию «ИЛИ»; с time_slots — по условию «И»
 	DayTypes      *[]DayType      `form:"day_types,omitempty" json:"day_types,omitempty"`
 	TimeSlots     *[]TimeSlot     `form:"time_slots,omitempty" json:"time_slots,omitempty"`
 	CategorySlugs *[]CategorySlug `form:"category_slugs,omitempty" json:"category_slugs,omitempty"`
@@ -2161,7 +2161,7 @@ type SearchEventsParams struct {
 	North     *float32 `form:"north,omitempty" json:"north,omitempty"`
 	Limit     *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque подписанный cursor
+	// Cursor Непрозрачный подписанный указатель на следующую страницу.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -2169,7 +2169,7 @@ type SearchEventsParams struct {
 type CountSearchEventsParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
-	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
 	CityId        *CityId             `form:"city_id,omitempty" json:"city_id,omitempty"`
 	DateFrom      *openapi_types.Date `form:"date_from,omitempty" json:"date_from,omitempty"`
 	DateTo        *openapi_types.Date `form:"date_to,omitempty" json:"date_to,omitempty"`
@@ -2189,20 +2189,20 @@ type CountSearchEventsParams struct {
 
 // GetHomeFeedParams defines parameters for GetHomeFeed.
 type GetHomeFeedParams struct {
-	// CityId Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED.
+	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
 	CityId *CityId `form:"city_id,omitempty" json:"city_id,omitempty"`
 
-	// Lat Необязательная координата для секции nearby; передаётся только вместе с lng и после согласия пользователя
+	// Lat Необязательная координата для секции nearby. Передавайте её только вместе с lng и после согласия пользователя.
 	Lat *float32 `form:"lat,omitempty" json:"lat,omitempty"`
 
-	// Lng Необязательная координата для секции nearby; передаётся только вместе с lat и после согласия пользователя
+	// Lng Необязательная координата для секции nearby. Передавайте её только вместе с lat и после согласия пользователя.
 	Lng   *float32 `form:"lng,omitempty" json:"lng,omitempty"`
 	Limit *Limit   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetInternalAnalyticsDashboardParams defines parameters for GetInternalAnalyticsDashboard.
 type GetInternalAnalyticsDashboardParams struct {
-	// Days Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом.
+	// Days Число дней в отчёте. Показатели качества каталога и некоторые защитные метрики отражают состояние на текущий момент.
 	Days *GetInternalAnalyticsDashboardParamsDays `form:"days,omitempty" json:"days,omitempty"`
 }
 
@@ -2217,7 +2217,7 @@ type GetMySavedEventsParams struct {
 	Tab   *GetMySavedEventsParamsTab `form:"tab,omitempty" json:"tab,omitempty"`
 	Limit *Limit                     `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque подписанный cursor
+	// Cursor Непрозрачный подписанный указатель на следующую страницу.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -2243,7 +2243,7 @@ type CreateRoomParams struct {
 type GetRoomEventsParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque подписанный cursor
+	// Cursor Непрозрачный подписанный указатель на следующую страницу.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercise the production namespace guards with fixture upstreams and credentials.
+# Проверяем защиту production-маршрутов с тестовыми серверами и доступами.
 set -Eeuo pipefail
 project_dir=$(cd "$(dirname "$0")/.." && pwd)
 fixture_dir=$(mktemp -d)
@@ -34,8 +34,8 @@ server {
 }
 server { listen 8081; location / { return 200 'fixture frontend'; } }
 CONFIG
-# NGINX_BIN enables the identical production-config smoke without Docker.
-# Only filesystem paths and listen/upstream ports in the temporary copy change.
+# NGINX_BIN позволяет проверить ту же production-конфигурацию без Docker.
+# Во временной копии меняются только пути к файлам и порты серверов.
 if [[ -n "${NGINX_BIN:-}" ]]; then
   fixture_port=18443
   sed -e 's/listen 80;/listen 18082;/' -e 's/\[::\]:80;/[::]:18082;/' \

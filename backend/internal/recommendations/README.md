@@ -1,41 +1,13 @@
-# Recommendation pool
+# Пул рекомендаций
 
-Production constructs `NewPoolBuilderWithBehavior` with the catalog, permanent
-preferences, and provider-neutral behavioral loaders. The tie-break secret must
-contain at least 32 bytes; the builder keeps a private copy. Backend B passes the
-frozen `contracts.BuildInput`, owns pool persistence and room lifecycle, while this
-package reads one coherent catalog snapshot and Backend A personalization data.
+В production используется `NewPoolBuilderWithBehavior`: он получает каталог, постоянные предпочтения и независимые от провайдеров данные о поведении пользователей. Секрет для разрешения равных оценок должен содержать не менее 32 байт; builder хранит собственную копию ключа. Backend B передаёт зафиксированный `contracts.BuildInput`, сохраняет пул и управляет жизненным циклом комнаты. Этот пакет читает единый снимок каталога и данные персонализации Backend A.
 
-Both participants' A3 hard constraints apply before ranking. Event start time uses
-the city timezone. Eligibility requires a published event and an available ticket.
-Known prices must be within the joint budget; events with unknown prices remain
-eligible but receive no budget-fit score. Requested metro proximity with no city
-metro data fails closed. Earlier pool events are excluded before ranking.
+До ранжирования применяются жёсткие ограничения A3 обоих участников. Время начала события трактуется в часовом поясе города. В пул попадают только опубликованные события с доступным билетом. Известная цена должна укладываться в общий бюджет; события с неизвестной ценой остаются допустимыми, но не получают баллы за соответствие бюджету. Если пользователь запросил близость к метро, а для города нет данных о станциях, подбор завершается без результата. События из предыдущих пулов исключаются до ранжирования.
 
-A4 ranks all eligible events as `scoring-diversity-v6-behavioral`. The group score
-combines the lower participant score (65%) and their mean (35%). Participant
-scores use permanent category affinity, current category fit, budget headroom,
-distance quality, and smoothed behavioral category affinity. The retained weights
-are normalized to a 0..1 score. Date and time constraints affect eligibility;
-they are not counted again as a ranking feature. Constant novelty and unavailable
-popularity values are not scored or persisted. Behavioral affinity adds at most
-0.06 before normalization and cold start is neutral. Candidate snapshots contain
-the aggregate behavioral affinity alongside the other component means, with safe,
-fixed explanations.
+A4 ранжирует все подходящие события по версии `scoring-diversity-v6-behavioral`. Оценка группы на 65% зависит от более низкой оценки участника и на 35% — от среднего значения оценок обоих. Оценки участников учитывают постоянные предпочтения по категориям, соответствие выбранным категориям сейчас, запас бюджета, качество расстояния и сглаженные поведенческие предпочтения по категориям. Веса компонентов нормируются до диапазона 0–1. Дата и время влияют на допуск в пул и повторно в оценке не учитываются. Новизна с постоянной оценкой и недоступные показатели популярности не оцениваются и не сохраняются. Поведенческие предпочтения добавляют не более 0,06 до нормализации; при отсутствии истории они нейтральны. Снимки кандидатов включают агрегированное поведенческое предпочтение и средние значения остальных компонентов; объяснения ограничены безопасным фиксированным набором.
 
-Equal scores use an HMAC-SHA256 digest over room ID, pool version, and event ID.
-The digest is compared as raw bytes, making catalog iteration order irrelevant.
-The input fingerprint includes normalized category selections, participant order,
-effective hard inputs, profile and behavioral digests, ranker version, and an
-opaque key identifier; it never includes raw preferences, votes, free text, or
-submission time.
+При равных оценках порядок определяется HMAC-SHA256 от ID комнаты, версии пула и ID события. Сравниваются исходные байты дайджеста, поэтому порядок перебора каталога не влияет на результат. Отпечаток входных данных учитывает нормализованный выбор категорий, порядок участников, применяемые жёсткие ограничения, дайджесты профиля и поведения, версию ранжировщика и непрозрачный ID ключа. В него не входят исходные предпочтения, голоса, произвольный текст или время отправки запроса.
 
-The ordered list is diversified deterministically up to 24 candidates (with 20 as
-the presentation target). It brings up to four distinct non-empty primary
-categories forward where possible, then observes a three-item primary-category
-streak cap and a two-item venue streak cap, relaxing those caps only when needed
-to retain the pool. Sparse pools are returned unchanged in size; one or two
-candidates set `IsSmall`, and an empty pool has a generic safe diagnostic.
+Список до 24 кандидатов упорядочивается с детерминированным разнообразием; целевой размер для показа — 20. По возможности в начало выводятся до четырёх разных непустых основных категорий. Затем применяются ограничения: не более трёх событий подряд из одной основной категории и не более двух подряд с одной площадки. Ограничения ослабляются только при необходимости сохранить весь пул. Размер небольшого пула не меняется: для одного или двух кандидатов выставляется `IsSmall`, пустой пул получает общее безопасное диагностическое описание.
 
-The separate vote-time `EventAvailability` adapter belongs to A5. This package
-does not read or write rooms, pools, votes, or matches.
+Отдельный адаптер `EventAvailability`, вызываемый при голосовании, относится к A5. Этот пакет не читает и не изменяет комнаты, пулы, голоса или совпадения.
