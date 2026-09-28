@@ -1,6 +1,8 @@
 .page { min-height: 100vh; background: #f4f5f7; color: #1b2029; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 82px; padding: 14px max(24px, calc((100vw - 1120px) / 2)); border-bottom: 1px solid #e6e8ec; background: #fff; }
 .brand, .headerActions { display: flex; align-items: center; gap: 14px; }
+.headerActions { flex-wrap: wrap; }
+.navLink { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
 .brandMark { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: #242a34; color: #fff; font-size: 19px; font-weight: 800; }
 .brand p { margin: 0 0 3px; color: #848b97; font-size: 9px; font-weight: 800; letter-spacing: .15em; }
 .brand p span { color: #abb0b9; }

@@ -30,8 +30,8 @@ internal_auth_is_enforced() {
   done
 }
 
-# Fail before migrations, backups, or image changes if the public endpoints are
-# reachable without the Nginx Basic Auth challenge.
+# Если закрытые маршруты доступны без Nginx Basic Auth, прерываем запуск
+# до миграций, резервного копирования и обновления образов.
 internal_auth_is_enforced || {
   echo "deployment aborted; configure Nginx Basic Auth for all internal paths" >&2
   exit 1
@@ -64,7 +64,7 @@ fi
 
 "${compose[@]}" pull
 "${compose[@]}" run --rm migrate
-"${compose[@]}" up -d postgres backend frontend event-sync daily-notifications timepad-image-recovery
+"${compose[@]}" up -d postgres backend frontend event-sync daily-notifications
 
 healthy=false
 for attempt in $(seq 1 30); do
@@ -92,6 +92,6 @@ if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]]; then
   export BACKEND_IMAGE="$IMAGE_PREFIX/backend:$previous_sha"
   export FRONTEND_IMAGE="$IMAGE_PREFIX/frontend:$previous_sha"
   "${compose[@]}" pull
-  "${compose[@]}" up -d postgres backend frontend event-sync daily-notifications timepad-image-recovery || true
+  "${compose[@]}" up -d postgres backend frontend event-sync daily-notifications || true
 fi
 exit 1

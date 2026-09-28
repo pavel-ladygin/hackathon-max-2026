@@ -95,21 +95,6 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
-  timepad-image-recovery:
-    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
-    command: ["/app/backfill-timepad-posters", "--continuous", "--apply", "--limit", "50"]
-    environment:
-      <<: *backend_environment
-      TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
-      TIMEPAD_TOKEN: ${TIMEPAD_TOKEN:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    restart: on-failure
-    stop_grace_period: 15s
-
   frontend:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
     ports:

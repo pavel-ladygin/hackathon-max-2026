@@ -30,7 +30,7 @@ export interface paths {
         };
         /**
          * Получить агрегированные метрики закрытого дашборда
-         * @description Доступ ограничивается Basic Auth на внешнем Nginx. Ответ содержит только агрегаты и кэшируется приложением кратковременно.
+         * @description Доступ защищён Basic Auth на внешнем Nginx. Ответ содержит только сводные данные и ненадолго кэшируется приложением.
          */
         get: operations["getInternalAnalyticsDashboard"];
         put?: never;
@@ -53,7 +53,7 @@ export interface paths {
         put?: never;
         /**
          * Создать конфигурируемый источник
-         * @description Требуются same-origin Origin и заголовок X-Admin-Request со значением 1.
+         * @description Требуются заголовок Origin с адресом этого же сайта и заголовок X-Admin-Request со значением 1.
          */
         post: operations["createInternalEventSource"];
         delete?: never;
@@ -71,12 +71,12 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Текущие разрешённые домены конкретного Generic source */
+        /** Список разрешённых доменов для выбранного настраиваемого источника */
         get: operations["listInternalEventSourceDomains"];
         put?: never;
         /**
-         * Явно разрешить hostname для image или ticket
-         * @description Только hostname без wildcard, URL или IP. Требуются same-origin Origin и X-Admin-Request: 1. Повторное разрешение идемпотентно.
+         * Разрешить имя узла для изображения или билета
+         * @description Укажите только имя узла: без маски, URL и IP-адреса. Требуются заголовок Origin с адресом этого же сайта и X-Admin-Request: 1. Повторное разрешение не создаёт дубликат.
          */
         post: operations["approveInternalEventSourceDomain"];
         delete?: never;
@@ -99,8 +99,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Отозвать approval без удаления сохранённых resource URL
-         * @description Следующий запрос блокируется. Требуются same-origin Origin и X-Admin-Request: 1.
+         * Отозвать разрешение, сохранив URL ресурса
+         * @description Следующий запрос к ресурсу будет заблокирован. Требуются заголовок Origin с адресом этого же сайта и X-Admin-Request: 1.
          */
         delete: operations["revokeInternalEventSourceDomain"];
         options?: never;
@@ -118,8 +118,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Изображение по сохранённому ID через source-scoped runtime policy
-         * @description Не принимает target URL или query. HTTPS upstream, public-IP-only dial, redirects запрещены. Cache-Control no-store обеспечивает revoke.
+         * Получить изображение по сохранённому ID с проверкой разрешения источника
+         * @description Запрос не принимает внешний URL и параметры строки запроса. Сервер обращается к источнику по HTTPS, подключается только к публичным IP-адресам и не следует перенаправлениям. Заголовок Cache-Control: no-store позволяет сразу применять отзыв разрешения.
          */
         get: operations["getGenericEventImageContent"];
         put?: never;
@@ -140,8 +140,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Перейти на сохранённый Generic ticket URL после runtime approval проверки
-         * @description Не принимает target URL или query. Проверяет HTTPS и точное разрешение source плюс ticket purpose при каждом переходе.
+         * Открыть сохранённую ссылку на билет с повторной проверкой разрешения
+         * @description Запрос не принимает внешний URL и параметры строки запроса. При каждом переходе сервер проверяет HTTPS и наличие разрешения на ссылку для этого источника и типа «ticket».
          */
         get: operations["redirectGenericEventTicket"];
         put?: never;
@@ -162,8 +162,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Проверить подключение и mapping без записи событий
-         * @description Требуются same-origin Origin и X-Admin-Request: 1. source_id позволяет использовать сохранённый секрет.
+         * Проверить подключение и сопоставление полей без записи событий
+         * @description Требуются заголовок Origin с адресом этого же сайта и X-Admin-Request: 1. Если указан source_id, для проверки используется сохранённый секрет.
          */
         post: operations["testInternalEventSource"];
         delete?: never;
@@ -189,8 +189,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Обновить источник или выключить его
-         * @description Полная конфигурация; пустой auth_secret сохраняет прежний секрет. Требуются same-origin Origin и X-Admin-Request: 1.
+         * Обновить настройки источника или выключить его
+         * @description Передаётся полная конфигурация. Если auth_secret пуст, прежний секрет сохраняется. Требуются заголовок Origin с адресом этого же сайта и X-Admin-Request: 1.
          */
         patch: operations["updateInternalEventSource"];
         trace?: never;
@@ -207,8 +207,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Запустить ручной upsert-only импорт
-         * @description Требуются same-origin Origin и X-Admin-Request: 1. Второй одновременный запуск источника возвращает 409.
+         * Запустить ручной импорт с добавлением и обновлением записей
+         * @description Импорт не удаляет записи. Требуются заголовок Origin с адресом этого же сайта и X-Admin-Request: 1. Если импорт этого источника уже выполняется, повторный запуск вернёт 409.
          */
         post: operations["syncInternalEventSource"];
         delete?: never;
@@ -227,8 +227,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Проверить MAX init data и открыть пользовательскую сессию
-         * @description Upsert пользователя. Проверяйте подпись MAX init data на сервере; доверенный start_param извлекается только из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; прочие параметры разрешаются как invite_context. Отдельное поле start_param — необязательный hint, который сверяется с подписанным значением. Не сохраняйте raw init data.
+         * Проверить initData MAX и открыть сессию пользователя
+         * @description Создаёт пользователя или обновляет его данные. Сервер проверяет подпись initData MAX и извлекает доверенный start_param только из проверенной строки. Значение event_<uuid> возвращается в shared_event_id; остальные значения используются для заполнения invite_context. Отдельное поле start_param необязательно и сверяется со значением из подписанных initData. Не сохраняйте исходные initData.
          */
         post: operations["bootstrapMaxSession"];
         delete?: never;
@@ -247,7 +247,7 @@ export interface paths {
         get?: never;
         /**
          * Полностью сохранить постоянные предпочтения
-         * @description Одна ручка для завершения onboarding и редактирования профиля. Не меняет intent существующих комнат.
+         * @description Этот метод завершает первоначальную настройку или сохраняет изменения профиля. Условия подбора в уже созданных комнатах не меняются.
          */
         put: operations["replaceMyPreferences"];
         post?: never;
@@ -368,7 +368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Идемпотентно принять пачку рекомендательных сигналов */
+        /** Принять набор сигналов для рекомендаций без повторной обработки дублей */
         post: operations["ingestBehaviorEvents"];
         delete?: never;
         options?: never;
@@ -384,7 +384,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Установить состояние saved события */
+        /** Изменить состояние сохранения события */
         put: operations["setSavedEvent"];
         post?: never;
         delete?: never;
@@ -400,7 +400,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Получить сохранённые события или события из мэтчей */
+        /** Получить сохранённые события или события из совпадений */
         get: operations["getMySavedEvents"];
         put?: never;
         post?: never;
@@ -438,7 +438,7 @@ export interface paths {
         put?: never;
         /**
          * Создать комнату для двух участников
-         * @description Пока у пользователя есть collecting/ranking/voting room, возвращает ACTIVE_ROOM_EXISTS. Если прежняя room exhausted, успешный POST атомарно делает её неактивной и создаёт новую; restart старой после этого невозможен.
+         * @description Если у пользователя уже есть комната в состоянии collecting, ranking или voting, сервер возвращает ACTIVE_ROOM_EXISTS. Если прежняя комната исчерпана, успешный POST атомарно закрывает её и создаёт новую. После этого возобновить старую комнату нельзя.
          */
         post: operations["createRoom"];
         delete?: never;
@@ -458,7 +458,7 @@ export interface paths {
         put?: never;
         /**
          * Идемпотентно вступить в комнату вторым участником
-         * @description Повторный join в ту же комнату идемпотентен. Если пользователь уже состоит в другой collecting_intents/ranking/voting комнате, вернуть ACTIVE_ROOM_EXISTS. Если предыдущая комната exhausted и ещё restartable, успешный join атомарно делает её неактивной и присоединяет пользователя к новой комнате.
+         * @description Повторное вступление в ту же комнату не создаёт дубликат. Если пользователь уже состоит в другой комнате в состоянии collecting_intents, ranking или voting, сервер возвращает ACTIVE_ROOM_EXISTS. Если предыдущая комната исчерпана, но ещё может быть возобновлена, успешный join атомарно закрывает её и присоединяет пользователя к новой комнате.
          */
         post: operations["joinRoomByInvite"];
         delete?: never;
@@ -474,7 +474,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Получить единый snapshot комнаты для рендера, polling и reconnect */
+        /** Получить полное состояние комнаты для отображения и восстановления связи */
         get: operations["getRoom"];
         put?: never;
         post?: never;
@@ -527,8 +527,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Полностью заменить приватные условия текущего участника
-         * @description При готовности обоих участников запускает построение первого или нового pool.
+         * Полностью заменить условия подбора текущего участника
+         * @description Когда оба участника сохранят условия, сервер начнёт формировать первый или обновлённый пул событий.
          */
         put: operations["replaceMyRoomIntent"];
         post?: never;
@@ -545,7 +545,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Получить страницу активного неизменяемого pool */
+        /** Получить страницу активного неизменяемого пула событий */
         get: operations["getRoomEvents"];
         put?: never;
         post?: never;
@@ -563,7 +563,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Оценить событие и получить результат либо match */
+        /** Оценить событие и получить результат или совпадение */
         put: operations["voteForRoomEvent"];
         post?: never;
         delete?: never;
@@ -655,7 +655,7 @@ export interface components {
             source_id?: string;
         };
         EventSourceDomainInput: {
-            /** @description Exact DNS hostname; без URL, IP, wildcard или regex */
+            /** @description Точное DNS-имя узла: без URL, IP-адреса, маски или регулярного выражения */
             hostname: string;
             /** @enum {string} */
             purpose: "image" | "ticket";
@@ -681,7 +681,7 @@ export interface components {
         EventSourcePreview: {
             resource_domains?: components["schemas"]["EventSourceResourceDomain"][];
             connection_ok: boolean;
-            /** @description HTTP status of the last fetched preview page */
+            /** @description Код HTTP последней загруженной страницы предпросмотра */
             http_status: number;
             received: number;
             valid: number;
@@ -713,7 +713,7 @@ export interface components {
         };
         BootstrapRequest: {
             init_data: string;
-            /** @description Необязательный client hint; backend не доверяет ему без совпадения с start_param из проверенного init_data */
+            /** @description Необязательная подсказка от клиента. Сервер использует её, только если она совпадает с start_param из проверенных init_data. */
             start_param?: string | null;
         };
         BootstrapResponse: {
@@ -853,11 +853,11 @@ export interface components {
             data_provenance: components["schemas"]["DataProvenance"];
         };
         DataProvenance: {
-            /** @description Источник каталожной записи; demo для подготовленных данных */
+            /** @description Источник записи каталога; значение demo обозначает подготовленные данные. */
             source: string;
             /** Format: date-time */
             source_updated_at?: string | null;
-            /** @description true означает тестовые или подготовленные данные, а не реальную интеграцию */
+            /** @description Значение true обозначает тестовые или подготовленные данные, а не реальную интеграцию. */
             is_demo: boolean;
         };
         Venue: {
@@ -971,13 +971,13 @@ export interface components {
             app_version?: string | null;
             /** @enum {string|null} */
             entry_point?: "feed" | "home" | "search" | "map" | "saved" | "room_invite" | "room" | "deep_link" | "unknown" | "bot" | "direct" | "shared_event" | "recommendation" | null;
-            /** @description Whitelisted non-PII event properties. Raw search text, precise coordinates and secrets are prohibited. */
+            /** @description Разрешённый список свойств события без персональных данных. Исходный текст поиска, точные координаты и секреты передавать нельзя. */
             properties?: {
                 [key: string]: unknown;
             };
             metadata?: components["schemas"]["BehaviorMetadata"];
         };
-        /** @description Только whitelisted metadata. PII, raw URLs, MAX init data, координаты и свободный текст запрещены. */
+        /** @description Разрешены только перечисленные метаданные. Персональные данные, исходные URL, initData MAX, координаты и произвольный текст передавать нельзя. */
         BehaviorMetadata: {
             surface?: string;
             position?: number;
@@ -1013,7 +1013,7 @@ export interface components {
         TicketClickResponse: {
             /**
              * Format: uri-reference
-             * @description Для built-in источников — проверенный внешний HTTPS URL; для Generic — same-origin /api/v1/events/{eventId}/ticket с повторной runtime-проверкой при переходе
+             * @description Для встроенных источников возвращается проверенная внешняя HTTPS-ссылка. Для настраиваемого источника возвращается путь /api/v1/events/{eventId}/ticket на этом же сайте; разрешение проверяется повторно при каждом переходе.
              */
             external_url: string;
         };
@@ -1053,7 +1053,7 @@ export interface components {
             avatar_url?: string | null;
             /** @enum {string} */
             role: "creator" | "participant";
-            /** @description Подтверждение intent для текущего round; не раскрывает содержимое intent */
+            /** @description Подтверждение условий подбора текущего раунда; сами условия не раскрываются. */
             intent_ready: boolean;
         };
         RoomSnapshot: {
@@ -1063,21 +1063,21 @@ export interface components {
             /** Format: uuid */
             city_id: string;
             state: components["schemas"]["RoomState"];
-            /** @description Текущий round подтверждения intent и построения pool */
+            /** @description Текущий раунд подтверждения условий и формирования пула событий. */
             round_no: number;
             version: number;
             participants: components["schemas"]["PublicParticipant"][];
             my_intent: components["schemas"]["MyIntent"] | null;
             pool: components["schemas"]["PoolSummary"] | null;
             match: components["schemas"]["MatchSummary"] | null;
-            /** @description Только creator; null для participant */
+            /** @description Доступно только создателю; для остальных участников значение null. */
             invite: components["schemas"]["RoomInvite"] | null;
             allowed_actions: ("invite" | "join" | "edit_intent" | "wait" | "view_pool" | "vote" | "view_match" | "restart_with_new_intent")[];
             /** Format: date-time */
             created_at: string;
             /**
              * Format: date-time
-             * @description Invite и room истекают через 48 часов
+             * @description Приглашение и комната перестают действовать через 48 часов.
              */
             expires_at: string;
             closed_by?: components["schemas"]["ClosedBy"] | null;
@@ -1086,16 +1086,16 @@ export interface components {
         };
         RoomIntentRequest: {
             dates: string[];
-            /** @description Пустой массив означает любой день; значения объединяются OR */
+            /** @description Пустой массив означает любой день. Условия внутри массива объединяются по правилу «ИЛИ». */
             day_types: components["schemas"]["DayType"][];
-            /** @description Пустой массив означает любое время; значения объединяются OR */
+            /** @description Пустой массив означает любое время. Условия внутри массива объединяются по правилу «ИЛИ». */
             time_slots: components["schemas"]["TimeSlot"][];
             category_slugs: components["schemas"]["CategorySlug"][];
             budget_max_minor: number;
-            /** @description null означает отсутствие distance filter; с location считается от координат, без location — от центра room city */
+            /** @description Значение null отключает фильтр расстояния. Если заданы координаты location, расстояние считается от них; иначе — от центра города. */
             radius_m?: number | null;
             exclusion_slugs: ("nightclubs" | "very_loud" | "outdoor" | "far_from_metro")[];
-            /** @description При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются дольше необходимого ranking */
+            /** @description Если задан радиус, это поле задаёт точку отсчёта. Значение null вместе с радиусом означает центр города комнаты. Координаты не сохраняются. дольше необходимого ranking */
             location?: components["schemas"]["GeoPoint"] | null;
             free_text?: string | null;
         };
@@ -1107,10 +1107,10 @@ export interface components {
             time_slots: components["schemas"]["TimeSlot"][];
             category_slugs: components["schemas"]["CategorySlug"][];
             budget_max_minor: number;
-            /** @description null означает отсутствие distance filter; с location считается от координат, без location — от центра room city */
+            /** @description Значение null отключает фильтр расстояния. Если заданы координаты location, расстояние считается от них; иначе — от центра города комнаты. */
             radius_m?: number | null;
             exclusion_slugs: ("nightclubs" | "very_loud" | "outdoor" | "far_from_metro")[];
-            /** @description При наличии radius задаёт origin; null с radius означает центр room city. Координаты не сохраняются дольше необходимого ranking */
+            /** @description При заданном radius это поле задаёт точку отсчёта. Значение null вместе с радиусом означает центр города комнаты. Координаты не сохраняются дольше, чем это требуется для ранжирования. */
             location?: components["schemas"]["GeoPoint"] | null;
             free_text?: string | null;
             version: number;
@@ -1127,7 +1127,7 @@ export interface components {
             voted_by_me: number;
             /** @description Текущий участник проголосовал по всем доступным карточкам */
             my_pool_finished: boolean;
-            /** @description Оба участника завершили текущий pool без match */
+            /** @description Оба участника просмотрели текущий пул без совпадения. */
             room_exhausted: boolean;
             retry_after_seconds?: number | null;
             /** @description Только агрегированные причины без чужих данных */
@@ -1136,7 +1136,7 @@ export interface components {
                 code: "budget" | "date" | "categories" | "radius" | "catalog_shortage";
                 text: string;
             }[];
-            /** @description true, если в pool только 1–2 доступных события */
+            /** @description Значение true означает, что в пуле доступно только одно или два события. */
             is_small: boolean;
         };
         RoomEventsResponse: {
@@ -1145,7 +1145,7 @@ export interface components {
             pool_version: number;
             round_no: number;
             items: {
-                /** @description Opaque pagination cursor; не передаётся в vote */
+                /** @description Указатель следующей страницы; не передавайте его в запросе vote. */
                 cursor: string;
                 position: number;
                 event: components["schemas"]["EventCard"];
@@ -1173,7 +1173,7 @@ export interface components {
             event_id: string;
             /** Format: date-time */
             matched_at: string;
-            /** @description Только безопасные display_name/avatar/role; MAX ID и intent не раскрываются */
+            /** @description Передаются только безопасные поля display_name, avatar и role. Идентификатор MAX и условия подбора не раскрываются. */
             participants: components["schemas"]["PublicParticipant"][];
         };
         Match: {
@@ -1217,7 +1217,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description Token отсутствует, истёк или невалиден */
+        /** @description Токен отсутствует, истёк или недействителен. */
         Unauthenticated: {
             headers: {
                 [name: string]: unknown;
@@ -1244,7 +1244,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description Превышен rate limit */
+        /** @description Превышен ограничение частоты запросов */
         RateLimited: {
             headers: {
                 "Retry-After"?: number;
@@ -1267,9 +1267,9 @@ export interface components {
     parameters: {
         RoomId: string;
         EventId: string;
-        /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+        /** @description Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED. */
         CityId: string;
-        /** @description Opaque подписанный cursor */
+        /** @description Непрозрачный подписанный указатель на следующую страницу. */
         Cursor: string;
         Limit: number;
         IdempotencyKey: string;
@@ -1311,7 +1311,7 @@ export interface operations {
     getInternalAnalyticsDashboard: {
         parameters: {
             query?: {
-                /** @description Размер дневного окна; каталог качества и некоторые защитные метрики являются текущим срезом. */
+                /** @description Число дней в отчёте. Показатели качества каталога и некоторые защитные метрики отражают состояние на текущий момент. */
                 days?: 7 | 30 | 90;
             };
             header?: never;
@@ -1431,7 +1431,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Разрешения без URL и credentials */
+            /** @description Список разрешений без URL и учётных данных */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1460,7 +1460,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Домен разрешён только для указанного source и purpose */
+            /** @description Домен разрешён только для указанного источника и типа ресурса */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1508,7 +1508,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Проверенное raster image (JPEG, PNG, WebP, GIF, AVIF) */
+            /** @description Проверенное растровое изображение (JPEG, PNG, WebP, GIF, AVIF) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1522,7 +1522,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
-            /** @description Resource hostname не approved для source и image purpose */
+            /** @description Имя узла ресурса не разрешено для этого источника и типа «image» */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1530,7 +1530,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            /** @description Upstream image недоступно или не прошло content validation */
+            /** @description Изображение источника недоступно или не прошло проверку содержимого */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -1551,7 +1551,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Разрешённый сохранённый HTTPS destination */
+            /** @description Разрешённый сохранённый адрес HTTPS */
             302: {
                 headers: {
                     Location?: string;
@@ -1560,7 +1560,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["ValidationError"];
-            /** @description Ticket hostname не approved */
+            /** @description Имя узла билетного сайта не разрешено */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1584,7 +1584,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Статистика и ограниченный preview */
+            /** @description Статистика и ограниченный предпросмотр */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1778,11 +1778,11 @@ export interface operations {
     getHomeFeed: {
         parameters: {
             query?: {
-                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                /** @description Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
-                /** @description Необязательная координата для секции nearby; передаётся только вместе с lng и после согласия пользователя */
+                /** @description Необязательная координата для секции nearby. Передавайте её только вместе с lng и после согласия пользователя. */
                 lat?: number;
-                /** @description Необязательная координата для секции nearby; передаётся только вместе с lat и после согласия пользователя */
+                /** @description Необязательная координата для секции nearby. Передавайте её только вместе с lat и после согласия пользователя. */
                 lng?: number;
                 limit?: components["parameters"]["Limit"];
             };
@@ -1792,7 +1792,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Render-ready лента */
+            /** @description Лента, готовая к отображению */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1812,11 +1812,11 @@ export interface operations {
                 q?: string;
                 /** @description При false total_estimate возвращается как null */
                 include_total?: boolean;
-                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                /** @description Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
                 date_from?: string;
                 date_to?: string;
-                /** @description Значения внутри массива объединяются OR; вместе с time_slots применяется AND */
+                /** @description Значения внутри массива объединяются по условию «ИЛИ»; с time_slots — по условию «И» */
                 day_types?: components["schemas"]["DayType"][];
                 time_slots?: components["schemas"]["TimeSlot"][];
                 category_slugs?: components["schemas"]["CategorySlug"][];
@@ -1831,7 +1831,7 @@ export interface operations {
                 east?: number;
                 north?: number;
                 limit?: components["parameters"]["Limit"];
-                /** @description Opaque подписанный cursor */
+                /** @description Непрозрачный подписанный указатель на следующую страницу. */
                 cursor?: components["parameters"]["Cursor"];
             };
             header?: never;
@@ -1857,7 +1857,7 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                /** @description Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
                 date_from?: string;
                 date_to?: string;
@@ -1896,7 +1896,7 @@ export interface operations {
     getEventMap: {
         parameters: {
             query: {
-                /** @description Город каталога. Если не передан, backend использует city_id из профиля пользователя; если его нет — VALIDATION_FAILED. */
+                /** @description Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED. */
                 city_id?: components["parameters"]["CityId"];
                 west: number;
                 south: number;
@@ -2032,7 +2032,7 @@ export interface operations {
             query?: {
                 tab?: "saved" | "matches";
                 limit?: components["parameters"]["Limit"];
-                /** @description Opaque подписанный cursor */
+                /** @description Непрозрачный подписанный указатель на следующую страницу. */
                 cursor?: components["parameters"]["Cursor"];
             };
             header?: never;
@@ -2074,7 +2074,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Проверенный внешний HTTPS URL разрешённого ticket-провайдера; приложение открывает его через MAX Bridge или браузер с безопасным режимом */
+            /** @description Проверенная внешняя HTTPS-ссылка разрешённого билетного провайдера. Приложение открывает её через MAX Bridge. или браузер с безопасным режимом */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2109,7 +2109,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Комната, creator membership и invite ссылка. Повторное получение ссылки creator делает через GET room. */
+            /** @description Комната, запись создателя среди участников и ссылка-приглашение. Чтобы снова получить ссылку, создатель может выполнить GET room. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2137,7 +2137,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Safe snapshot комнаты; также возвращается при повторном join */
+            /** @description Безопасный снимок состояния комнаты; он же возвращается при повторном вступлении. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2148,7 +2148,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            /** @description Комната заполнена/истекла, конфликт активной комнаты или idempotency conflict */
+            /** @description Комната заполнена или срок её действия истёк, уже есть другая активная комната либо конфликтует ключ Idempotency-Key. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2170,7 +2170,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Safe snapshot. Для creator возвращается invite для повторного share; token и invite не видны другим участникам. */
+            /** @description Безопасный снимок состояния. Создатель получает invite, чтобы повторно поделиться приглашением; token и invite не видны остальным участникам. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2273,7 +2273,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Intent сохранён; pool уже готов или второй участник ещё не готов */
+            /** @description Условия сохранены; пул уже готов или второй участник ещё не сохранил свои условия. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2282,10 +2282,10 @@ export interface operations {
                     "application/json": components["schemas"]["RoomSnapshot"];
                 };
             };
-            /** @description Intent сохранён, pool строится асинхронно */
+            /** @description Условия сохранены, пул формируется в фоновом режиме. */
             202: {
                 headers: {
-                    /** @description Рекомендуемый polling interval в секундах */
+                    /** @description Рекомендуемый интервал повторного запроса в секундах. */
                     "Retry-After"?: number;
                     [name: string]: unknown;
                 };
@@ -2297,7 +2297,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description Семантически невалидный intent, например прошедшая дата */
+            /** @description Условия не прошли проверку, например из-за даты в прошлом. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2312,7 +2312,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: components["parameters"]["Limit"];
-                /** @description Opaque подписанный cursor */
+                /** @description Непрозрачный подписанный указатель на следующую страницу. */
                 cursor?: components["parameters"]["Cursor"];
             };
             header?: never;
@@ -2323,7 +2323,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Одинаковый порядок для обоих участников */
+            /** @description Порядок карточек одинаков для обоих участников. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2334,7 +2334,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            /** @description Pool ещё не готов, устарел или исчерпан. После окончания карточек одним участником room остаётся voting до завершения второго. */
+            /** @description Пул ещё не готов, устарел или исчерпан. Если один участник просмотрел все карточки, комната остаётся в состоянии voting. до завершения второго. */
             409: {
                 headers: {
                     [name: string]: unknown;

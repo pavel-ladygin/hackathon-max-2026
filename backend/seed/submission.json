@@ -1,0 +1,66 @@
+{
+  "city": {
+    "id": "a0f625ee-2154-5a45-8afe-37adf955ec24",
+    "name": "Москва",
+    "timezone": "Europe/Moscow",
+    "center_lat": 55.7558,
+    "center_lng": 37.6173
+  },
+  "venue": {
+    "id": "4b0fbbd2-c453-5c63-8e16-33d8dd3bdaf4",
+    "city_id": "a0f625ee-2154-5a45-8afe-37adf955ec24",
+    "name": "Площадка тестового каталога MAX",
+    "address": "Москва, тестовый адрес",
+    "latitude": 55.7558,
+    "longitude": 37.6173,
+    "metro": "Охотный Ряд",
+    "district": "Тверской",
+    "venue_type": "concert_hall"
+  },
+  "events": [
+    {
+      "id": "ce8f2695-324f-52b0-abba-4de56e9114c1",
+      "external_id": "submission-concert-1",
+      "title": "Тестовый концерт: вечерняя программа",
+      "subtitle": "Тестовое событие для локальной проверки",
+      "description": "Вымышленное событие из локального submission-набора. Ссылка на билет зарезервирована и не ведёт к продаже.",
+      "venue_id": "4b0fbbd2-c453-5c63-8e16-33d8dd3bdaf4",
+      "offset_days": 7,
+      "local_time": "18:00:00",
+      "timezone": "Europe/Moscow",
+      "price_minor": 100000,
+      "currency": "RUB",
+      "ticket_url": "https://tickets.example.invalid/submission/concert-1",
+      "ticket_available": true,
+      "status": "published",
+      "age_rating": "16+",
+      "indoor": true,
+      "loudness_level": "normal",
+      "category_slug": "concerts",
+      "image_id": "7fc638af-a1f8-5c69-89f7-9fe5797375b5",
+      "image_url": "/events/concert-singer.png"
+    },
+    {
+      "id": "69313f92-5186-5f03-9256-80ef8058a5c8",
+      "external_id": "submission-concert-2",
+      "title": "Тестовый концерт: акустический сет",
+      "subtitle": "Тестовое событие для локальной проверки",
+      "description": "Вымышленное событие из локального submission-набора. Ссылка на билет зарезервирована и не ведёт к продаже.",
+      "venue_id": "4b0fbbd2-c453-5c63-8e16-33d8dd3bdaf4",
+      "offset_days": 14,
+      "local_time": "18:00:00",
+      "timezone": "Europe/Moscow",
+      "price_minor": 200000,
+      "currency": "RUB",
+      "ticket_url": "https://tickets.example.invalid/submission/concert-2",
+      "ticket_available": true,
+      "status": "published",
+      "age_rating": "16+",
+      "indoor": true,
+      "loudness_level": "quiet",
+      "category_slug": "concerts",
+      "image_id": "7c331cd5-a78b-5b8f-8455-fd7600b8aac7",
+      "image_url": "/events/concert-singer.png"
+    }
+  ]
+}

@@ -46,7 +46,7 @@ SELECT pe.event_id, pe.position, pe.explanation, pe.feature_snapshot,
        (SELECT ec.category_slug FROM event_categories ec
         WHERE ec.event_id = e.id AND ec.is_primary
         ORDER BY ec.category_slug LIMIT 1) AS category_slug,
-       coalesce(image.url, '') AS image_url,
+       coalesce(image.url, '')::text AS image_url,
        EXISTS (SELECT 1 FROM saved_events se
                WHERE se.user_id = sqlc.arg('user_id') AND se.event_id = e.id) AS saved,
        EXISTS (SELECT 1 FROM room_votes rv
@@ -56,7 +56,7 @@ FROM room_pool_events pe
 JOIN events e ON e.id = pe.event_id
 JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
+    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END,
              ei.position, ei.id LIMIT 1
 ) image ON true

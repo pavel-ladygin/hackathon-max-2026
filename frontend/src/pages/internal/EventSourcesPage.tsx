@@ -217,7 +217,7 @@ function EventSourcesPage() {
   }
 
   return <main className={styles.page}>
-    <header className={styles.header}><div className={styles.brand}><div className={styles.brandMark}>M</div><div><p>WORKNET <span>/ INTERNAL</span></p><h1>Источники событий</h1></div></div><div className={styles.headerActions}><span className={styles.secure}>Внутренний доступ</span><button className={styles.primaryButton} onClick={openCreate}>＋ Добавить источник</button></div></header>
+    <header className={styles.header}><div className={styles.brand}><div className={styles.brandMark}>M</div><div><p>WORKNET <span>/ INTERNAL</span></p><h1>Источники событий</h1></div></div><div className={styles.headerActions}><span className={styles.secure}>Внутренний доступ</span><a className={`${styles.secondaryButton} ${styles.navLink}`} href="/internal/analytics">Аналитика →</a><button className={styles.primaryButton} onClick={openCreate}>＋ Добавить источник</button></div></header>
     <div className={styles.content}>
       <div className={styles.intro}><div><p className={styles.kicker}>УПРАВЛЕНИЕ ИМПОРТОМ</p><h2>Источники событий</h2><p>Проверьте JSON mapping и запускайте импорт в общую афишу.</p></div><button className={styles.secondaryButton} onClick={() => { setLoading(true); loadSources().catch((cause) => setError(cause instanceof Error ? cause.message : 'Ошибка загрузки')).finally(() => setLoading(false)) }}>Обновить список</button></div>
       {error && <div className={styles.alert} role="alert"><strong>Не удалось выполнить действие</strong><span>{error}</span></div>}

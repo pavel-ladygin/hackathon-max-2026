@@ -1,5 +1,8 @@
 # Хакатонное описание проверок API. Локальная структура версии 1;
 # организаторы не опубликовали машинную схему или официальный номер версии.
+# Это чеклист по репозиторному OpenAPI, не утверждение о формате организаторов.
+# Организаторские логины/пароли и способ выдачи двух MAX-аккаунтов пока не определены.
+# Не сохраняйте в этом файле исходные initData или токены Bearer, выданные при bootstrap.
 config_version: 1
 solution: MAX Together
 base_url: https://worknet.team/api/v1
@@ -35,7 +38,7 @@ checks:
       constraints:
         token_type: Bearer
         expires_in: 86400
-    notes: Сохранить access_token как Bearer для последующих запросов пользователя A.
+    notes: Сохраните временный access_token как токен Bearer только на время проверки пользователя A. Успешный bootstrap создаёт новую сессию сроком на 24 часа. Не сохраняйте исходные initData и не используйте их как постоянные данные для входа.
 
   - id: max-bootstrap-user-b
     purpose: Открыть сессию второго участника из Mini App MAX
@@ -53,7 +56,57 @@ checks:
       content_type: application/json
       required_fields: [access_token, token_type, expires_in, user, onboarding_state, preferences, daily_notifications_enabled, invite_context, shared_event_id]
       constraints: {token_type: Bearer, expires_in: 86400}
-    notes: Токен B используется только для запросов второго участника.
+    notes: Каждый bootstrap проверяет актуальные подписанные MAX initData и создаёт новую сессию сроком на 24 часа. Временный токен B используйте только для запросов от имени пользователя B; не публикуйте его как постоянные тестовые данные для входа.
+
+  # Обязательные проверки каталога до сценария комнаты; поля сверены с OpenAPI 3.1.
+  - id: discovery-home-feed
+    purpose: Получить домашнюю ленту авторизованного пользователя
+    method: GET
+    path: /feed/home
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {}
+      query: {city_id: a0f625ee-2154-5a45-8afe-37adf955ec24, limit: 20}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [feed_id, generated_at, sections]
+    notes: Проверить, что лента содержит доступные карточки событий.
+
+  - id: discovery-search-events
+    purpose: Найти событие в каталоге
+    method: GET
+    path: /events/search
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {}
+      query: {city_id: a0f625ee-2154-5a45-8afe-37adf955ec24, limit: 20}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [items, applied_filters, total_estimate, next_cursor]
+      item_required_fields: [id, title, category_slug, starts_at, timezone, date_label, venue_name, price_from_minor, currency, price_label, image_url, saved, reasons]
+    notes: Передайте ID карточки из массива items в проверку discovery-event-detail.
+
+  - id: discovery-event-detail
+    purpose: Открыть полную карточку найденного события
+    method: GET
+    path: /events/{eventId}
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      path: {eventId: "<items[0].id из discovery-search-events>"}
+      query: {}
+      body: none
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [id, title, category_slug, starts_at, timezone, date_label, venue_name, price_from_minor, currency, price_label, image_url, saved, reasons, description, venue, images, ticket_available, status, data_provenance]
+    notes: Если поиск вернул пустой каталог, проверка блокируется нехваткой данных; не подменяйте результат неподтверждённым событием.
 
   - id: create-room
     purpose: Создать комнату и получить приглашение
@@ -76,7 +129,7 @@ checks:
       required_fields: [room, invite]
       room_required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
       invite_required_fields: [token, url, max_deep_link, expires_at]
-    notes: Сохранить room.id и invite.token для последующих шагов.
+    notes: Сохраните room.id и invite.token для следующих шагов. В интерфейсе проверьте кнопку «Пригласить через MAX» и копирование ссылки. Параметр max_deep_link передаёт токен приглашения через startapp.
 
   - id: join-room
     purpose: Второму участнику вступить по приглашению
@@ -95,7 +148,7 @@ checks:
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
-    notes: Повторный join того же пользователя идемпотентен.
+    notes: Повторный вызов join для того же пользователя безопасен и не создаёт повторное участие.
 
   - id: set-room-intent-user-a
     purpose: Пользователь A сохраняет условия подбора
@@ -122,7 +175,7 @@ checks:
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
-    notes: HTTP 202 may include Retry-After while pool generation is asynchronous.
+    notes: При ответе HTTP 202 сервер может передать заголовок Retry-After, пока пул формируется в фоновом режиме.
 
   - id: set-room-intent-user-b
     purpose: Пользователь B сохраняет условия подбора
@@ -164,7 +217,7 @@ checks:
     response:
       content_type: application/json
       required_fields: [room_id, pool_version, round_no, items, next_cursor, total]
-    notes: Если пул ещё не готов, API может вернуть 409 POOL_NOT_READY; проверить готовность через повторное чтение.
+    notes: Если пул ещё не готов, API может вернуть 409 POOL_NOT_READY. Повторите чтение, чтобы проверить готовность.
 
   - id: vote
     purpose: Проголосовать; при общем лайке получить match
@@ -187,7 +240,7 @@ checks:
       content_type: application/json
       required_fields: [accepted_vote, pool_version, my_pool_finished, room_exhausted, match]
       match_required_fields_when_present: [id, matched_at, event, participants]
-    notes: Оба участника голосуют за одну и ту же карточку; match не null при общем лайке.
+    notes: Оба участника должны проголосовать за одну и ту же карточку. При совпадении лайков поле match будет заполнено.
 
   - id: get-room-match
     purpose: Прочитать состояние комнаты и подтвердить общий match
@@ -203,7 +256,7 @@ checks:
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
-    notes: У обоих участников match.id и match.event.id должны совпасть.
+    notes: У обоих участников значения match.id и match.event.id должны совпадать.
 
   - id: open-ticket-provider
     purpose: Получить безопасную внешнюю ссылку на страницу события
@@ -224,4 +277,4 @@ checks:
     response:
       content_type: application/json
       required_fields: [external_url]
-    notes: external_url ведёт на HTTPS-страницу провайдера; завершение покупки этим API не подтверждается.
+    notes: external_url ведёт на HTTPS-страницу билетного провайдера. Этот API не подтверждает завершение покупки.
