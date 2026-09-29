@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates
+COPY backend/certs/*.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
 WORKDIR /app
 COPY --from=build /out/server /out/migrate /out/seed /out/event-sync /out/daily-notifications ./
 USER 65532:65532
