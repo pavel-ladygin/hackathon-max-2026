@@ -40,11 +40,11 @@ func (c *Client) ResolveRedirectPosterWithCanonicalID(ctx context.Context, curre
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, redirectPosterTimeout)
 	defer cancel()
-	canonicalID, err := resolveCanonicalEventID(requestCtx, currentEventID, eventURL, &http.Client{Timeout: redirectPosterTimeout})
+	canonicalID, err := c.resolveCanonicalEventID(requestCtx, currentEventID, eventURL)
 	if err != nil || canonicalID == 0 {
 		return canonicalID, nil, err
 	}
-	images, err := fetchEventPoster(requestCtx, canonicalID, c.token, c.baseURL, c.httpClient)
+	images, err := c.fetchEventPoster(requestCtx, canonicalID)
 	return canonicalID, images, err
 }
 
@@ -56,7 +56,7 @@ func (c *Client) ResolveCanonicalEventID(ctx context.Context, currentEventID int
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, redirectPosterTimeout)
 	defer cancel()
-	return resolveCanonicalEventID(requestCtx, currentEventID, eventURL, &http.Client{Timeout: redirectPosterTimeout})
+	return c.resolveCanonicalEventID(requestCtx, currentEventID, eventURL)
 }
 
 // FetchEventPoster fetches and normalizes the poster for a canonical event ID.
@@ -66,7 +66,90 @@ func (c *Client) FetchEventPoster(ctx context.Context, canonicalEventID int64) (
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, redirectPosterTimeout)
 	defer cancel()
-	return fetchEventPoster(requestCtx, canonicalEventID, c.token, c.baseURL, c.httpClient)
+	return c.fetchEventPoster(requestCtx, canonicalEventID)
+}
+
+func (c *Client) resolveCanonicalEventID(ctx context.Context, currentEventID int64, eventURL string) (int64, error) {
+	if currentEventID <= 0 {
+		return 0, errors.New("timepad event ID must be positive")
+	}
+	current, err := url.Parse(strings.TrimSpace(eventURL))
+	if err != nil || !validPublicTimepadURL(current) {
+		return 0, errors.New("timepad event URL is invalid")
+	}
+	for hops := 0; ; hops++ {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, current.String(), nil)
+		if err != nil {
+			return 0, fmt.Errorf("create timepad page request: %w", err)
+		}
+		request.Header.Set("Accept", "text/html")
+		response, err := c.do(ctx, request)
+		if err != nil {
+			return 0, fmt.Errorf("request timepad event page: %w", err)
+		}
+		response.Body.Close()
+		if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusMultipleChoices+100 {
+			if hops >= redirectPosterMaxHops {
+				return 0, errors.New("timepad page redirect is not allowed")
+			}
+			next, err := current.Parse(response.Header.Get("Location"))
+			if err != nil || !validPublicTimepadURL(next) {
+				return 0, errors.New("timepad page redirect is not allowed")
+			}
+			current = next
+			continue
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			return 0, fmt.Errorf("timepad event page returned HTTP %d", response.StatusCode)
+		}
+		parentID, err := timepadEventIDFromURL(current)
+		if err != nil {
+			return 0, err
+		}
+		if parentID == currentEventID {
+			return 0, nil
+		}
+		return parentID, nil
+	}
+}
+
+func (c *Client) fetchEventPoster(ctx context.Context, canonicalEventID int64) ([]providers.NormalizedImage, error) {
+	if canonicalEventID <= 0 {
+		return nil, errors.New("canonical timepad event ID must be positive")
+	}
+	apiURL := c.baseURL.ResolveReference(&url.URL{Path: "events/" + strconv.FormatInt(canonicalEventID, 10) + ".json"})
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create timepad API request: %w", err)
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+c.token)
+	response, err := c.do(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("request redirected timepad event: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("redirected timepad event API returned HTTP %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, redirectPosterMaxAPIResponse+1))
+	if err != nil {
+		return nil, fmt.Errorf("read redirected timepad event: %w", err)
+	}
+	if len(body) > redirectPosterMaxAPIResponse {
+		return nil, errors.New("redirected timepad event response is too large")
+	}
+	var parent struct {
+		ID          int64    `json:"id"`
+		PosterImage imageDTO `json:"poster_image"`
+	}
+	if err := json.Unmarshal(body, &parent); err != nil {
+		return nil, fmt.Errorf("decode redirected timepad event: %w", err)
+	}
+	if parent.ID != canonicalEventID {
+		return nil, errors.New("redirected timepad API returned an unexpected event ID")
+	}
+	return normalizeImages(parent.PosterImage), nil
 }
 
 func resolveCanonicalEventID(ctx context.Context, currentEventID int64, eventURL string, pageClient *http.Client) (int64, error) {

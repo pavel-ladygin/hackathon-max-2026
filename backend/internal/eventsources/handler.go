@@ -161,7 +161,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lastRuns := map[string]lastRun{}
-	rows, err = h.db.Query(r.Context(), `SELECT DISTINCT ON (provider) provider,state,completed_at FROM provider_sync_runs ORDER BY provider,started_at DESC`)
+	// A bounded manual import is persisted for audit, but it is upsert-only and
+	// must not replace the status of the latest complete provider sync.
+	rows, err = h.db.Query(r.Context(), `SELECT DISTINCT ON (provider) provider,state,completed_at FROM provider_sync_runs WHERE provider <> 'timepad' OR reconcile_missing=true ORDER BY provider,started_at DESC`)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL", "Event sources unavailable")
 		return

@@ -27,10 +27,46 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("KUDAGO_LOCATION", "")
 	t.Setenv("KUDAGO_PAGE_SIZE", "")
 	t.Setenv("EVENT_SYNC_INTERVAL", "")
+	t.Setenv("EVENT_SYNC_RUN_ON_START", "")
 	t.Setenv("TIMEPAD_BASE_URL", "")
 	t.Setenv("TIMEPAD_TOKEN", "")
 	t.Setenv("TIMEPAD_TIMEOUT", "")
 	t.Setenv("TIMEPAD_PAGE_SIZE", "")
+	t.Setenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE", "")
+}
+
+func TestTimepadSyncDefaultsAndOverrides(t *testing.T) {
+	setValidConfigEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EventSyncInterval != 2*time.Hour || cfg.EventSyncRunOnStart || cfg.TimepadMaxRequestsPerMinute != 20 {
+		t.Fatalf("unexpected Timepad sync defaults: %+v", cfg)
+	}
+	t.Setenv("EVENT_SYNC_INTERVAL", "15m")
+	t.Setenv("EVENT_SYNC_RUN_ON_START", "true")
+	t.Setenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE", "7")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EventSyncInterval != 15*time.Minute || !cfg.EventSyncRunOnStart || cfg.TimepadMaxRequestsPerMinute != 7 {
+		t.Fatalf("unexpected Timepad sync overrides: %+v", cfg)
+	}
+}
+
+func TestTimepadSyncRejectsInvalidValues(t *testing.T) {
+	for name, value := range map[string]string{"EVENT_SYNC_RUN_ON_START": "maybe", "TIMEPAD_MAX_REQUESTS_PER_MINUTE": "0"} {
+		t.Run(name, func(t *testing.T) {
+			setValidConfigEnv(t)
+			t.Setenv(name, value)
+			_, err := Load()
+			if err == nil || err.Error() != name+" is invalid" {
+				t.Fatalf("Load() error=%v", err)
+			}
+		})
+	}
 }
 
 func TestKudaGoConfigDefaultsAndOverrides(t *testing.T) {

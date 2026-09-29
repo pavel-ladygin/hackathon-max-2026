@@ -246,3 +246,27 @@ func TestMalformedCategoriesObjectSkipsOnlyItsEvent(t *testing.T) {
 		t.Fatal("non-empty categories object must make only that event invalid")
 	}
 }
+
+func TestNormalizeEventReportsRejectionReasons(t *testing.T) {
+	valid := eventDTO{ID: 1, Name: "Event", StartsAt: "2026-10-01T10:00:00+03:00"}
+	tests := []struct {
+		name   string
+		mutate func(*eventDTO)
+		want   providers.RejectionReason
+	}{
+		{"invalid id", func(e *eventDTO) { e.ID = 0 }, providers.RejectionInvalidID},
+		{"missing title", func(e *eventDTO) { e.Name = "" }, providers.RejectionMissingTitle},
+		{"missing starts", func(e *eventDTO) { e.StartsAt = "" }, providers.RejectionMissingStartsAt},
+		{"invalid starts", func(e *eventDTO) { e.StartsAt = "not-a-date" }, providers.RejectionInvalidStartsAt},
+		{"malformed categories", func(e *eventDTO) { e.Categories.Malformed = true }, providers.RejectionMalformedCategories},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := valid
+			test.mutate(&event)
+			if _, got := normalizeEventWithReason(event); got != test.want {
+				t.Fatalf("reason=%q want=%q", got, test.want)
+			}
+		})
+	}
+}

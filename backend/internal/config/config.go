@@ -18,49 +18,53 @@ import (
 
 // Config contains the configuration required to start a backend process.
 type Config struct {
-	AppEnv                     string
-	HTTPAddr                   string
-	DatabaseURL                string
-	LogLevel                   slog.Level
-	MAXBotToken                string
-	MAXInitDataMaxAge          time.Duration
-	TrustedProxyCIDRs          []net.IPNet
-	InviteEncryptionKey        []byte
-	InviteEncryptionKeyVersion int16
-	InviteURLTemplate          string
-	MAXDeepLinkTemplate        string
-	TicketProviderAllowlist    []string
-	KudaGoBaseURL              string
-	KudaGoTimeout              time.Duration
-	KudaGoLocation             string
-	KudaGoPageSize             int
-	EventSyncInterval          time.Duration
-	TimepadBaseURL             string
-	TimepadToken               string
-	TimepadTimeout             time.Duration
-	TimepadPageSize            int
+	AppEnv                      string
+	HTTPAddr                    string
+	DatabaseURL                 string
+	LogLevel                    slog.Level
+	MAXBotToken                 string
+	MAXInitDataMaxAge           time.Duration
+	TrustedProxyCIDRs           []net.IPNet
+	InviteEncryptionKey         []byte
+	InviteEncryptionKeyVersion  int16
+	InviteURLTemplate           string
+	MAXDeepLinkTemplate         string
+	TicketProviderAllowlist     []string
+	KudaGoBaseURL               string
+	KudaGoTimeout               time.Duration
+	KudaGoLocation              string
+	KudaGoPageSize              int
+	EventSyncInterval           time.Duration
+	EventSyncRunOnStart         bool
+	TimepadBaseURL              string
+	TimepadToken                string
+	TimepadTimeout              time.Duration
+	TimepadPageSize             int
+	TimepadMaxRequestsPerMinute int
 }
 
 // Load reads and validates all required environment variables.
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:                     strings.TrimSpace(os.Getenv("APP_ENV")),
-		HTTPAddr:                   strings.TrimSpace(os.Getenv("HTTP_ADDR")),
-		DatabaseURL:                strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		MAXBotToken:                strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
-		MAXInitDataMaxAge:          time.Hour,
-		InviteEncryptionKeyVersion: 1,
-		InviteURLTemplate:          strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
-		MAXDeepLinkTemplate:        strings.TrimSpace(os.Getenv("MAX_DEEP_LINK_TEMPLATE")),
-		KudaGoBaseURL:              "https://kudago.com/public-api/v1.4",
-		KudaGoTimeout:              30 * time.Second,
-		KudaGoLocation:             "msk",
-		KudaGoPageSize:             100,
-		EventSyncInterval:          time.Hour,
-		TimepadBaseURL:             "https://api.timepad.ru/v1",
-		TimepadToken:               strings.TrimSpace(os.Getenv("TIMEPAD_TOKEN")),
-		TimepadTimeout:             30 * time.Second,
-		TimepadPageSize:            100,
+		AppEnv:                      strings.TrimSpace(os.Getenv("APP_ENV")),
+		HTTPAddr:                    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
+		DatabaseURL:                 strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		MAXBotToken:                 strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
+		MAXInitDataMaxAge:           time.Hour,
+		InviteEncryptionKeyVersion:  1,
+		InviteURLTemplate:           strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
+		MAXDeepLinkTemplate:         strings.TrimSpace(os.Getenv("MAX_DEEP_LINK_TEMPLATE")),
+		KudaGoBaseURL:               "https://kudago.com/public-api/v1.4",
+		KudaGoTimeout:               30 * time.Second,
+		KudaGoLocation:              "msk",
+		KudaGoPageSize:              100,
+		EventSyncInterval:           2 * time.Hour,
+		EventSyncRunOnStart:         false,
+		TimepadBaseURL:              "https://api.timepad.ru/v1",
+		TimepadToken:                strings.TrimSpace(os.Getenv("TIMEPAD_TOKEN")),
+		TimepadTimeout:              30 * time.Second,
+		TimepadPageSize:             100,
+		TimepadMaxRequestsPerMinute: 20,
 	}
 	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
@@ -90,6 +94,13 @@ func Load() (Config, error) {
 		}
 		cfg.EventSyncInterval = interval
 	}
+	if value := strings.TrimSpace(os.Getenv("EVENT_SYNC_RUN_ON_START")); value != "" {
+		runOnStart, err := strconv.ParseBool(value)
+		if err != nil {
+			return Config{}, fmt.Errorf("EVENT_SYNC_RUN_ON_START is invalid")
+		}
+		cfg.EventSyncRunOnStart = runOnStart
+	}
 	if !validProviderBaseURL(cfg.KudaGoBaseURL) {
 		return Config{}, fmt.Errorf("KUDAGO_BASE_URL is invalid")
 	}
@@ -109,6 +120,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("TIMEPAD_PAGE_SIZE is invalid")
 		}
 		cfg.TimepadPageSize = pageSize
+	}
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE")); value != "" {
+		requestsPerMinute, err := strconv.Atoi(value)
+		if err != nil || requestsPerMinute <= 0 {
+			return Config{}, fmt.Errorf("TIMEPAD_MAX_REQUESTS_PER_MINUTE is invalid")
+		}
+		cfg.TimepadMaxRequestsPerMinute = requestsPerMinute
 	}
 	if !validProviderBaseURL(cfg.TimepadBaseURL) {
 		return Config{}, fmt.Errorf("TIMEPAD_BASE_URL is invalid")

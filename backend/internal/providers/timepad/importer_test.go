@@ -168,7 +168,7 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		t.Fatal("first import returned no sync run ID")
 	}
 	first.SyncRunID = uuid.Nil
-	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3}) {
+	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
@@ -187,7 +187,7 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		t.Fatal("second import returned no sync run ID")
 	}
 	second.SyncRunID = uuid.Nil
-	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Updated: 1, Skipped: 3}) {
+	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Updated: 1, Skipped: 3, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
 		t.Fatalf("second stats = %+v", second)
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
@@ -223,8 +223,32 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1}) {
+	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1, InsideWindow: 1}) {
 		t.Fatalf("requests=%d stats=%+v", requests, stats)
+	}
+}
+
+func TestImportPagesOneFetchesOnePageAndDoesNotReconcile(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests++
+		fmt.Fprint(w, `{"total":4,"values":[`+timepadImportEventWithoutTicketURL(31, "Москва")+`,`+timepadImportEventWithoutTicketURL(32, "Москва")+`]}`)
+	}))
+	defer server.Close()
+
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := testClient(t, server).ImportPages(context.Background(), uuid.New(), store, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || stats.PagesFetched != 1 || stats.Fetched != 2 {
+		t.Fatalf("requests=%d stats=%+v", requests, stats)
+	}
+	if len(store.starts) != 1 || !store.starts[0].UpsertOnly {
+		t.Fatalf("sync starts=%+v, want one upsert-only run", store.starts)
+	}
+	if len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunSucceeded {
+		t.Fatalf("sync finishes=%+v", store.finishes)
 	}
 }
 
@@ -256,7 +280,8 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	if stats != (ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
+	want := ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, InsideWindow: 2, Rejections: providers.RejectionStats{BeforeWindow: 1, AfterWindow: 1}}
+	if stats != want {
 		t.Fatalf("stats = %+v", stats)
 	}
 	if got, want := fmt.Sprint(store.persisted), "[21 22]"; got != want {
@@ -264,6 +289,40 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 	}
 	if clockCalls != 1 {
 		t.Fatalf("clock calls = %d, want 1", clockCalls)
+	}
+}
+
+func TestFullImportFailsWhenMatchedEventsCannotNormalize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"total":1,"values":[{"id":51,"name":"Broken","location":{"city":"Москва"}}]}`)
+	}))
+	defer server.Close()
+	client := testClient(t, server)
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+	if providers.SyncErrorCode(err) != "timepad_normalization_empty" {
+		t.Fatalf("error=%v code=%q", err, providers.SyncErrorCode(err))
+	}
+	if stats.Matched != 1 || stats.Normalized != 0 || stats.Rejections.MissingStartsAt != 1 {
+		t.Fatalf("stats=%+v", stats)
+	}
+	if len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunFailed || store.finishes[0].ErrorText != "timepad_normalization_empty" {
+		t.Fatalf("finishes=%+v", store.finishes)
+	}
+}
+
+func TestPartialNormalizationEmptyRemainsSuccessfulUpsertOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"total":2,"values":[{"id":52,"name":"Broken","location":{"city":"Москва"}}]}`)
+	}))
+	defer server.Close()
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := testClient(t, server).ImportPages(context.Background(), uuid.New(), store, nil, 1)
+	if err != nil || stats.Rejections.MissingStartsAt != 1 {
+		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+	if len(store.starts) != 1 || !store.starts[0].UpsertOnly || len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunSucceeded {
+		t.Fatalf("starts=%+v finishes=%+v", store.starts, store.finishes)
 	}
 }
 

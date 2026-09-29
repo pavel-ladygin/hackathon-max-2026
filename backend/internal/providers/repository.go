@@ -216,7 +216,16 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 }
 
 func validateImportStats(stats ImportStats) error {
-	values := []int{stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors}
+	values := []int{
+		stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized,
+		stats.Inserted, stats.Updated, stats.Skipped, stats.Errors,
+		stats.Rejections.City, stats.Rejections.InvalidID,
+		stats.Rejections.MissingTitle, stats.Rejections.MissingStartsAt,
+		stats.Rejections.InvalidStartsAt, stats.Rejections.MalformedCategories,
+		stats.Rejections.BeforeWindow, stats.Rejections.AfterWindow,
+		stats.Rejections.Duplicate, stats.InsideWindow,
+		stats.Rejections.Other,
+	}
 	for _, value := range values {
 		if value < 0 || int64(value) > int64(^uint32(0)>>1) {
 			return errors.New("sync run stats are invalid")
@@ -228,7 +237,7 @@ func validateImportStats(stats ImportStats) error {
 func safeSyncErrorText(value string) string {
 	value = strings.TrimSpace(value)
 	switch value {
-	case "", "provider import cancelled", "provider import failed", "provider records failed to persist":
+	case "", "provider import cancelled", "provider import failed", "provider records failed to persist", "timepad_normalization_empty":
 		return value
 	default:
 		// Sync audit rows intentionally retain only a coarse error class. Raw
