@@ -35,9 +35,10 @@ type eventImporter interface {
 }
 
 type syncProvider struct {
-	name     string
-	priority int
-	importer eventImporter
+	name        string
+	priority    int
+	importer    eventImporter
+	acquireLock func(context.Context) (func() error, bool, error)
 }
 
 func main() {
@@ -101,15 +102,23 @@ func run() error {
 		logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "TIMEPAD_TOKEN is not configured")
 	} else {
 		timepadClient, err := timepad.NewClient(timepad.Options{
-			BaseURL:  cfg.TimepadBaseURL,
-			Token:    cfg.TimepadToken,
-			Timeout:  cfg.TimepadTimeout,
-			PageSize: cfg.TimepadPageSize,
+			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
+			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
+			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
 		})
 		if err != nil {
 			return err
 		}
-		syncProviders = append(syncProviders, syncProvider{name: "timepad", priority: timepadPriority, importer: timepadClient})
+		syncProviders = append(syncProviders, syncProvider{
+			name: "timepad", priority: timepadPriority, importer: timepadClient,
+			acquireLock: func(lockCtx context.Context) (func() error, bool, error) {
+				lock, acquired, err := providers.TryAcquireProviderSyncLock(lockCtx, db, "timepad")
+				if lock == nil {
+					return nil, acquired, err
+				}
+				return lock.Release, acquired, err
+			},
+		})
 	}
 
 	repository := providers.NewRepository(db)
@@ -120,8 +129,8 @@ func run() error {
 			return err
 		}
 	}
-	logger.Info("event sync starting", "providers", len(syncProviders), "city", "moscow", "interval", cfg.EventSyncInterval)
-	for {
+	logger.Info("event sync starting", "providers", len(syncProviders), "city", "moscow", "interval", cfg.EventSyncInterval, "run_on_start", cfg.EventSyncRunOnStart)
+	runSyncLoop(ctx, cfg.EventSyncInterval, cfg.EventSyncRunOnStart, func() bool {
 		cycleProviders := append([]syncProvider(nil), syncProviders...)
 		if sourceRepository != nil {
 			genericSources, err := sourceRepository.List(ctx)
@@ -132,19 +141,30 @@ func run() error {
 			}
 		}
 		if err := syncProvidersOnce(ctx, cityID, repository, cycleProviders, logger); err != nil {
-			logger.Info("event sync shutdown complete")
-			return nil
+			return false
 		}
+		return true
+	})
+	logger.Info("event sync shutdown complete")
+	return nil
+}
 
-		timer := time.NewTimer(cfg.EventSyncInterval)
+func runSyncLoop(ctx context.Context, interval time.Duration, runOnStart bool, syncAll func() bool) {
+	if runOnStart && !syncAll() {
+		return
+	}
+	for {
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
 			if !timer.Stop() {
 				<-timer.C
 			}
-			logger.Info("event sync shutdown complete")
-			return nil
+			return
 		case <-timer.C:
+			if !syncAll() {
+				return
+			}
 		}
 	}
 }
@@ -160,6 +180,22 @@ func syncProvidersOnce(ctx context.Context, cityID uuid.UUID, repository provide
 
 func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, provider syncProvider, logger *slog.Logger) error {
 	startedAt := time.Now()
+	if provider.acquireLock != nil {
+		release, acquired, err := provider.acquireLock(ctx)
+		if err != nil {
+			logger.Error("provider sync coordination unavailable", "provider", provider.name)
+			return fmt.Errorf("acquire %s sync lock: %w", provider.name, err)
+		}
+		if !acquired {
+			logger.Info("timepad_sync_skipped_already_running", "provider", provider.name)
+			return nil
+		}
+		defer func() {
+			if err := release(); err != nil {
+				logger.Error("provider sync lock release failed", "provider", provider.name)
+			}
+		}()
+	}
 	stats, syncErr := provider.importer.Import(ctx, cityID, repository, func(err error) {
 		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", "provider record persistence failed")
 	})
@@ -194,6 +230,18 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 		"updated", stats.Updated,
 		"skipped", stats.Skipped,
 		"errors", stats.Errors,
+		"rejected", stats.Rejections.Total(),
+		"reject_city", stats.Rejections.City,
+		"reject_invalid_id", stats.Rejections.InvalidID,
+		"reject_missing_title", stats.Rejections.MissingTitle,
+		"reject_missing_starts_at", stats.Rejections.MissingStartsAt,
+		"reject_invalid_starts_at", stats.Rejections.InvalidStartsAt,
+		"reject_malformed_categories", stats.Rejections.MalformedCategories,
+		"rejected_before_window", stats.Rejections.BeforeWindow,
+		"rejected_after_window", stats.Rejections.AfterWindow,
+		"accepted_inside_window", stats.InsideWindow,
+		"reject_duplicate", stats.Rejections.Duplicate,
+		"reject_other", stats.Rejections.Other,
 		"reconciled", stats.Reconciled,
 		"inactivated", stats.Reconciled,
 		"final_status", finalStatus,
@@ -203,7 +251,7 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 		return finalErr
 	}
 	if finalErr != nil {
-		logger.Error("event sync provider finished", append(attributes, "error", "provider import failed")...)
+		logger.Error("event sync provider finished", append(attributes, "error", "provider import failed", "error_code", providers.SyncErrorCode(finalErr))...)
 		return finalErr
 	}
 	logger.Info("event sync provider finished", attributes...)

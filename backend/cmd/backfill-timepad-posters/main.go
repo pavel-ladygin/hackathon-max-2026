@@ -76,7 +76,18 @@ func run(args []string) error {
 	if baseURL == "" {
 		baseURL = "https://api.timepad.ru/v1"
 	}
-	client, err := timepad.NewClient(timepad.Options{BaseURL: baseURL, Token: token, Timeout: 10 * time.Second, PageSize: 100})
+	maxRequestsPerMinute := 20
+	if value := strings.TrimSpace(os.Getenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE")); value != "" {
+		parsedLimit, parseErr := strconv.Atoi(value)
+		if parseErr != nil || parsedLimit <= 0 {
+			return errors.New("TIMEPAD_MAX_REQUESTS_PER_MINUTE is invalid")
+		}
+		maxRequestsPerMinute = parsedLimit
+	}
+	client, err := timepad.NewClient(timepad.Options{
+		BaseURL: baseURL, Token: token, Timeout: 10 * time.Second, PageSize: 100,
+		MaxRequestsPerMinute: maxRequestsPerMinute,
+	})
 	if err != nil {
 		return err
 	}

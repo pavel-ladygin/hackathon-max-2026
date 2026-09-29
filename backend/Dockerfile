@@ -7,7 +7,7 @@ RUN go mod download
 COPY backend/ ./
 RUN mkdir -p /out \
     && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ \
-    ./cmd/server ./cmd/migrate ./cmd/seed ./cmd/event-sync ./cmd/daily-notifications
+    ./cmd/server ./cmd/migrate ./cmd/seed ./cmd/event-sync ./cmd/import-events ./cmd/daily-notifications
 
 FROM build AS maintenance-build
 ARG TARGETOS
@@ -16,8 +16,10 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates
+COPY backend/certs/*.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
 WORKDIR /app
-COPY --from=build /out/server /out/migrate /out/seed /out/event-sync /out/daily-notifications ./
+COPY --from=build /out/server /out/migrate /out/seed /out/event-sync /out/import-events /out/daily-notifications ./
 USER 65532:65532
 EXPOSE 8080
 CMD ["/app/server"]

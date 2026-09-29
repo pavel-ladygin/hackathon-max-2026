@@ -33,6 +33,7 @@ func run(args []string) error {
 	flags.SetOutput(os.Stderr)
 	providerName := flags.String("provider", "", "event provider (kudago or timepad)")
 	cityName := flags.String("city", "", "catalog city (moscow)")
+	maxPages := flags.Int("max-pages", 0, "maximum Timepad pages to import (0 means all pages)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -45,12 +46,18 @@ func run(args []string) error {
 	if *cityName != "moscow" {
 		return errors.New("--city must be moscow")
 	}
+	if *maxPages < 0 {
+		return errors.New("--max-pages must be zero or positive")
+	}
+	if *providerName != "timepad" && *maxPages != 0 {
+		return errors.New("--max-pages must be zero for non-timepad providers")
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	client, err := newImporter(*providerName, cfg)
+	client, err := newImporter(*providerName, cfg, *maxPages)
 	if err != nil {
 		return err
 	}
@@ -76,6 +83,21 @@ func run(args []string) error {
 
 	repository := providers.NewRepository(db)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	if *providerName == "timepad" {
+		lock, acquired, err := providers.TryAcquireProviderSyncLock(ctx, db, "timepad")
+		if err != nil {
+			return fmt.Errorf("acquire timepad sync lock: %w", err)
+		}
+		if !acquired {
+			logger.Info("timepad_sync_skipped_already_running", "provider", "timepad")
+			return nil
+		}
+		defer func() {
+			if err := lock.Release(); err != nil {
+				logger.Error("provider sync lock release failed", "provider", "timepad")
+			}
+		}()
+	}
 	stats, err := client.Import(ctx, cityID, repository, func(err error) {
 		logger.Error("event import record failed", "error", "provider record persistence failed")
 	})
@@ -85,8 +107,9 @@ func run(args []string) error {
 	} else if err != nil || stats.Errors > 0 {
 		finalStatus = string(providers.SyncRunFailed)
 	}
-	fmt.Printf("sync_run_id=%s pages_fetched=%d fetched=%d matched=%d normalized=%d inserted=%d updated=%d skipped=%d errors=%d reconciled=%d final_status=%s\n",
-		stats.SyncRunID, stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors, stats.Reconciled, finalStatus)
+	fmt.Printf("sync_run_id=%s pages_fetched=%d fetched=%d matched=%d normalized=%d inserted=%d updated=%d skipped=%d errors=%d reconciled=%d rejected=%d reject_city=%d reject_invalid_id=%d reject_missing_title=%d reject_missing_starts_at=%d reject_invalid_starts_at=%d reject_malformed_categories=%d rejected_before_window=%d rejected_after_window=%d accepted_inside_window=%d reject_duplicate=%d reject_other=%d final_status=%s error_code=%s\n",
+		stats.SyncRunID, stats.PagesFetched, stats.Fetched, stats.Matched, stats.Normalized, stats.Inserted, stats.Updated, stats.Skipped, stats.Errors, stats.Reconciled,
+		stats.Rejections.Total(), stats.Rejections.City, stats.Rejections.InvalidID, stats.Rejections.MissingTitle, stats.Rejections.MissingStartsAt, stats.Rejections.InvalidStartsAt, stats.Rejections.MalformedCategories, stats.Rejections.BeforeWindow, stats.Rejections.AfterWindow, stats.InsideWindow, stats.Rejections.Duplicate, stats.Rejections.Other, finalStatus, providers.SyncErrorCode(err))
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return fmt.Errorf("import cancelled: %w", err)
@@ -103,7 +126,7 @@ type eventImporter interface {
 	Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error)
 }
 
-func newImporter(providerName string, cfg config.Config) (eventImporter, error) {
+func newImporter(providerName string, cfg config.Config, maxPages int) (eventImporter, error) {
 	switch providerName {
 	case "kudago":
 		return kudago.NewClient(kudago.Options{
@@ -114,11 +137,25 @@ func newImporter(providerName string, cfg config.Config) (eventImporter, error) 
 		if cfg.TimepadToken == "" {
 			return nil, errors.New("TIMEPAD_TOKEN is required for --provider timepad")
 		}
-		return timepad.NewClient(timepad.Options{
+		client, err := timepad.NewClient(timepad.Options{
 			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
 			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
+			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return limitedTimepadImporter{client: client, maxPages: maxPages}, nil
 	default:
 		return nil, errors.New("unsupported event provider")
 	}
+}
+
+type limitedTimepadImporter struct {
+	client   *timepad.Client
+	maxPages int
+}
+
+func (importer limitedTimepadImporter) Import(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error)) (providers.ImportStats, error) {
+	return importer.client.ImportPages(ctx, cityID, store, reportError, importer.maxPages)
 }
