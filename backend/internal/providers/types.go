@@ -146,6 +146,33 @@ type ImportStats struct {
 	Skipped      int
 	Errors       int
 	Reconciled   int
+	Rejections   RejectionStats
+	InsideWindow int
+}
+
+type RejectionReason string
+
+const (
+	RejectionCity                RejectionReason = "city"
+	RejectionInvalidID           RejectionReason = "invalid_id"
+	RejectionMissingTitle        RejectionReason = "missing_title"
+	RejectionMissingStartsAt     RejectionReason = "missing_starts_at"
+	RejectionInvalidStartsAt     RejectionReason = "invalid_starts_at"
+	RejectionMalformedCategories RejectionReason = "malformed_categories"
+	RejectionBeforeWindow        RejectionReason = "before_window"
+	RejectionAfterWindow         RejectionReason = "after_window"
+	RejectionDuplicate           RejectionReason = "duplicate"
+	RejectionOther               RejectionReason = "other"
+)
+
+// RejectionStats keeps bounded, payload-free ingestion diagnostics.
+type RejectionStats struct {
+	City, InvalidID, MissingTitle, MissingStartsAt, InvalidStartsAt  int
+	MalformedCategories, BeforeWindow, AfterWindow, Duplicate, Other int
+}
+
+func (r RejectionStats) Total() int {
+	return r.City + r.InvalidID + r.MissingTitle + r.MissingStartsAt + r.InvalidStartsAt + r.MalformedCategories + r.BeforeWindow + r.AfterWindow + r.Duplicate + r.Other
 }
 
 // Ingestion owns the provider-neutral duplicate detection and persistence
@@ -189,13 +216,44 @@ func (i *Ingestion) AddSkipped(count int) {
 	i.stats.Skipped += count
 }
 
+func (i *Ingestion) AddRejection(reason RejectionReason, count int) {
+	if count <= 0 {
+		return
+	}
+	i.stats.Skipped += count
+	switch reason {
+	case RejectionCity:
+		i.stats.Rejections.City += count
+	case RejectionInvalidID:
+		i.stats.Rejections.InvalidID += count
+	case RejectionMissingTitle:
+		i.stats.Rejections.MissingTitle += count
+	case RejectionMissingStartsAt:
+		i.stats.Rejections.MissingStartsAt += count
+	case RejectionInvalidStartsAt:
+		i.stats.Rejections.InvalidStartsAt += count
+	case RejectionMalformedCategories:
+		i.stats.Rejections.MalformedCategories += count
+	case RejectionBeforeWindow:
+		i.stats.Rejections.BeforeWindow += count
+	case RejectionAfterWindow:
+		i.stats.Rejections.AfterWindow += count
+	case RejectionDuplicate:
+		i.stats.Rejections.Duplicate += count
+	default:
+		i.stats.Rejections.Other += count
+	}
+}
+
+func (i *Ingestion) AddInsideWindow() { i.stats.InsideWindow++ }
+
 // Persist records one normalized occurrence. Individual persistence failures
 // are reported and counted without aborting the import; context cancellation
 // remains fatal so long-running sync can shut down promptly.
 func (i *Ingestion) Persist(ctx context.Context, event NormalizedEvent) error {
 	key := event.Source + "\x00" + event.ExternalID
 	if _, duplicate := i.seen[key]; duplicate {
-		i.stats.Skipped++
+		i.AddRejection(RejectionDuplicate, 1)
 		return nil
 	}
 	i.seen[key] = struct{}{}
@@ -235,6 +293,9 @@ func FinalizeSyncRun(ctx context.Context, store SyncStore, runID uuid.UUID, stat
 	case importErr != nil:
 		state = SyncRunFailed
 		errorText = "provider import failed"
+		if code := SyncErrorCode(importErr); code != "" {
+			errorText = code
+		}
 	case stats.Errors > 0:
 		state = SyncRunFailed
 		errorText = "provider records failed to persist"
@@ -244,4 +305,16 @@ func FinalizeSyncRun(ctx context.Context, store SyncStore, runID uuid.UUID, stat
 	return store.FinishSyncRun(finishCtx, SyncRunFinish{
 		RunID: runID, State: state, Stats: stats, ErrorText: errorText,
 	})
+}
+
+type syncErrorCoder interface{ SyncErrorCode() string }
+
+// SyncErrorCode extracts a bounded safe operational code without exposing a
+// provider response or payload.
+func SyncErrorCode(err error) string {
+	var coded syncErrorCoder
+	if errors.As(err, &coded) {
+		return coded.SyncErrorCode()
+	}
+	return ""
 }

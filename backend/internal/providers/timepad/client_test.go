@@ -25,13 +25,16 @@ func testClient(t *testing.T, server *httptest.Server) *Client {
 		token:      "test-token",
 		httpClient: server.Client(),
 		pageSize:   2,
+		limiter:    limiterFunc(func(context.Context) error { return nil }),
 		now:        time.Now,
 		wait:       func(context.Context) error { return nil },
+		waitRetry:  func(context.Context, time.Duration) error { return nil },
+		jitter:     func(delay time.Duration) time.Duration { return delay },
 	}
 }
 
 func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
-	startsAtMin := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	startsAtMin := time.Date(2026, 9, 29, 16, 44, 37, 0, time.UTC)
 	startsAtMax := startsAtMin.Add(90 * 24 * time.Hour)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/api/events.json" {
@@ -59,8 +62,8 @@ func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
 			"limit":         "2",
 			"skip":          "4",
 			"sort":          "+starts_at",
-			"starts_at_min": startsAtMin.Format(time.RFC3339),
-			"starts_at_max": startsAtMax.Format(time.RFC3339),
+			"starts_at_min": "2026-09-29T19:44:37+03:00",
+			"starts_at_max": "2026-12-28T19:44:37+03:00",
 			"fields":        requestedFields,
 		} {
 			if got := query.Get(key); got != want {
@@ -120,12 +123,14 @@ func TestClientRetriesServerErrorsAndEventuallySucceeds(t *testing.T) {
 		BaseURL:  server.URL,
 		Token:    "test-token",
 		Timeout:  5 * time.Second,
-		PageSize: 100,
+		PageSize: 100, MaxRequestsPerMinute: 20,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client.httpClient = server.Client()
+	client.limiter = limiterFunc(func(context.Context) error { return nil })
+	client.waitRetry = func(context.Context, time.Duration) error { return nil }
 
 	start := time.Now()
 	_, err = client.fetchPage(
@@ -149,12 +154,19 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
+type limiterFunc func(context.Context) error
+
+func (f limiterFunc) Wait(ctx context.Context) error { return f(ctx) }
+
 func TestClientRetriesTransportErrorsAndSucceedsOnThirdAttempt(t *testing.T) {
 	var attempts int32
 	client := &Client{
-		baseURL:  &url.URL{Scheme: "https", Host: "timepad.test", Path: "/api/"},
-		token:    "test-token",
-		pageSize: 100,
+		baseURL:   &url.URL{Scheme: "https", Host: "timepad.test", Path: "/api/"},
+		token:     "test-token",
+		pageSize:  100,
+		limiter:   limiterFunc(func(context.Context) error { return nil }),
+		waitRetry: func(context.Context, time.Duration) error { return nil },
+		jitter:    func(delay time.Duration) time.Duration { return delay },
 		httpClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			attempt := atomic.AddInt32(&attempts, 1)
 			if attempt < 3 {
@@ -176,11 +188,40 @@ func TestClientRetriesTransportErrorsAndSucceedsOnThirdAttempt(t *testing.T) {
 	}
 }
 
-func TestClientDoesNotRetryRateLimit(t *testing.T) {
+func TestClientRetriesTruncatedSuccessfulResponseWithinThreeAttempts(t *testing.T) {
+	var attempts, permits int32
+	client := &Client{
+		baseURL: &url.URL{Scheme: "https", Host: "timepad.test", Path: "/api/"}, token: "test-token", pageSize: 100,
+		limiter:   limiterFunc(func(context.Context) error { atomic.AddInt32(&permits, 1); return nil }),
+		waitRetry: func(context.Context, time.Duration) error { return nil }, jitter: func(delay time.Duration) time.Duration { return delay },
+		httpClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			if atomic.AddInt32(&attempts, 1) < 3 {
+				return response(http.StatusOK, `{"total":1,"values":[`), nil
+			}
+			return response(http.StatusOK, `{"total":0,"values":[]}`), nil
+		})},
+	}
+	if _, err := client.fetchPage(context.Background(), 0, time.Now(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 || permits != 3 {
+		t.Fatalf("attempts=%d permits=%d, want 3 each", attempts, permits)
+	}
+}
+
+func TestRetryAfterIsNotShortened(t *testing.T) {
+	delay, ok := retryAfter("60", time.Now())
+	if !ok || delay != time.Minute {
+		t.Fatalf("retryAfter delay=%v ok=%v, want 1m true", delay, ok)
+	}
+}
+
+func TestClientRetriesRateLimitAndHonorsRetryAfter(t *testing.T) {
 	var attempts int32
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
+		w.Header().Set("Retry-After", "30")
 		http.Error(w, "slow down", http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -189,12 +230,16 @@ func TestClientDoesNotRetryRateLimit(t *testing.T) {
 		BaseURL:  server.URL,
 		Token:    "test-token",
 		Timeout:  5 * time.Second,
-		PageSize: 100,
+		PageSize: 100, MaxRequestsPerMinute: 20,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client.httpClient = server.Client()
+	client.limiter = limiterFunc(func(context.Context) error { return nil })
+	client.waitRetry = func(context.Context, time.Duration) error { return nil }
+	var delays []time.Duration
+	client.waitRetry = func(_ context.Context, delay time.Duration) error { delays = append(delays, delay); return nil }
 
 	start := time.Now()
 	_, err = client.fetchPage(
@@ -207,8 +252,50 @@ func TestClientDoesNotRetryRateLimit(t *testing.T) {
 		t.Fatal("fetchPage() error = nil, want rate limit error")
 	}
 
-	if got := atomic.LoadInt32(&attempts); got != 1 {
-		t.Fatalf("attempts = %d, want 1", got)
+	if got := atomic.LoadInt32(&attempts); got != 3 {
+		t.Fatalf("attempts = %d, want 3", got)
+	}
+	if len(delays) != 2 || delays[0] != 30*time.Second || delays[1] != 30*time.Second {
+		t.Fatalf("retry delays = %v, want two Retry-After delays of 30s", delays)
+	}
+}
+
+func TestClientDoesNotRetryUnauthorizedOrForbidden(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var attempts int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				atomic.AddInt32(&attempts, 1)
+				http.Error(w, "denied", status)
+			}))
+			defer server.Close()
+			client := testClient(t, server)
+			_, err := client.fetchPage(context.Background(), 0, time.Now(), time.Now().Add(time.Hour))
+			if err == nil || atomic.LoadInt32(&attempts) != 1 {
+				t.Fatalf("err=%v attempts=%d, want one attempt", err, attempts)
+			}
+		})
+	}
+}
+
+func TestClientLimiterRunsForEveryRetry(t *testing.T) {
+	var attempts, permits int32
+	client := &Client{
+		baseURL: &url.URL{Scheme: "https", Host: "timepad.test", Path: "/api/"}, token: "test-token", pageSize: 100,
+		limiter:   limiterFunc(func(context.Context) error { atomic.AddInt32(&permits, 1); return nil }),
+		waitRetry: func(context.Context, time.Duration) error { return nil }, jitter: func(delay time.Duration) time.Duration { return delay },
+		httpClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			if atomic.AddInt32(&attempts, 1) < 3 {
+				return response(http.StatusServiceUnavailable, "retry"), nil
+			}
+			return response(http.StatusOK, `{"total":0,"values":[]}`), nil
+		})},
+	}
+	if _, err := client.fetchPage(context.Background(), 0, time.Now(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 || permits != 3 {
+		t.Fatalf("attempts=%d permits=%d, want 3 each", attempts, permits)
 	}
 }
 
@@ -225,12 +312,13 @@ func TestClientRetryBackoffHonorsCancellation(t *testing.T) {
 		BaseURL:  server.URL,
 		Token:    "test-token",
 		Timeout:  5 * time.Second,
-		PageSize: 100,
+		PageSize: 100, MaxRequestsPerMinute: 20,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client.httpClient = server.Client()
+	client.limiter = limiterFunc(func(context.Context) error { return nil })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

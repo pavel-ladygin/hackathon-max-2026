@@ -19,10 +19,27 @@ const (
 )
 
 func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
+	normalized, reason := normalizeEventWithReason(event)
+	return normalized, reason == ""
+}
+
+func normalizeEventWithReason(event eventDTO) (providers.NormalizedEvent, providers.RejectionReason) {
 	title := providers.CleanText(event.Name)
+	if event.ID <= 0 {
+		return providers.NormalizedEvent{}, providers.RejectionInvalidID
+	}
+	if title == "" {
+		return providers.NormalizedEvent{}, providers.RejectionMissingTitle
+	}
+	if strings.TrimSpace(event.StartsAt) == "" {
+		return providers.NormalizedEvent{}, providers.RejectionMissingStartsAt
+	}
 	startsAt, err := parseTime(event.StartsAt)
-	if event.ID <= 0 || title == "" || err != nil || event.Categories.Malformed {
-		return providers.NormalizedEvent{}, false
+	if err != nil {
+		return providers.NormalizedEvent{}, providers.RejectionInvalidStartsAt
+	}
+	if event.Categories.Malformed {
+		return providers.NormalizedEvent{}, providers.RejectionMalformedCategories
 	}
 	registrationURL := ticketURL(event.URL)
 	status, providerActive := normalizeLifecycle(event)
@@ -71,7 +88,7 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 		normalized.PublishedAt = &createdAt
 	}
 	normalized.PriceFromMinor, normalized.PriceToMinor = normalizePrices(event)
-	return normalized, true
+	return normalized, ""
 }
 
 func normalizeLifecycle(event eventDTO) (status string, providerActive bool) {

@@ -8,10 +8,51 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
+
+func TestSyncOneSkipsBusyTimepadLock(t *testing.T) {
+	importer := &stubImporter{}
+	var logs bytes.Buffer
+	err := syncOne(context.Background(), uuid.New(), nil, syncProvider{
+		name: "timepad", importer: importer,
+		acquireLock: func(context.Context) (func() error, bool, error) { return nil, false, nil },
+	}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	if err != nil || importer.calls != 0 || !strings.Contains(logs.String(), "timepad_sync_skipped_already_running") {
+		t.Fatalf("err=%v calls=%d logs=%s", err, importer.calls, logs.String())
+	}
+}
+
+func TestSyncOneReleasesLockOnSuccessAndError(t *testing.T) {
+	for _, importErr := range []error{nil, errors.New("failed")} {
+		releases := 0
+		provider := syncProvider{name: "timepad", importer: &stubImporter{err: importErr}, acquireLock: func(context.Context) (func() error, bool, error) {
+			return func() error { releases++; return nil }, true, nil
+		}}
+		_ = syncOne(context.Background(), uuid.New(), nil, provider, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+		if releases != 1 {
+			t.Fatalf("import error %v released %d times", importErr, releases)
+		}
+	}
+}
+
+func TestRunSyncLoopDoesNotRunOnStartWhenDisabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	done := make(chan struct{})
+	go func() {
+		runSyncLoop(ctx, time.Hour, false, func() bool { calls++; return true })
+		close(done)
+	}()
+	cancel()
+	<-done
+	if calls != 0 {
+		t.Fatalf("sync calls=%d, want 0", calls)
+	}
+}
 
 type stubImporter struct {
 	stats     providers.ImportStats

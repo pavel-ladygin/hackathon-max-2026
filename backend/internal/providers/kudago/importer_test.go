@@ -82,7 +82,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		t.Fatal("first import returned no sync run ID")
 	}
 	first.SyncRunID = uuid.Nil
-	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2}) {
+	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, Rejections: providers.RejectionStats{Duplicate: 1}}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	second, err := client.Import(context.Background(), cityID, store, nil)
@@ -93,7 +93,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		t.Fatal("second import returned no sync run ID")
 	}
 	second.SyncRunID = uuid.Nil
-	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2}) {
+	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2, Rejections: providers.RejectionStats{Duplicate: 1}}) {
 		t.Fatalf("second stats = %+v", second)
 	}
 	if nowCalls != 2 {

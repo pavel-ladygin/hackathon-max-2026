@@ -14,11 +14,28 @@ import (
 type EventStore = providers.EventStore
 type ImportStats = providers.ImportStats
 
+type normalizationEmptyError struct{}
+
+func (normalizationEmptyError) Error() string {
+	return "timepad normalization produced no upsertable events"
+}
+func (normalizationEmptyError) SyncErrorCode() string { return "timepad_normalization_empty" }
+
 // Import fetches every Timepad page in the configured horizon and persists
 // valid normalized events through the shared provider ingestion path.
 func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error)) (stats ImportStats, importErr error) {
+	return c.ImportPages(ctx, cityID, store, reportError, 0)
+}
+
+// ImportPages imports at most maxPages pages. A positive limit creates an
+// upsert-only audit run, so a diagnostic/manual partial import never
+// reconciles (deactivates) events missing from the truncated result set.
+func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error), maxPages int) (stats ImportStats, importErr error) {
 	if c == nil {
 		return ImportStats{}, errors.New("timepad client is required")
+	}
+	if maxPages < 0 {
+		return ImportStats{}, errors.New("timepad max pages must not be negative")
 	}
 	if store == nil {
 		return ImportStats{}, errors.New("provider event store is required")
@@ -36,7 +53,7 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 	startsAtMin := c.now().UTC()
 	startsAtMax := startsAtMin.Add(importHorizon)
 	runID, err := store.BeginSyncRun(ctx, providers.SyncRunStart{
-		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax,
+		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: maxPages > 0,
 	})
 	if err != nil {
 		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)
@@ -71,32 +88,47 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 		ingestion.AddFetched(len(page.Values))
 		for _, event := range page.Values {
 			if !isMoscowCity(event.Location.City) {
-				ingestion.AddSkipped(1)
+				ingestion.AddRejection(providers.RejectionCity, 1)
 				continue
 			}
 			ingestion.AddMatched(1)
-			normalized, ok := normalizeEvent(event)
-			if !ok {
-				ingestion.AddSkipped(1)
+			normalized, rejection := normalizeEventWithReason(event)
+			if rejection != "" {
+				ingestion.AddRejection(rejection, 1)
 				continue
 			}
-			if normalized.StartsAt.Before(startsAtMin) || normalized.StartsAt.After(startsAtMax) {
-				ingestion.AddSkipped(1)
+			if normalized.StartsAt.Before(startsAtMin) {
+				ingestion.AddRejection(providers.RejectionBeforeWindow, 1)
 				continue
 			}
+			if normalized.StartsAt.After(startsAtMax) {
+				ingestion.AddRejection(providers.RejectionAfterWindow, 1)
+				continue
+			}
+			ingestion.AddInsideWindow()
 			normalized.ProviderLastSeenRunID = &runID
 			if err := ingestion.Persist(ctx, normalized); err != nil {
 				return ingestion.Stats(), err
 			}
 		}
+		if maxPages > 0 && ingestion.Stats().PagesFetched >= maxPages {
+			return completeTimepadImport(ingestion.Stats(), maxPages)
+		}
 		if len(page.Values) == 0 || len(page.Values) < c.pageSize {
-			return ingestion.Stats(), nil
+			return completeTimepadImport(ingestion.Stats(), maxPages)
 		}
 		skip += len(page.Values)
 		if skip >= int(page.Total) {
-			return ingestion.Stats(), nil
+			return completeTimepadImport(ingestion.Stats(), maxPages)
 		}
 	}
+}
+
+func completeTimepadImport(stats ImportStats, maxPages int) (ImportStats, error) {
+	if maxPages == 0 && stats.Matched > 0 && stats.Normalized == 0 {
+		return stats, normalizationEmptyError{}
+	}
+	return stats, nil
 }
 
 // importPosterStore tries redirect poster recovery only after the normal upsert
