@@ -960,18 +960,7 @@ paths:
               free_text: Хочется спокойное место с живой музыкой
       responses:
         '200':
-          description: Условия сохранены; пул уже готов или второй участник ещё не сохранил свои условия.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RoomSnapshot'
-        '202':
-          description: Условия сохранены, пул формируется в фоновом режиме.
-          headers:
-            Retry-After:
-              schema:
-                type: integer
-              description: Рекомендуемый интервал повторного запроса в секундах.
+          description: Условия сохранены. Пул может ещё формироваться; готовность проверяется через GET /rooms/{roomId}/events.
           content:
             application/json:
               schema:

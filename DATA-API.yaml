@@ -171,11 +171,11 @@ checks:
         exclusion_slugs: []
         radius_m: 5000
         location: {lat: 55.751244, lng: 37.618423}
-    expected_status: [200, 202]
+    expected_status: [200]
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
-    notes: При ответе HTTP 202 сервер может передать заголовок Retry-After, пока пул формируется в фоновом режиме.
+    notes: Условия сохранены с HTTP 200; готовность пула проверяется отдельным GET /rooms/{roomId}/events.
 
   - id: set-room-intent-user-b
     purpose: Пользователь B сохраняет условия подбора
@@ -198,7 +198,7 @@ checks:
         exclusion_slugs: []
         radius_m: 5000
         location: {lat: 55.751244, lng: 37.618423}
-    expected_status: [200, 202]
+    expected_status: [200]
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
@@ -256,7 +256,7 @@ checks:
     response:
       content_type: application/json
       required_fields: [id, name, city_id, state, round_no, version, participants, my_intent, pool, match, invite, allowed_actions, created_at, expires_at]
-    notes: У обоих участников значения match.id и match.event.id должны совпадать.
+    notes: У обоих участников значения match.id и match.event_id должны совпадать (снимок комнаты содержит MatchSummary).
 
   - id: open-ticket-provider
     purpose: Получить безопасную внешнюю ссылку на страницу события
@@ -268,7 +268,7 @@ checks:
         Authorization: "Bearer <access_token участника>"
         Content-Type: application/json
       path:
-        eventId: "<match.event.id>"
+        eventId: "<match.event_id из get-room-match или match.event.id из vote>"
       query: {}
       body:
         source: match
@@ -277,4 +277,4 @@ checks:
     response:
       content_type: application/json
       required_fields: [external_url]
-    notes: external_url ведёт на HTTPS-страницу билетного провайдера. Этот API не подтверждает завершение покупки.
+    notes: external_url содержит проверенную внешнюю HTTPS-ссылку для встроенных источников либо внутренний путь /api/v1/events/{eventId}/ticket для настраиваемых источников. Переход не подтверждает покупку.
