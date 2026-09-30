@@ -2273,20 +2273,9 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Условия сохранены; пул уже готов или второй участник ещё не сохранил свои условия. */
+            /** @description Условия сохранены. Пул может ещё формироваться; готовность проверяется через GET /rooms/{roomId}/events. */
             200: {
                 headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoomSnapshot"];
-                };
-            };
-            /** @description Условия сохранены, пул формируется в фоновом режиме. */
-            202: {
-                headers: {
-                    /** @description Рекомендуемый интервал повторного запроса в секундах. */
-                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
