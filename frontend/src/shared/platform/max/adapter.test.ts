@@ -10,6 +10,7 @@ const bridge = (overrides: Partial<MaxWebApp> = {}): MaxWebApp => ({
 afterEach(() => {
   delete window.WebApp;
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
   Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -54,9 +55,44 @@ describe("isAllowedTicketUrl", () => {
 });
 
 describe("MaxBridgeAdapterImpl navigation", () => {
+  it("reports a resolved MAX bridge call as opened, not delivered", async () => {
+    const shareMaxContent = vi.fn().mockResolvedValue(undefined);
+    window.WebApp = bridge({ shareMaxContent });
+
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token", text: "Join" }))
+      .resolves.toEqual({ status: "opened" });
+    expect(shareMaxContent).toHaveBeenCalledWith({ text: "Join", link: "https://max.ru/startapp/token" });
+  });
+
+  it("reports successful Web Share as opened, not delivered", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { configurable: true, value: share });
+
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token", text: "Join" }))
+      .resolves.toEqual({ status: "opened" });
+    expect(share).toHaveBeenCalledWith({ title: "Join", text: "Join", url: "https://max.ru/startapp/token" });
+  });
+
+  it("distinguishes Web Share cancellation from failure", async () => {
+    Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError")) });
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token" }))
+      .resolves.toEqual({ status: "cancelled" });
+
+    Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn().mockRejectedValue(new Error("denied")) });
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token" }))
+      .resolves.toEqual({ status: "failed" });
+  });
+
+  it("reports unavailable when no sharing API exists and rejects invalid links", async () => {
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token" }))
+      .resolves.toEqual({ status: "unavailable" });
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "javascript:alert(1)" }))
+      .resolves.toEqual({ status: "failed" });
+  });
+
   it("does not report clipboard copying as successful invite sharing", async () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
-    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token", text: "Join" })).resolves.toBe(false);
+    await expect(new MaxBridgeAdapterImpl().shareInvite({ link: "https://max.ru/startapp/token", text: "Join" })).resolves.toEqual({ status: "unavailable" });
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
   });
 

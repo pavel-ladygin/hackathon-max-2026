@@ -31,7 +31,7 @@ export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => v
     reportedEventError.current = null
   }, [eventId])
   const save = useSetSavedEvent()
-  const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'shared' | 'error'>('idle')
+  const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'opened' | 'cancelled' | 'error' | 'unavailable'>('idle')
   const ticket = useMutation({
     mutationFn: async () => {
       const { external_url } = await withMinimumDuration(apiClient.recordTicketClick(eventId!, { source: 'event_detail' }), 140)
@@ -66,8 +66,8 @@ export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => v
     setShareStatus('sharing')
     const base = import.meta.env.VITE_MAX_APP_URL ?? 'https://max.ru'
     const link = `${base}${base.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(`event_${item.id}`)}`
-    const ok = await maxPlatform.shareInvite({ text: `Посмотри событие «${item.title}»`, link })
-    setShareStatus(ok ? 'shared' : 'error')
+    const result = await maxPlatform.shareInvite({ text: `Посмотри событие «${item.title}»`, link })
+    setShareStatus(result.status === 'failed' ? 'error' : result.status)
   }
   return (
     <PageShell>
@@ -89,7 +89,7 @@ export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => v
         {ticket.isError ? <InlineNotice tone="danger">Не удалось открыть билетный сервис. Можно повторить попытку.</InlineNotice> : null}
         <div className={styles.footer}>
           <Button tone="secondary" state={shareStatus === 'sharing' ? 'loading' : 'idle'} loadingLabel="Открываем MAX…" onClick={() => void share()}><span className={styles.shareButtonContent}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5m-8 7 8 5"/></svg>Поделиться через MAX</span></Button>
-          {shareStatus === 'shared' ? <p className={styles.externalHint} role="status">✓ Ссылка на событие отправлена</p> : shareStatus === 'error' ? <p className={styles.error} role="alert">Не удалось поделиться событием. Попробуйте ещё раз.</p> : null}
+          {shareStatus === 'opened' ? <p className={styles.externalHint} role="status">✓ Открыли отправку в MAX</p> : shareStatus === 'cancelled' ? <p className={styles.externalHint} role="status">Отправка отменена</p> : shareStatus === 'error' ? <p className={styles.error} role="alert">Не удалось открыть отправку. Попробуйте ещё раз.</p> : shareStatus === 'unavailable' ? <p className={styles.error} role="alert">На этом устройстве отправка недоступна. Скопируйте ссылку вручную.</p> : null}
           <p className={styles.externalHint}>Билетный сервис откроется во внешнем окне.</p><Button aria-label="Открыть билеты во внешнем билетном сервисе" state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" disabled={!item.ticketAvailable || item.status !== 'published'} onClick={() => ticket.mutate()}>{item.ticketAvailable && item.status === 'published' ? 'Открыть билеты' : 'Билеты недоступны'}</Button>
         </div>
       </PageContent>

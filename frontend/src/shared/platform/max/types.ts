@@ -29,6 +29,13 @@ export type InviteSharePayload = {
   text?: string;
 };
 
+/** Result of opening a platform share surface; it never confirms delivery. */
+export type InviteShareResult =
+  | { status: "opened" }
+  | { status: "cancelled" }
+  | { status: "failed" }
+  | { status: "unavailable" };
+
 export type MaxPlatformSnapshot = {
   environment: MaxEnvironment;
   isMax: boolean;
@@ -51,7 +58,7 @@ export interface MaxPlatformAdapter {
   getVersion(): string | null;
   getViewport(): Promise<MaxViewport>;
   ready(): void;
-  shareInvite(payload: InviteSharePayload): Promise<boolean>;
+  shareInvite(payload: InviteSharePayload): Promise<InviteShareResult>;
   openMaxLink(url: string): Promise<boolean>;
   openTicketLink(url: string): Promise<boolean>;
   requestLocation(): Promise<GeoLocationResult>;

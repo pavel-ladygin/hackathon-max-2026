@@ -106,7 +106,7 @@ describe('EventPage', () => {
   })
 
   it('shares the event title and MAX event deep link', async () => {
-    mocks.shareInvite.mockResolvedValue(true)
+    mocks.shareInvite.mockResolvedValue({ status: 'opened' })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
@@ -115,19 +115,19 @@ describe('EventPage', () => {
       text: 'Посмотри событие «Jazz вечер»',
       link: expect.stringMatching(/^https:\/\/max\.ru(?:\/[^?]*)?\?startapp=event_6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1$/),
     }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Ссылка на событие отправлена')
+    expect(await screen.findByRole('status')).toHaveTextContent('Открыли отправку в MAX')
   })
 
   it('shows a retryable error if sharing fails', async () => {
-    mocks.shareInvite.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    mocks.shareInvite.mockResolvedValueOnce({ status: 'failed' }).mockResolvedValueOnce({ status: 'opened' })
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось поделиться событием')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось открыть отправку')
 
     fireEvent.click(screen.getByRole('button', { name: 'Поделиться через MAX' }))
     await waitFor(() => expect(mocks.shareInvite).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('status')).toHaveTextContent('Ссылка на событие отправлена')
+    expect(await screen.findByRole('status')).toHaveTextContent('Открыли отправку в MAX')
   })
 
   it('returns to the home page from an event opened through a shared link', () => {

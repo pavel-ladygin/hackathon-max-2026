@@ -39,7 +39,7 @@ function roomFixture(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     id: 'room-server', name: 'Комната сервера', city_id: cityId, public_plan: plan, state: 'collecting_intents',
     round_no: 1, version: 1, participants: [{ id: 'creator', displayName: 'Создатель', avatarUrl: null, role: 'creator', intentReady: false }],
     myIntent: null, pool: null, match: null, invite: { url: '/join/invite-e2e', max_deep_link: 'max://invite-e2e', expires_at: '2099-12-01T00:00:00Z' },
-    allowed_actions: ['edit_intent'], created_at: '2099-01-01T00:00:00Z', expires_at: '2099-12-01T00:00:00Z', ...overrides,
+    allowed_actions: ['invite', 'edit_intent'], created_at: '2099-01-01T00:00:00Z', expires_at: '2099-12-01T00:00:00Z', ...overrides,
   }
 }
 
@@ -205,7 +205,7 @@ describe('public room plan flow', () => {
 
   it('shares only the returned server proposal even when own intent has different private values', async () => {
     mocks.room = roomFixture({ myIntent: { dates: ['2099-12-03'], day_types: [], time_slots: ['morning'], category_slugs: ['sports'], budget_max_minor: 987654, free_text: 'PRIVATE_MARKER', location: { lat: 55.7, lng: 37.6 }, radius_m: null, exclusion_slugs: [], version: 1, round_no: 1, submitted_at: '2099-01-01T00:00:00Z' } })
-    vi.mocked(maxPlatform.shareInvite).mockResolvedValueOnce(true)
+    vi.mocked(maxPlatform.shareInvite).mockResolvedValueOnce({ status: 'opened' })
     render(<MemoryRouter initialEntries={['/rooms/room-server/invite']}><Routes><Route path="/rooms/:roomId/invite" element={<InvitePage />} /></Routes></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Пригласить через MAX' }))
     await waitFor(() => expect(maxPlatform.shareInvite).toHaveBeenCalled())

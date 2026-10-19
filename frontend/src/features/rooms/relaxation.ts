@@ -5,6 +5,7 @@ export const RELAXATION_CATEGORIES = CATEGORY_OPTIONS
 
 const MAX_RELAXED_BUDGET_RUB = 10_000
 const BUDGET_STEP_RUB = 500
+const DEFAULT_TIME_ZONE = 'Europe/Moscow'
 
 export type Relaxation = {
   id: 'budget' | 'category' | 'date' | 'time'
@@ -15,8 +16,9 @@ export type Relaxation = {
   categories?: Array<{ slug: CategorySlug; label: string }>
 }
 
-export function relaxedIntent(current: RoomSnapshot['myIntent'], kind: Relaxation['id'], now = new Date(), selectedValue?: string | number): RoomIntentRequestDto {
-  const today = localDate(now)
+export function relaxedIntent(current: RoomSnapshot['myIntent'], kind: Relaxation['id'], now = new Date(), selectedValue?: string | number, timeZone = DEFAULT_TIME_ZONE): RoomIntentRequestDto {
+  if (!current) throw new Error('A current intent is required before relaxing room preferences')
+  const today = localDate(now, timeZone)
   const base = baseIntent(current, today)
   if (kind === 'budget') {
     if (typeof selectedValue !== 'number' || !availableBudgets(base.budget_max_minor).includes(selectedValue)) throw new Error('Select an available higher budget')
@@ -27,17 +29,18 @@ export function relaxedIntent(current: RoomSnapshot['myIntent'], kind: Relaxatio
     base.category_slugs = [...base.category_slugs, selectedValue as CategorySlug]
   }
   if (kind === 'date') {
-    if (typeof selectedValue !== 'string' || !availableDates(base.dates, base.day_types, now).includes(selectedValue)) throw new Error('An explicit available date is required to expand room intent')
+    if (typeof selectedValue !== 'string' || !availableDates(base.dates, base.day_types, now, timeZone).includes(selectedValue)) throw new Error('An explicit available date is required to expand room intent')
     base.dates = [...new Set([...base.dates, selectedValue])].sort()
   }
   if (kind === 'time') base.time_slots = ['morning', 'day', 'evening', 'night']
   return base
 }
 
-export function availableRelaxations(current: RoomSnapshot['myIntent'], now = new Date()): Relaxation[] {
-  const baseline = baseIntent(current, localDate(now))
+export function availableRelaxations(current: RoomSnapshot['myIntent'], now = new Date(), timeZone = DEFAULT_TIME_ZONE): Relaxation[] {
+  if (!current) return []
+  const baseline = baseIntent(current, localDate(now, timeZone))
   const candidates: Relaxation[] = []
-  const dates = availableDates(baseline.dates, baseline.day_types, now)
+  const dates = availableDates(baseline.dates, baseline.day_types, now, timeZone)
   // Expired dates must be replaced through an explicit choice before other
   // changes can be submitted as a valid intent.
   if (!baseline.dates.length) {
@@ -49,15 +52,16 @@ export function availableRelaxations(current: RoomSnapshot['myIntent'], now = ne
   const categories = availableCategories(baseline.category_slugs)
   if (categories.length) candidates.push({ id: 'category', title: 'Добавить категорию', intent: null, categories })
   if (baseline.dates.length < 14 && dates.length) candidates.push({ id: 'date', title: 'Добавить дату', intent: null, dates })
-  if (baseline.time_slots.length > 0 && baseline.time_slots.length < 4) candidates.push({ id: 'time', title: 'Разрешить любое время', intent: relaxedIntent(current, 'time', now) })
+  if (baseline.time_slots.length > 0 && baseline.time_slots.length < 4) candidates.push({ id: 'time', title: 'Разрешить любое время', intent: relaxedIntent(current, 'time', now, undefined, timeZone) })
   return candidates.filter(({ id, intent }) => id === 'date' || intent === null || changed(baseline, intent, id))
 }
 
-export function availableDates(dates: string[], dayTypes: DayType[], now = new Date()) {
+export function availableDates(dates: string[], dayTypes: DayType[], now = new Date(), timeZone = DEFAULT_TIME_ZONE) {
   const choices: string[] = []
+  const today = localDate(now, timeZone)
   for (let offset = 1; offset <= 14; offset += 1) {
-    const date = addDays(now, offset)
-    const candidate = localDate(date)
+    const candidate = addDays(today, offset)
+    const date = new Date(`${candidate}T12:00:00Z`)
     if (!dates.includes(candidate) && compatibleDayType(date, dayTypes)) choices.push(candidate)
   }
   return choices
@@ -82,15 +86,19 @@ function changed(base: RoomIntentRequestDto, candidate: RoomIntentRequestDto, ki
   return candidate.time_slots.length !== base.time_slots.length
 }
 
-function baseIntent(current: RoomSnapshot['myIntent'], today: string): RoomIntentRequestDto {
-  return current ? { dates: current.dates.filter((date) => date >= today), day_types: current.day_types, time_slots: current.time_slots, category_slugs: current.category_slugs, budget_max_minor: current.budget_max_minor, radius_m: null, exclusion_slugs: current.exclusion_slugs, location: null, free_text: current.free_text } : { dates: [today], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 300_000, radius_m: null, exclusion_slugs: [], location: null, free_text: null }
+function baseIntent(current: NonNullable<RoomSnapshot['myIntent']>, today: string): RoomIntentRequestDto {
+  return { dates: current.dates.filter((date) => date >= today), day_types: current.day_types, time_slots: current.time_slots, category_slugs: current.category_slugs, budget_max_minor: current.budget_max_minor, radius_m: null, exclusion_slugs: current.exclusion_slugs, location: null, free_text: current.free_text }
 }
 
 function compatibleDayType(date: Date, dayTypes: DayType[]) {
   if (dayTypes.length === 0) return true
-  const isWeekend = date.getDay() === 0 || date.getDay() === 6
+  const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6
   return dayTypes.includes(isWeekend ? 'weekend' : 'weekday')
 }
 
-function addDays(date: Date, amount: number) { const next = new Date(date); next.setDate(next.getDate() + amount); return next }
-function localDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+function addDays(date: string, amount: number) { const next = new Date(`${date}T12:00:00Z`); next.setUTCDate(next.getUTCDate() + amount); return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}` }
+function localDate(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)!.value
+  return `${part('year')}-${part('month')}-${part('day')}`
+}

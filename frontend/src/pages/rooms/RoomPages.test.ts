@@ -114,6 +114,20 @@ describe('relaxedIntent', () => {
   it('offers concrete dates inside the next 14 days that fit allowed day types', () => {
     expect(availableDates(['2026-09-22'], ['weekend'], now)).toEqual(['2026-09-26', '2026-09-27', '2026-10-03', '2026-10-04'])
   })
+
+  it('uses the supplied city timezone at UTC date boundaries', () => {
+    const beforeMoscowMidnight = new Date('2026-09-21T20:30:00.000Z')
+    const afterMoscowMidnight = new Date('2026-09-21T21:30:00.000Z')
+
+    expect(availableDates([], [], beforeMoscowMidnight)[0]).toBe('2026-09-22')
+    expect(availableDates([], [], afterMoscowMidnight)[0]).toBe('2026-09-23')
+    expect(availableDates([], [], beforeMoscowMidnight, 'America/Los_Angeles')[0]).toBe('2026-09-22')
+  })
+
+  it('does not invent a date or intent when the current intent is missing', () => {
+    expect(availableRelaxations(null, now)).toEqual([])
+    expect(() => relaxedIntent(null, 'date', now, '2026-09-22')).toThrow(/current intent is required/)
+  })
 })
 
 describe('room motion helpers', () => {

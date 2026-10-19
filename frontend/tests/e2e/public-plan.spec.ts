@@ -28,7 +28,7 @@ function roomFor(userId: string) {
     participants: [...roomState.members].map((id) => participant(id === creator.id ? creator : recipient)),
     my_intent: roomState.intents[userId] ?? null, pool: null, match: null,
     invite: { url: `http://127.0.0.1:4173/join/${inviteToken}`, max_deep_link: `https://max.ru/example?startapp=${inviteToken}`, expires_at: '2099-12-01T00:00:00Z' },
-    allowed_actions: roomState.intents[userId] ? [] : ['edit_intent'], created_at: '2099-01-01T00:00:00Z', expires_at: '2099-12-01T00:00:00Z',
+    allowed_actions: [roomState.intents[userId] ? 'wait' : 'edit_intent', ...(userId === creator.id && roomState.members.size < 2 ? ['invite'] : [])], created_at: '2099-01-01T00:00:00Z', expires_at: '2099-12-01T00:00:00Z',
   }
 }
 
