@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
@@ -72,11 +73,11 @@ func decodeCreateRequest(w http.ResponseWriter, r *http.Request) (api.CreateRoom
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return request, ErrValidation
 	}
-	if len(fields) != 2 || fields["name"] == nil || fields["city_id"] == nil {
+	if fields["name"] == nil || fields["city_id"] == nil {
 		return request, ErrValidation
 	}
 	for field := range fields {
-		if field != "name" && field != "city_id" {
+		if field != "name" && field != "city_id" && field != "public_plan" {
 			return request, ErrValidation
 		}
 	}
@@ -88,6 +89,13 @@ func decodeCreateRequest(w http.ResponseWriter, r *http.Request) (api.CreateRoom
 	}
 	if err := json.Unmarshal(fields["city_id"], &request.CityId); err != nil || request.CityId == uuid.Nil {
 		return request, ErrValidation
+	}
+	if raw, ok := fields["public_plan"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		plan, err := decodePublicPlan(raw)
+		if err != nil {
+			return request, err
+		}
+		request.PublicPlan = nullable.NewNullableWithValue(plan)
 	}
 	return request, nil
 }

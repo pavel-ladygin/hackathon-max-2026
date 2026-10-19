@@ -41,6 +41,12 @@ func (s *Service) ResolveInviteContext(ctx context.Context, userID uuid.UUID, to
 			inviter.AvatarUrl = nullable.NewNullableWithValue(preview.InviterAvatarUrl.String)
 		}
 		result = &api.InviteContext{Token: token, RoomId: preview.RoomID, RoomName: preview.RoomName, Inviter: inviter, ExpiresAt: preview.ExpiresAt.Time, AlreadyJoined: preview.AlreadyJoined, Status: status}
+		result.CityId = preview.CityID
+		// New proposal data is available only while the room accepts intents.
+		// Preserve the existing minimal full/expired/closed preview response.
+		if status == api.Joinable && preview.RoomState == string(RoomStateCollectingIntents) {
+			result.PublicPlan = storedPublicPlan(preview.PublicPlan)
+		}
 		return nil
 	})
 	return result, err

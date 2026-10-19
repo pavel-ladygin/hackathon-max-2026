@@ -1,5 +1,5 @@
 import { mapPreferences, mapRoom, mapUser } from './mapper'
-import type { BootstrapRequestDto, InviteContextDto, MapBounds, NotificationPreferencesDto, NotificationPreferencesRequestDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
+import type { BootstrapRequestDto, CreateRoomRequestDto, InviteContextDto, MapBounds, NotificationPreferencesDto, NotificationPreferencesRequestDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
 import { ApiError, normalizeApiError } from './errors'
 import { createHttpDiscoveryApi, type AnalyticsEvent, type DiscoverySearchParams } from './discovery'
 
@@ -28,7 +28,18 @@ export class ApiClient {
   async recordBehavior(events: AnalyticsEvent[], keepalive = false) { return this.discovery.recordBehavior(events, keepalive) }
   async setSaved(eventId: string, saved: boolean) { return this.discovery.setSaved(eventId, saved) }
   async getSaved(params: { tab?: 'saved' | 'matches'; limit?: number; cursor?: string } = {}) { return this.discovery.getSaved(params) }
-  async createRoom(input: { name: string; city_id: string }, idempotencyKey = crypto.randomUUID()): Promise<{ room: ReturnType<typeof mapRoom>; invite: any }> { const x = await this.request<any>('/rooms', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) }); return { room: mapRoom(x.room), invite: x.invite } }
+  async createRoom(input: CreateRoomRequestDto, idempotencyKey = crypto.randomUUID()): Promise<{ room: ReturnType<typeof mapRoom>; invite: { token: string; url: string; max_deep_link: string; expires_at: string } }> {
+    const x = await this.request<{ room?: RoomSnapshotDto; invite?: { token: string; url: string; max_deep_link: string; expires_at: string } }>('/rooms', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) })
+    const room = x?.room
+    const invite = x?.invite
+    if (
+      !room || typeof room.id !== 'string' || !room.id.trim() || typeof room.name !== 'string' || !room.name.trim() ||
+      typeof room.city_id !== 'string' || !room.city_id.trim() || !Array.isArray(room.participants) ||
+      !invite || typeof invite.url !== 'string' || !invite.url.trim() || typeof invite.max_deep_link !== 'string' || !invite.max_deep_link.trim() ||
+      typeof invite.expires_at !== 'string' || !invite.expires_at.trim()
+    ) throw new Error('Invalid create room response')
+    return { room: mapRoom(room), invite }
+  }
   async joinRoom(token: string, idempotencyKey = crypto.randomUUID()): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/room-invites/${encodeURIComponent(token)}/join`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } })) }
   async getRoom(roomId: string): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}`)) }
   async closeRoom(roomId: string): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}/close`, { method: 'POST' })) }

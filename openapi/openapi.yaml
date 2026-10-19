@@ -1467,6 +1467,7 @@ components:
       - token
       - room_id
       - room_name
+      - city_id
       - inviter
       - expires_at
       - already_joined
@@ -1479,6 +1480,15 @@ components:
           format: uuid
         room_name:
           type: string
+        city_id:
+          type: string
+          format: uuid
+          description: Город комнаты; часовой пояс берётся из города при проверке дат публичного плана.
+        public_plan:
+          anyOf:
+          - $ref: '#/components/schemas/PublicPlan'
+          - type: 'null'
+          description: Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются.
         inviter:
           $ref: '#/components/schemas/PublicParticipant'
         expires_at:
@@ -2206,6 +2216,50 @@ components:
         city_id:
           type: string
           format: uuid
+        public_plan:
+          anyOf:
+          - $ref: '#/components/schemas/PublicPlan'
+          - type: 'null'
+          description: Неизменяемое предложение комнаты. Отсутствие поля и null означают отсутствие плана; пустой или неполный объект отклоняется. Даты проверяются в часовом поясе города комнаты.
+    PublicPlan:
+      type: object
+      additionalProperties: false
+      required:
+      - dates
+      - time_slots
+      - category_slugs
+      - budget_max_minor
+      description: Неизменяемое публичное предложение, задаётся только при создании комнаты. Это отдельные условия, не приватный intent; публикация не подтверждает intent ни одного участника. Даты YYYY-MM-DD не могут быть прошедшими в часовом поясе города при создании. Списки уникальны; порядок не влияет на idempotency, в ответе сохраняется исходный порядок.
+      properties:
+        dates:
+          type: array
+          minItems: 1
+          maxItems: 14
+          uniqueItems: true
+          description: Канонические календарные даты YYYY-MM-DD в часовом поясе города комнаты.
+          items:
+            type: string
+            format: date
+            x-go-type: string
+        time_slots:
+          type: array
+          maxItems: 4
+          uniqueItems: true
+          description: Пустой список означает любое время.
+          items:
+            $ref: '#/components/schemas/TimeSlot'
+        category_slugs:
+          type: array
+          minItems: 1
+          maxItems: 11
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/CategorySlug'
+        budget_max_minor:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+          description: Максимальный бюджет в минимальных денежных единицах.
     CreateRoomResponse:
       type: object
       required:
@@ -2313,6 +2367,11 @@ components:
         city_id:
           type: string
           format: uuid
+        public_plan:
+          anyOf:
+          - $ref: '#/components/schemas/PublicPlan'
+          - type: 'null'
+          description: Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются.
         state:
           $ref: '#/components/schemas/RoomState'
         round_no:

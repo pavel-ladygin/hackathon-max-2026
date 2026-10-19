@@ -23,6 +23,7 @@ type Room struct {
 	ExpiresAt         pgtype.Timestamptz
 	ClosedBy          pgtype.UUID
 	ClosedAt          pgtype.Timestamptz
+	PublicPlan        []byte
 }
 
 type RoomIntent struct {

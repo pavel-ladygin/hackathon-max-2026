@@ -746,6 +746,13 @@ export interface components {
             /** Format: uuid */
             room_id: string;
             room_name: string;
+            /**
+             * Format: uuid
+             * @description Город комнаты; часовой пояс берётся из города при проверке дат публичного плана.
+             */
+            city_id: string;
+            /** @description Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются. */
+            public_plan?: components["schemas"]["PublicPlan"] | null;
             inviter: components["schemas"]["PublicParticipant"];
             /** Format: date-time */
             expires_at: string;
@@ -1021,6 +1028,18 @@ export interface components {
             name: string;
             /** Format: uuid */
             city_id: string;
+            /** @description Неизменяемое предложение комнаты. Отсутствие поля и null означают отсутствие плана; пустой или неполный объект отклоняется. Даты проверяются в часовом поясе города комнаты. */
+            public_plan?: components["schemas"]["PublicPlan"] | null;
+        };
+        /** @description Неизменяемое публичное предложение, задаётся только при создании комнаты. Это отдельные условия, не приватный intent; публикация не подтверждает intent ни одного участника. Даты YYYY-MM-DD не могут быть прошедшими в часовом поясе города при создании. Списки уникальны; порядок не влияет на idempotency, в ответе сохраняется исходный порядок. */
+        PublicPlan: {
+            /** @description Канонические календарные даты YYYY-MM-DD в часовом поясе города комнаты. */
+            dates: string[];
+            /** @description Пустой список означает любое время. */
+            time_slots: components["schemas"]["TimeSlot"][];
+            category_slugs: components["schemas"]["CategorySlug"][];
+            /** @description Максимальный бюджет в минимальных денежных единицах. */
+            budget_max_minor: number;
         };
         CreateRoomResponse: {
             room: components["schemas"]["RoomSnapshot"];
@@ -1062,6 +1081,8 @@ export interface components {
             name: string;
             /** Format: uuid */
             city_id: string;
+            /** @description Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются. */
+            public_plan?: components["schemas"]["PublicPlan"] | null;
             state: components["schemas"]["RoomState"];
             /** @description Текущий раунд подтверждения условий и формирования пула событий. */
             round_no: number;

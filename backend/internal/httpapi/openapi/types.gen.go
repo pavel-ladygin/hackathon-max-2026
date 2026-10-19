@@ -1301,6 +1301,9 @@ type ClosedBy struct {
 type CreateRoomRequest struct {
 	CityId openapi_types.UUID `json:"city_id"`
 	Name   string             `json:"name"`
+
+	// PublicPlan Неизменяемое предложение комнаты. Отсутствие поля и null означают отсутствие плана; пустой или неполный объект отклоняется. Даты проверяются в часовом поясе города комнаты.
+	PublicPlan nullable.Nullable[PublicPlan] `json:"public_plan,omitempty"`
 }
 
 // CreateRoomResponse defines model for CreateRoomResponse.
@@ -1765,13 +1768,19 @@ type HomeFeedResponseSectionsType string
 
 // InviteContext defines model for InviteContext.
 type InviteContext struct {
-	AlreadyJoined bool                `json:"already_joined"`
-	ExpiresAt     time.Time           `json:"expires_at"`
-	Inviter       PublicParticipant   `json:"inviter"`
-	RoomId        openapi_types.UUID  `json:"room_id"`
-	RoomName      string              `json:"room_name"`
-	Status        InviteContextStatus `json:"status"`
-	Token         string              `json:"token"`
+	AlreadyJoined bool `json:"already_joined"`
+
+	// CityId Город комнаты; часовой пояс берётся из города при проверке дат публичного плана.
+	CityId    openapi_types.UUID `json:"city_id"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Inviter   PublicParticipant  `json:"inviter"`
+
+	// PublicPlan Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются.
+	PublicPlan nullable.Nullable[PublicPlan] `json:"public_plan,omitempty"`
+	RoomId     openapi_types.UUID            `json:"room_id"`
+	RoomName   string                        `json:"room_name"`
+	Status     InviteContextStatus           `json:"status"`
+	Token      string                        `json:"token"`
 }
 
 // InviteContextStatus defines model for InviteContext.Status.
@@ -1897,6 +1906,19 @@ type PublicParticipant struct {
 // PublicParticipantRole defines model for PublicParticipant.Role.
 type PublicParticipantRole string
 
+// PublicPlan Неизменяемое публичное предложение, задаётся только при создании комнаты. Это отдельные условия, не приватный intent; публикация не подтверждает intent ни одного участника. Даты YYYY-MM-DD не могут быть прошедшими в часовом поясе города при создании. Списки уникальны; порядок не влияет на idempotency, в ответе сохраняется исходный порядок.
+type PublicPlan struct {
+	// BudgetMaxMinor Максимальный бюджет в минимальных денежных единицах.
+	BudgetMaxMinor int            `json:"budget_max_minor"`
+	CategorySlugs  []CategorySlug `json:"category_slugs"`
+
+	// Dates Канонические календарные даты YYYY-MM-DD в часовом поясе города комнаты.
+	Dates []string `json:"dates"`
+
+	// TimeSlots Пустой список означает любое время.
+	TimeSlots []TimeSlot `json:"time_slots"`
+}
+
 // RecommendationReason defines model for RecommendationReason.
 type RecommendationReason struct {
 	Code RecommendationReasonCode `json:"code"`
@@ -1979,6 +2001,9 @@ type RoomSnapshot struct {
 	Name         string                          `json:"name"`
 	Participants []PublicParticipant             `json:"participants"`
 	Pool         nullable.Nullable[PoolSummary]  `json:"pool"`
+
+	// PublicPlan Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются.
+	PublicPlan nullable.Nullable[PublicPlan] `json:"public_plan,omitempty"`
 
 	// RoundNo Текущий раунд подтверждения условий и формирования пула событий.
 	RoundNo int       `json:"round_no"`

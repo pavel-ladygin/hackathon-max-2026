@@ -105,3 +105,17 @@
     padding-left: 16px;
   }
 }
+
+.dateEntry {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.dateEntry input { min-width: 0; width: 100%; }
+
+.rangeField input[type="number"],
+.dateEntry input {
+  min-height: 48px;
+  font-size: 16px;
+}
