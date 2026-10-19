@@ -295,3 +295,16 @@
   .dateAdd { grid-template-columns: 1fr; }
   .dateAdd button { width: 100%; }
 }
+
+
+.presetButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presetButtons > button {
+  flex: 1 1 140px;
+  min-width: 0;
+  white-space: normal;
+}

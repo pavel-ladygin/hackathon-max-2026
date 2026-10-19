@@ -39,6 +39,68 @@ export function cityToday(timezone: string, now = new Date()): string {
   return `${value('year')}-${value('month')}-${value('day')}`
 }
 
+export type PublicPlanPresetPatch = {
+  dates?: string[]
+  time_slots?: PublicPlan['time_slots']
+  budget_max_minor?: number
+}
+
+/**
+ * Build only the fields owned by a quick preset so callers can merge the
+ * result into a draft without discarding categories or other manual choices.
+ */
+export function publicPlanPreset(
+  id: 'tonight' | 'weekend' | 'budget',
+  timezone: string,
+  now = new Date(),
+): PublicPlanPresetPatch | null {
+  try {
+    // Validate the city timezone for every preset, including the fixed budget
+    // preset, so an unsupported city never appears to have valid defaults.
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    })
+    const parts = formatter.formatToParts(now)
+    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+    const today = `${value('year')}-${value('month')}-${value('day')}`
+    if (!isCanonicalDate(today)) return null
+
+    if (id === 'budget') return { budget_max_minor: 100_000 }
+    if (id === 'tonight') {
+      const localHour = Number(value('hour'))
+      // Backend evening slots cover 17:00–22:00 in the room city's timezone.
+      // At 22:00 the slot has ended; never silently move this preset to tomorrow.
+      if (!Number.isInteger(localHour) || localHour < 0 || localHour >= 22) return null
+      return { dates: [today], time_slots: ['evening'] }
+    }
+    if (id !== 'weekend') return null
+
+    const [year, month, day] = today.split('-').map(Number)
+    const todayUtc = new Date(0)
+    todayUtc.setUTCHours(0, 0, 0, 0)
+    todayUtc.setUTCFullYear(year, month - 1, day)
+    const weekday = todayUtc.getUTCDay()
+    if (weekday === 0) return { dates: [today] }
+
+    const saturdayOffset = 6 - weekday
+    const saturday = new Date(todayUtc)
+    saturday.setUTCDate(saturday.getUTCDate() + saturdayOffset)
+    const sunday = new Date(saturday)
+    sunday.setUTCDate(sunday.getUTCDate() + 1)
+    const asDate = (date: Date) =>
+      `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+    return { dates: [asDate(saturday), asDate(sunday)] }
+  } catch {
+    // Intl throws for unknown timezones and invalid Date values.
+    return null
+  }
+}
+
 export function roomCity(id?: string | null) {
   return ROOM_CITIES.find((city) => city.id === id)
 }

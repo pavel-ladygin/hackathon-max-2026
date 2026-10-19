@@ -3,7 +3,7 @@ import type { CategorySlug, PublicPlan } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { Button } from '../../shared/ui'
 import { roomErrorMessage } from '../../features/rooms/errors'
-import { budgetToMinor, cityToday, formatPlanDate, isCanonicalDate, publicPlanSchema, resolveCreateCity, ROOM_CITIES, roomCity, TIME_SLOT_OPTIONS } from './public-plan'
+import { budgetToMinor, cityToday, formatPlanDate, isCanonicalDate, publicPlanSchema, publicPlanPreset, resolveCreateCity, ROOM_CITIES, roomCity, TIME_SLOT_OPTIONS } from './public-plan'
 import styles from './public-plan.module.css'
 
 type PublicPlanFields = {
@@ -52,16 +52,30 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
   const [plan, setPlan] = useState<PublicPlanFields>(() => restored?.plan ?? defaultPlanFields())
   const [dateInput, setDateInput] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
+  const [presetNow, setPresetNow] = useState(() => new Date())
+  const [presetFeedback, setPresetFeedback] = useState('')
   const submitLocked = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
   const city = roomCity(cityId)
-  const today = city ? cityToday(city.timezone) : null
+  const today = city ? cityToday(city.timezone, presetNow) : null
   const knownCity = Boolean(city)
   const cityReady = Boolean(city?.ready)
 
   useEffect(() => {
     if (!pending) submitLocked.current = false
   }, [pending])
+
+  useEffect(() => {
+    const refresh = () => setPresetNow(new Date())
+    const timer = window.setInterval(refresh, 30_000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [])
 
   useEffect(() => {
     const draft: Draft = { version: 1, cityId, citySelectedExplicitly: explicitCityId !== null, name, publicPlanEnabled, plan }
@@ -73,8 +87,30 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
     setErrors((current) => ({ ...current, dates: undefined, time: undefined, categories: undefined, budget: undefined }))
   }
 
+  const applyPreset = (kind: Parameters<typeof publicPlanPreset>[0]) => {
+    if (pending || success || !city?.ready) return
+    const now = new Date()
+    setPresetNow(now)
+    const patch = publicPlanPreset(kind, city.timezone, now)
+    if (!patch) {
+      setPresetFeedback('Этот вариант уже недоступен по времени города. Выберите дату и время самостоятельно.')
+      return
+    }
+    const currentBudget = budgetToMinor(plan.budget)
+    changePlan({
+      ...(patch.dates ? { dates: patch.dates } : {}),
+      ...(patch.time_slots ? { time_slots: patch.time_slots, anyTime: false } : {}),
+      ...(patch.budget_max_minor !== undefined ? { budget: String(Math.min(currentBudget ?? patch.budget_max_minor, patch.budget_max_minor) / 100) } : {}),
+    })
+    if (patch.dates) setDateInput('')
+    setPresetFeedback(kind === 'tonight' ? 'Выбраны сегодняшняя дата и вечер по времени города.' : kind === 'weekend' ? 'Выбраны ближайшие оставшиеся выходные. Время и бюджет сохранены.' : currentBudget !== null && currentBudget < 100_000 ? 'Ваш более низкий бюджет сохранён.' : 'Лимит установлен до 1 000 ₽.')
+  }
+
+  const tonightAvailable = Boolean(city?.ready && publicPlanPreset('tonight', city.timezone, presetNow))
+
   const addDate = () => {
-    if (!isCanonicalDate(dateInput) || !today || dateInput < today || plan.dates.includes(dateInput) || plan.dates.length >= 14) {
+    const currentToday = city ? cityToday(city.timezone) : null
+    if (!isCanonicalDate(dateInput) || !currentToday || dateInput < currentToday || plan.dates.includes(dateInput) || plan.dates.length >= 14) {
       setErrors((current) => ({ ...current, dates: plan.dates.length >= 14 ? 'Можно выбрать не больше 14 дат.' : 'Выберите корректную будущую дату без повторов.' }))
       return
     }
@@ -84,15 +120,16 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
 
   const validate = (): { errors: FieldErrors; public_plan?: PublicPlan } => {
     const next: FieldErrors = {}
+    const submitToday = city ? cityToday(city.timezone) : null
     const normalizedName = name.trim()
     if (!normalizedName) next.name = 'Введите название комнаты.'
     else if (normalizedName.length > 80) next.name = 'Не больше 80 символов.'
     if (!cityReady) next.city = knownCity ? 'Выберите город с доступным каталогом.' : 'Выберите доступный город.'
     if (!publicPlanEnabled) return { errors: next }
 
-    if (!city || !today) next.city = 'Сначала выберите город с известным часовым поясом.'
+    if (!city || !submitToday) next.city = 'Сначала выберите город с известным часовым поясом.'
     if (!plan.dates.length) next.dates = 'Добавьте хотя бы одну дату.'
-    else if (plan.dates.length > 14 || new Set(plan.dates).size !== plan.dates.length || plan.dates.some((date) => !isCanonicalDate(date) || date < (today ?? '9999-12-31'))) next.dates = 'Выберите от 1 до 14 будущих дат без повторов.'
+    else if (plan.dates.length > 14 || new Set(plan.dates).size !== plan.dates.length || plan.dates.some((date) => !isCanonicalDate(date) || date < (submitToday ?? '9999-12-31'))) next.dates = 'Выберите от 1 до 14 будущих дат без повторов.'
     if (!plan.anyTime && !plan.time_slots.length) next.time = 'Выберите время или отметьте «Любое время».'
     if (!plan.category_slugs.length) next.categories = 'Выберите хотя бы одну категорию.'
     const budget = budgetToMinor(plan.budget)
@@ -159,6 +196,18 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
         </label>
 
         {publicPlanEnabled ? <div className={styles.planFields}>
+          <fieldset className={styles.fieldset} aria-describedby="public-plan-presets-help" disabled={pending || success || !cityReady}>
+            <legend>Быстрый выбор</legend>
+            <p id="public-plan-presets-help" className={styles.hint}>Это ваше предложение. Проверьте выбранные поля перед созданием комнаты; друг отдельно подтвердит свои условия.</p>
+            <div className={styles.presetButtons}>
+              <Button type="button" tone="secondary" disabled={!tonightAvailable} onClick={() => applyPreset('tonight')}>Сегодня вечером</Button>
+              <Button type="button" tone="secondary" onClick={() => applyPreset('weekend')}>Выходные</Button>
+              <Button type="button" tone="secondary" onClick={() => applyPreset('budget')}>Недорого</Button>
+            </div>
+            <p className={styles.hint}>{!cityReady ? 'Выберите город с доступным каталогом.' : 'Вечер — с 17:00 до 22:00 по времени города. «Недорого» — до 1 000 ₽.'}</p>
+            {cityReady && !tonightAvailable ? <p className={styles.hint}>Сегодняшний вечер уже закончился. Выберите другую дату.</p> : null}
+            <p className={styles.hint} role="status" aria-live="polite">{presetFeedback}</p>
+          </fieldset>
           <fieldset className={styles.fieldset} aria-describedby={errors.dates ? 'create-plan-dates-error' : 'create-plan-dates-help'}>
             <legend>Подходящие даты</legend>
             <p id="create-plan-dates-help" className={styles.hint}>{city ? `Выбирайте даты начиная с ${today}, ${city.timezone}.` : 'Сначала выберите город с часовым поясом.'}</p>
