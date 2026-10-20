@@ -15,6 +15,10 @@ mkdir -p "$fixture_dir/conf" "$fixture_dir/auth" "$fixture_dir/cert" "$fixture_d
 cp "$project_dir/deploy/nginx/worknet.team.conf" "$fixture_dir/conf/production.conf"
 cp "$project_dir/deploy/nginx/worknet-limits.conf" "$fixture_dir/conf/limits.conf"
 cp "$project_dir/deploy/nginx/worknet-proxy.conf" "$fixture_dir/snippets/worknet-proxy.conf"
+cat > "$fixture_dir/auth/worknet-admin-proxy.conf" <<'CONFIG'
+proxy_set_header X-Internal-Admin-Secret "fixture-shared-secret";
+proxy_set_header X-Internal-Admin-User $remote_user;
+CONFIG
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=worknet.team' \
   -keyout "$fixture_dir/cert/privkey.pem" -out "$fixture_dir/cert/fullchain.pem" >/dev/null 2>&1
 printf 'fixture:%s\n' "$(openssl passwd -apr1 'fixture-password')" > "$fixture_dir/auth/worknet-analytics.htpasswd"
@@ -28,6 +32,8 @@ server {
   location = /api/v1/internal/event-sources { return 200 'fixture backend'; }
   location ^~ /api/v1/internal/event-sources/ {
     if ($invalid_admin_mutation) { return 403; }
+    add_header X-Fixture-Admin-User $http_x_internal_admin_user always;
+    add_header X-Fixture-Admin-Secret $http_x_internal_admin_secret always;
     return 200 'fixture backend';
   }
   location / { return 200 'fixture backend'; }
@@ -78,7 +84,7 @@ for attempt in $(seq 1 30); do
   if curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:127.0.0.1" "https://worknet.team:$fixture_port/" >/dev/null; then break; fi
   sleep 0.2
 done
-for fixture_path in /internal /internal/event-sources /internal/unregistered /api/v1/internal /api/v1/internal/event-sources /api/v1/internal/event-sources/test /api/v1/internal/event-sources/source-id/domains /api/v1/internal/event-sources/source-id/domains/domain-id /api/v1/internal/unregistered; do
+for fixture_path in /internal /internal/event-sources /internal/event-moderation /internal/unregistered /api/v1/internal /api/v1/internal/event-sources /api/v1/internal/event-sources/test /api/v1/internal/event-sources/source-id/domains /api/v1/internal/event-sources/source-id/domains/domain-id /api/v1/internal/event-submissions /api/v1/internal/event-submissions/domains /api/v1/internal/event-submissions/submission-id/approve /api/v1/internal/event-submissions/submission-id/reject /api/v1/internal/event-submissions/submission-id/image /api/v1/internal/unregistered; do
   for fixture_method in GET POST PATCH DELETE; do
     status=$(curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:127.0.0.1" -X "$fixture_method" -o /dev/null -w '%{http_code}' "https://worknet.team:$fixture_port$fixture_path")
     [[ "$status" == 401 ]] || { echo "Unguarded internal namespace: $fixture_method $fixture_path returned $status" >&2; exit 1; }
@@ -97,6 +103,8 @@ status=$(curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:
 [[ "$status" == 200 ]] || { echo "Mutation with same-origin headers returned $status" >&2; exit 1; }
 headers=$(curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:127.0.0.1" -u 'fixture:fixture-password' -D - "https://worknet.team:$fixture_port/api/v1/internal/event-sources")
 [[ "$headers" == *'200 OK'* && "$headers" == *'Content-Security-Policy:'* && "$headers" == *'X-Content-Type-Options: nosniff'* ]] || { echo 'Authenticated response or inherited security headers missing' >&2; exit 1; }
+spoofed_headers=$(curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:127.0.0.1" -u 'fixture:fixture-password' -H 'X-Internal-Admin-Secret: attacker-secret' -H 'X-Internal-Admin-User: attacker' -D - "https://worknet.team:$fixture_port/api/v1/internal/event-sources/source-id/domains")
+[[ "$spoofed_headers" == *'X-Fixture-Admin-Secret: fixture-shared-secret'* && "$spoofed_headers" == *'X-Fixture-Admin-User: fixture'* && "$spoofed_headers" != *'X-Fixture-Admin-User: attacker'* ]] || { echo 'Nginx did not replace client-supplied admin proxy headers' >&2; exit 1; }
 public_image_headers=$(curl --http1.1 --noproxy '*' -ks --resolve "worknet.team:$fixture_port:127.0.0.1" -D - "https://worknet.team:$fixture_port/api/v1/event-images/550e8400-e29b-41d4-a716-446655440000/content")
 [[ "$public_image_headers" == *'200 OK'* && "$public_image_headers" == *'Content-Security-Policy:'* && "$public_image_headers" == *'X-Content-Type-Options: nosniff'* ]] || { echo 'Public same-origin image API or inherited security headers missing' >&2; exit 1; }
 [[ "$public_image_headers" == *"img-src 'self'"* && "$public_image_headers" != *'img-src https:'* && "$public_image_headers" != *'images.example.test'* ]] || { echo 'CSP must allow same-origin images without broad HTTPS or Generic domains' >&2; exit 1; }
