@@ -247,7 +247,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
       </section>
 
       {error ? <p className={styles.error} role="alert">{roomErrorMessage(error, 'Не удалось создать комнату.')}</p> : null}
-      <Button type="submit" disabled={pending || success || !cityReady} state={pending ? 'loading' : success ? 'success' : 'idle'} loadingLabel="Создаём…" successLabel="Комната создана">Создать комнату</Button>
+      <Button type="submit" disabled={pending || success || !cityReady} state={success ? 'success' : pending ? 'loading' : 'idle'} loadingLabel="Создаём…" successLabel="Комната создана">Создать комнату</Button>
     </form>
   )
 }

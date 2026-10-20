@@ -12,7 +12,7 @@ async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new')
   let preferencesWrites = 0
   let eventSaved = false
   const roomId = 'room-e2e'
-  const room = { id: roomId, name: 'Куда идём?', city_id: user.city_id, state: 'collecting_intents', round_no: 1, version: 1, participants: [{ id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: false }], my_intent: null, pool: null, match: null, invite: { url: 'http://127.0.0.1:4173/join/invite-e2e', max_deep_link: 'https://max.ru/t255_hakaton_max_bot?startapp=invite-e2e', expires_at: '2030-01-01T00:00:00Z' }, allowed_actions: ['edit_intent'], created_at: '2026-01-01T00:00:00Z', expires_at: '2030-01-01T00:00:00Z' }
+  const room = { id: roomId, name: 'Куда идём?', city_id: user.city_id, state: 'collecting_intents', round_no: 1, version: 1, participants: [{ id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: false }], my_intent: null, pool: null, match: null, invite: { url: 'http://127.0.0.1:4173/join/invite-e2e', max_deep_link: 'https://max.ru/t255_hakaton_max_bot?startapp=invite-e2e', expires_at: '2030-01-01T00:00:00Z' }, allowed_actions: ['edit_intent', 'invite'], created_at: '2026-01-01T00:00:00Z', expires_at: '2030-01-01T00:00:00Z' }
 
   await page.route('**/api/v1/auth/max/bootstrap', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'e2e-access-token', token_type: 'Bearer', expires_in: 3600, user, onboarding_state: onboardingState, preferences: storedPreferences, invite_context: null }) }))
   await page.route('**/api/v1/me/preferences', async (route) => {
