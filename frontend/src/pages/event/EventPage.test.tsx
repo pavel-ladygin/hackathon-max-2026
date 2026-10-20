@@ -105,6 +105,15 @@ describe('EventPage', () => {
     expect(screen.getByRole('button', { name: 'Открыть билеты во внешнем билетном сервисе' })).toBeEnabled()
   })
 
+  it('uses the user event website label and explains when no link was supplied', () => {
+    mocks.event = { ...mocks.event, data: { ...baseEvent, ticketAvailable: false, dataProvenance: { source: 'user', source_updated_at: null, is_demo: false } } }
+    renderPage()
+
+    expect(screen.getByText('Ссылка не указана.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Открыть сайт мероприятия' })).toHaveTextContent('Ссылка не указана')
+    expect(screen.getByRole('button', { name: 'Открыть сайт мероприятия' })).toBeDisabled()
+  })
+
   it('shares the event title and MAX event deep link', async () => {
     mocks.shareInvite.mockResolvedValue({ status: 'opened' })
     renderPage()
