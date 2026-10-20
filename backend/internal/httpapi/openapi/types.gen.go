@@ -790,6 +790,120 @@ func (e EventSourceTestInputPriceUnit) Valid() bool {
 	}
 }
 
+// Defines values for EventSubmissionStatus.
+const (
+	EventSubmissionStatusApproved EventSubmissionStatus = "approved"
+	EventSubmissionStatusPending  EventSubmissionStatus = "pending"
+	EventSubmissionStatusRejected EventSubmissionStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the EventSubmissionStatus enum.
+func (e EventSubmissionStatus) Valid() bool {
+	switch e {
+	case EventSubmissionStatusApproved:
+		return true
+	case EventSubmissionStatusPending:
+		return true
+	case EventSubmissionStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSubmissionCreatedStatus.
+const (
+	EventSubmissionCreatedStatusApproved EventSubmissionCreatedStatus = "approved"
+	EventSubmissionCreatedStatusPending  EventSubmissionCreatedStatus = "pending"
+	EventSubmissionCreatedStatusRejected EventSubmissionCreatedStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the EventSubmissionCreatedStatus enum.
+func (e EventSubmissionCreatedStatus) Valid() bool {
+	switch e {
+	case EventSubmissionCreatedStatusApproved:
+		return true
+	case EventSubmissionCreatedStatusPending:
+		return true
+	case EventSubmissionCreatedStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSubmissionDecisionStatus.
+const (
+	EventSubmissionDecisionStatusApproved EventSubmissionDecisionStatus = "approved"
+	EventSubmissionDecisionStatusRejected EventSubmissionDecisionStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the EventSubmissionDecisionStatus enum.
+func (e EventSubmissionDecisionStatus) Valid() bool {
+	switch e {
+	case EventSubmissionDecisionStatusApproved:
+		return true
+	case EventSubmissionDecisionStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSubmissionInputAgeRating.
+const (
+	EventSubmissionInputAgeRatingLessThannil EventSubmissionInputAgeRating = "<nil>"
+	EventSubmissionInputAgeRatingN0          EventSubmissionInputAgeRating = "0+"
+	EventSubmissionInputAgeRatingN12         EventSubmissionInputAgeRating = "12+"
+	EventSubmissionInputAgeRatingN16         EventSubmissionInputAgeRating = "16+"
+	EventSubmissionInputAgeRatingN18         EventSubmissionInputAgeRating = "18+"
+	EventSubmissionInputAgeRatingN6          EventSubmissionInputAgeRating = "6+"
+	EventSubmissionInputAgeRatingUnknown     EventSubmissionInputAgeRating = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the EventSubmissionInputAgeRating enum.
+func (e EventSubmissionInputAgeRating) Valid() bool {
+	switch e {
+	case EventSubmissionInputAgeRatingLessThannil:
+		return true
+	case EventSubmissionInputAgeRatingN0:
+		return true
+	case EventSubmissionInputAgeRatingN12:
+		return true
+	case EventSubmissionInputAgeRatingN16:
+		return true
+	case EventSubmissionInputAgeRatingN18:
+		return true
+	case EventSubmissionInputAgeRatingN6:
+		return true
+	case EventSubmissionInputAgeRatingUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSubmissionInputPriceMode.
+const (
+	EventSubmissionInputPriceModeFree    EventSubmissionInputPriceMode = "free"
+	EventSubmissionInputPriceModePaid    EventSubmissionInputPriceMode = "paid"
+	EventSubmissionInputPriceModeUnknown EventSubmissionInputPriceMode = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the EventSubmissionInputPriceMode enum.
+func (e EventSubmissionInputPriceMode) Valid() bool {
+	switch e {
+	case EventSubmissionInputPriceModeFree:
+		return true
+	case EventSubmissionInputPriceModePaid:
+		return true
+	case EventSubmissionInputPriceModeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthResponseDatabase.
 const (
 	HealthResponseDatabaseReady HealthResponseDatabase = "ready"
@@ -1186,6 +1300,45 @@ const (
 func (e SyncInternalEventSource202JSONResponseBodyStatus) Valid() bool {
 	switch e {
 	case Started:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListInternalEventSubmissionsParamsStatus.
+const (
+	ListInternalEventSubmissionsParamsStatusApproved ListInternalEventSubmissionsParamsStatus = "approved"
+	ListInternalEventSubmissionsParamsStatusPending  ListInternalEventSubmissionsParamsStatus = "pending"
+	ListInternalEventSubmissionsParamsStatusRejected ListInternalEventSubmissionsParamsStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ListInternalEventSubmissionsParamsStatus enum.
+func (e ListInternalEventSubmissionsParamsStatus) Valid() bool {
+	switch e {
+	case ListInternalEventSubmissionsParamsStatusApproved:
+		return true
+	case ListInternalEventSubmissionsParamsStatusPending:
+		return true
+	case ListInternalEventSubmissionsParamsStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApproveUserEventDomainJSONBodyPurpose.
+const (
+	ApproveUserEventDomainJSONBodyPurposeImage  ApproveUserEventDomainJSONBodyPurpose = "image"
+	ApproveUserEventDomainJSONBodyPurposeTicket ApproveUserEventDomainJSONBodyPurpose = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the ApproveUserEventDomainJSONBodyPurpose enum.
+func (e ApproveUserEventDomainJSONBodyPurpose) Valid() bool {
+	switch e {
+	case ApproveUserEventDomainJSONBodyPurposeImage:
+		return true
+	case ApproveUserEventDomainJSONBodyPurposeTicket:
 		return true
 	default:
 		return false
@@ -1725,6 +1878,102 @@ type EventSourceTestInputAuthType string
 // EventSourceTestInputPriceUnit defines model for EventSourceTestInput.PriceUnit.
 type EventSourceTestInputPriceUnit string
 
+// EventSubmission defines model for EventSubmission.
+type EventSubmission struct {
+	AuthorId        openapi_types.UUID                    `json:"author_id"`
+	AuthorName      nullable.Nullable[string]             `json:"author_name,omitempty"`
+	CityId          openapi_types.UUID                    `json:"city_id"`
+	CreatedAt       time.Time                             `json:"created_at"`
+	DecidedAt       nullable.Nullable[time.Time]          `json:"decided_at"`
+	DecidedBy       nullable.Nullable[string]             `json:"decided_by"`
+	EventId         nullable.Nullable[openapi_types.UUID] `json:"event_id"`
+	Id              openapi_types.UUID                    `json:"id"`
+	Payload         EventSubmissionInput                  `json:"payload"`
+	RejectionReason nullable.Nullable[string]             `json:"rejection_reason"`
+	StartsAt        time.Time                             `json:"starts_at"`
+	Status          EventSubmissionStatus                 `json:"status"`
+	Timezone        string                                `json:"timezone"`
+}
+
+// EventSubmissionStatus defines model for EventSubmission.Status.
+type EventSubmissionStatus string
+
+// EventSubmissionCreated defines model for EventSubmissionCreated.
+type EventSubmissionCreated struct {
+	CreatedAt time.Time                    `json:"created_at"`
+	Id        openapi_types.UUID           `json:"id"`
+	Status    EventSubmissionCreatedStatus `json:"status"`
+}
+
+// EventSubmissionCreatedStatus defines model for EventSubmissionCreated.Status.
+type EventSubmissionCreatedStatus string
+
+// EventSubmissionDecision defines model for EventSubmissionDecision.
+type EventSubmissionDecision struct {
+	EventId *openapi_types.UUID           `json:"event_id,omitempty"`
+	Id      openapi_types.UUID            `json:"id"`
+	Status  EventSubmissionDecisionStatus `json:"status"`
+}
+
+// EventSubmissionDecisionStatus defines model for EventSubmissionDecision.Status.
+type EventSubmissionDecisionStatus string
+
+// EventSubmissionDetail defines model for EventSubmissionDetail.
+type EventSubmissionDetail struct {
+	Duplicates []struct {
+		EventId   openapi_types.UUID `json:"event_id"`
+		StartsAt  time.Time          `json:"starts_at"`
+		Title     string             `json:"title"`
+		VenueName string             `json:"venue_name"`
+	} `json:"duplicates"`
+	ResourceDomains []EventSourceAllowedDomain `json:"resource_domains"`
+	Submission      EventSubmission            `json:"submission"`
+}
+
+// EventSubmissionInput defines model for EventSubmissionInput.
+type EventSubmissionInput struct {
+	AgeRating      nullable.Nullable[EventSubmissionInputAgeRating] `json:"age_rating,omitempty"`
+	CategorySlug   CategorySlug                                     `json:"category_slug"`
+	CityId         openapi_types.UUID                               `json:"city_id"`
+	Description    string                                           `json:"description"`
+	EndsAtLocal    nullable.Nullable[string]                        `json:"ends_at_local,omitempty"`
+	ImageUrl       nullable.Nullable[string]                        `json:"image_url,omitempty"`
+	PriceFromMinor nullable.Nullable[int]                           `json:"price_from_minor,omitempty"`
+	PriceMode      EventSubmissionInputPriceMode                    `json:"price_mode"`
+	PriceToMinor   nullable.Nullable[int]                           `json:"price_to_minor,omitempty"`
+	StartsAtLocal  string                                           `json:"starts_at_local"`
+	TicketUrl      nullable.Nullable[string]                        `json:"ticket_url,omitempty"`
+	Title          string                                           `json:"title"`
+	VenueAddress   string                                           `json:"venue_address"`
+	VenueName      string                                           `json:"venue_name"`
+}
+
+// EventSubmissionInputAgeRating defines model for EventSubmissionInput.AgeRating.
+type EventSubmissionInputAgeRating string
+
+// EventSubmissionInputPriceMode defines model for EventSubmissionInput.PriceMode.
+type EventSubmissionInputPriceMode string
+
+// EventSubmissionList defines model for EventSubmissionList.
+type EventSubmissionList struct {
+	Counts *map[string]int   `json:"counts,omitempty"`
+	Items  []EventSubmission `json:"items"`
+	Total  int               `json:"total"`
+}
+
+// EventSubmissionOptions defines model for EventSubmissionOptions.
+type EventSubmissionOptions struct {
+	Categories []struct {
+		Label string       `json:"label"`
+		Slug  CategorySlug `json:"slug"`
+	} `json:"categories"`
+	Cities []struct {
+		Id       openapi_types.UUID `json:"id"`
+		Name     string             `json:"name"`
+		Timezone string             `json:"timezone"`
+	} `json:"cities"`
+}
+
 // GeoPoint defines model for GeoPoint.
 type GeoPoint struct {
 	// Lat Передавайте вместе с lng; используется только для расчёта расстояния
@@ -2134,6 +2383,11 @@ type Unauthenticated = ErrorResponse
 // ValidationError defines model for ValidationError.
 type ValidationError = ErrorResponse
 
+// CreateEventSubmissionParams defines parameters for CreateEventSubmission.
+type CreateEventSubmissionParams struct {
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // GetEventMapParams defines parameters for GetEventMap.
 type GetEventMapParams struct {
 	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
@@ -2237,6 +2491,39 @@ type GetInternalAnalyticsDashboardParamsDays int
 // SyncInternalEventSource202JSONResponseBodyStatus defines parameters for SyncInternalEventSource.
 type SyncInternalEventSource202JSONResponseBodyStatus string
 
+// ListInternalEventSubmissionsParams defines parameters for ListInternalEventSubmissions.
+type ListInternalEventSubmissionsParams struct {
+	Limit  *int                                      `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                                      `form:"offset,omitempty" json:"offset,omitempty"`
+	Status *ListInternalEventSubmissionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// ListInternalEventSubmissionsParamsStatus defines parameters for ListInternalEventSubmissions.
+type ListInternalEventSubmissionsParamsStatus string
+
+// ApproveUserEventDomainJSONBody defines parameters for ApproveUserEventDomain.
+type ApproveUserEventDomainJSONBody struct {
+	Hostname string                                `json:"hostname"`
+	Purpose  ApproveUserEventDomainJSONBodyPurpose `json:"purpose"`
+}
+
+// ApproveUserEventDomainJSONBodyPurpose defines parameters for ApproveUserEventDomain.
+type ApproveUserEventDomainJSONBodyPurpose string
+
+// ApproveInternalEventSubmissionJSONBody defines parameters for ApproveInternalEventSubmission.
+type ApproveInternalEventSubmissionJSONBody = map[string]interface{}
+
+// RejectInternalEventSubmissionJSONBody defines parameters for RejectInternalEventSubmission.
+type RejectInternalEventSubmissionJSONBody struct {
+	Reason string `json:"reason"`
+}
+
+// ListMyEventSubmissionsParams defines parameters for ListMyEventSubmissions.
+type ListMyEventSubmissionsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetMySavedEventsParams defines parameters for GetMySavedEvents.
 type GetMySavedEventsParams struct {
 	Tab   *GetMySavedEventsParamsTab `form:"tab,omitempty" json:"tab,omitempty"`
@@ -2278,6 +2565,9 @@ type BootstrapMaxSessionJSONRequestBody = BootstrapRequest
 // IngestBehaviorEventsJSONRequestBody defines body for IngestBehaviorEvents for application/json ContentType.
 type IngestBehaviorEventsJSONRequestBody = BehaviorBatchRequest
 
+// CreateEventSubmissionJSONRequestBody defines body for CreateEventSubmission for application/json ContentType.
+type CreateEventSubmissionJSONRequestBody = EventSubmissionInput
+
 // RecordTicketClickJSONRequestBody defines body for RecordTicketClick for application/json ContentType.
 type RecordTicketClickJSONRequestBody = TicketClickRequest
 
@@ -2292,6 +2582,15 @@ type UpdateInternalEventSourceJSONRequestBody = EventSourceInput
 
 // ApproveInternalEventSourceDomainJSONRequestBody defines body for ApproveInternalEventSourceDomain for application/json ContentType.
 type ApproveInternalEventSourceDomainJSONRequestBody = EventSourceDomainInput
+
+// ApproveUserEventDomainJSONRequestBody defines body for ApproveUserEventDomain for application/json ContentType.
+type ApproveUserEventDomainJSONRequestBody ApproveUserEventDomainJSONBody
+
+// ApproveInternalEventSubmissionJSONRequestBody defines body for ApproveInternalEventSubmission for application/json ContentType.
+type ApproveInternalEventSubmissionJSONRequestBody = ApproveInternalEventSubmissionJSONBody
+
+// RejectInternalEventSubmissionJSONRequestBody defines body for RejectInternalEventSubmission for application/json ContentType.
+type RejectInternalEventSubmissionJSONRequestBody RejectInternalEventSubmissionJSONBody
 
 // UpdateMyNotificationPreferencesJSONRequestBody defines body for UpdateMyNotificationPreferences for application/json ContentType.
 type UpdateMyNotificationPreferencesJSONRequestBody = NotificationPreferencesRequest

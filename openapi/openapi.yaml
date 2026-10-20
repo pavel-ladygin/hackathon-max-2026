@@ -17,9 +17,546 @@ tags:
 - name: Saved
 - name: Rooms
 - name: EventSources
+- name: EventSubmissions
 security:
 - bearerAuth: []
 paths:
+  /event-submissions:
+    post:
+      tags:
+      - EventSubmissions
+      operationId: createEventSubmission
+      summary: createEventSubmission
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionCreated'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventSubmissionInput'
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+  /event-submissions/options:
+    get:
+      tags:
+      - EventSubmissions
+      operationId: getEventSubmissionOptions
+      summary: getEventSubmissionOptions
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionOptions'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /me/event-submissions:
+    get:
+      tags:
+      - EventSubmissions
+      operationId: listMyEventSubmissions
+      summary: listMyEventSubmissions
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionList'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - &id001
+        name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - &id002
+        name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+          default: 0
+  /internal/event-submissions:
+    get:
+      tags:
+      - EventSubmissions
+      operationId: listInternalEventSubmissions
+      summary: listInternalEventSubmissions
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionList'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+      parameters:
+      - *id001
+      - *id002
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+  /internal/event-submissions/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: &id003
+        type: string
+        format: uuid
+    get:
+      tags:
+      - EventSubmissions
+      operationId: getInternalEventSubmission
+      summary: getInternalEventSubmission
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+  /internal/event-submissions/{id}/approve:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    post:
+      tags:
+      - EventSubmissions
+      operationId: approveInternalEventSubmission
+      summary: approveInternalEventSubmission
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionDecision'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+  /internal/event-submissions/{id}/reject:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    post:
+      tags:
+      - EventSubmissions
+      operationId: rejectInternalEventSubmission
+      summary: rejectInternalEventSubmission
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionDecision'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+  /internal/event-submissions/{id}/image:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - EventSubmissions
+      operationId: getInternalEventSubmissionImage
+      security:
+      - analyticsBasicAuth: []
+      responses:
+        '200':
+          description: Проверенная афиша заявки
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+            image/avif:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Домен не разрешён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /internal/event-submissions/domains:
+    get:
+      tags:
+      - EventSubmissions
+      operationId: listUserEventDomains
+      summary: listUserEventDomains
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - domains
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventSourceAllowedDomain'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+    post:
+      tags:
+      - EventSubmissions
+      operationId: approveUserEventDomain
+      summary: approveUserEventDomain
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSourceAllowedDomain'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Доступ запрещён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Конфликт состояния или ключа идемпотентности
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Слишком большой запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Превышен лимит подачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - analyticsBasicAuth: []
+      description: 'Basic Auth на Nginx и проверенное backend подтверждение proxy. Для мутаций обязательны same-origin Origin
+        и X-Admin-Request: 1. Отсутствующая настройка proxy закрывает внутренние API.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - hostname
+              - purpose
+              properties:
+                hostname:
+                  type: string
+                purpose:
+                  type: string
+                  enum:
+                  - image
+                  - ticket
+  /internal/event-submissions/domains/{domainId}:
+    parameters:
+    - name: domainId
+      in: path
+      required: true
+      schema: *id003
+    delete:
+      tags:
+      - EventSubmissions
+      operationId: revokeUserEventDomain
+      security:
+      - analyticsBasicAuth: []
+      responses:
+        '204':
+          description: Разрешение отозвано
   /health/ready:
     get:
       tags:
@@ -48,7 +585,7 @@ paths:
       security:
       - analyticsBasicAuth: []
       summary: Получить агрегированные метрики закрытого дашборда
-      description: Доступ защищён Basic Auth на внешнем Nginx. Ответ содержит только сводные данные и ненадолго кэшируется приложением.
+      description: Доступ защищён Basic Auth на внешнем Nginx и проверяемым backend подтверждением proxy. Ответ содержит только сводные данные и ненадолго кэшируется приложением.
       parameters:
       - name: days
         in: query
@@ -1208,14 +1745,307 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
-    EventSourceFieldMapping:
+    EventSubmissionInput:
       type: object
       additionalProperties: false
+      required:
+      - title
+      - description
+      - city_id
+      - venue_name
+      - venue_address
+      - starts_at_local
+      - price_mode
+      - category_slug
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+        description:
+          type: string
+          maxLength: 10000
+          minLength: 1
+        venue_name:
+          type: string
+          maxLength: 200
+          minLength: 1
+        venue_address:
+          type: string
+          maxLength: 500
+          minLength: 1
+        city_id:
+          type: string
+          format: uuid
+        starts_at_local:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$
+        ends_at_local:
+          type:
+          - string
+          - 'null'
+        price_mode:
+          type: string
+          enum:
+          - free
+          - paid
+          - unknown
+        price_from_minor:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 100000000
+        price_to_minor:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 100000000
+        category_slug:
+          $ref: '#/components/schemas/CategorySlug'
+        ticket_url:
+          type:
+          - string
+          - 'null'
+          maxLength: 2048
+          pattern: ^https://
+        image_url:
+          type:
+          - string
+          - 'null'
+          maxLength: 2048
+          pattern: ^https://
+        age_rating:
+          type:
+          - string
+          - 'null'
+          enum:
+          - 0+
+          - 6+
+          - 12+
+          - 16+
+          - 18+
+          - unknown
+          - null
+      allOf:
+      - if:
+          properties:
+            price_mode:
+              const: paid
+        then:
+          required:
+          - price_from_minor
+          - ticket_url
+          properties:
+            price_from_minor:
+              type: integer
+              minimum: 1
+            ticket_url:
+              type: string
+              minLength: 9
+      - if:
+          properties:
+            price_mode:
+              const: unknown
+        then:
+          required:
+          - ticket_url
+          properties:
+            ticket_url:
+              type: string
+              minLength: 9
+            price_from_minor:
+              type: 'null'
+            price_to_minor:
+              type: 'null'
+    EventSubmission:
+      type: object
+      required:
+      - id
+      - author_id
+      - city_id
+      - starts_at
+      - timezone
+      - payload
+      - status
+      - created_at
+      - decided_at
+      - decided_by
+      - rejection_reason
+      - event_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        author_name:
+          type:
+          - string
+          - 'null'
+        city_id:
+          type: string
+          format: uuid
+        starts_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        payload:
+          $ref: '#/components/schemas/EventSubmissionInput'
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        decided_by:
+          type:
+          - string
+          - 'null'
+        rejection_reason:
+          type:
+          - string
+          - 'null'
+        event_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+    EventSubmissionList:
+      type: object
+      required:
+      - items
+      - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSubmission'
+        total:
+          type: integer
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+    EventSubmissionDetail:
+      type: object
+      required:
+      - submission
+      - duplicates
+      - resource_domains
+      properties:
+        submission:
+          $ref: '#/components/schemas/EventSubmission'
+        duplicates:
+          type: array
+          items:
+            type: object
+            required:
+            - event_id
+            - title
+            - starts_at
+            - venue_name
+            properties:
+              event_id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              starts_at:
+                type: string
+                format: date-time
+              venue_name:
+                type: string
+        resource_domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSourceAllowedDomain'
+    EventSubmissionCreated:
+      type: object
+      required:
+      - id
+      - status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+        created_at:
+          type: string
+          format: date-time
+    EventSubmissionDecision:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - approved
+          - rejected
+        event_id:
+          type: string
+          format: uuid
+    EventSubmissionOptions:
+      type: object
+      required:
+      - cities
+      - categories
+      properties:
+        cities:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - name
+            - timezone
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              timezone:
+                type: string
+        categories:
+          type: array
+          items:
+            type: object
+            required:
+            - slug
+            - label
+            properties:
+              slug:
+                $ref: '#/components/schemas/CategorySlug'
+              label:
+                type: string
+    EventSourceFieldMapping:
+      type: object
       properties:
         path: {type: string}
-        transform:
-          type: string
-          enum: ['', string, number, iso_datetime, unix_timestamp, strip_html]
+        transform: {type: string, enum: ['', string, number, iso_datetime, unix_timestamp, strip_html]}
         default: {type: string}
       required: [path]
     EventSourceDefaults:

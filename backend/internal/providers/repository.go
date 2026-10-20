@@ -128,7 +128,7 @@ func (r *Repository) BeginSyncRun(ctx context.Context, start SyncRunStart) (uuid
 	}
 	provider := strings.TrimSpace(start.Provider)
 	switch {
-	case provider == "" || provider == "demo":
+	case provider == "" || provider == "demo" || provider == "user":
 		return uuid.Nil, errors.New("sync run provider is invalid")
 	case start.CityID == uuid.Nil:
 		return uuid.Nil, errors.New("sync run city is required")
@@ -251,7 +251,7 @@ func validatePersistenceInput(cityID uuid.UUID, event NormalizedEvent) error {
 	switch {
 	case cityID == uuid.Nil:
 		return errors.New("provider event city is required")
-	case source == "" || source == "demo" || event.IsDemo:
+	case source == "" || source == "demo" || source == "user" || event.IsDemo:
 		return errors.New("provider event source is invalid")
 	case strings.TrimSpace(event.ExternalID) == "":
 		return errors.New("provider event external ID is required")

@@ -93,7 +93,7 @@ func (s *Service) Click(ctx context.Context, userID, eventID uuid.UUID, roomIDs 
 		if err := tx.QueryRow(ctx, `SELECT source FROM events WHERE id=$1`, eventID).Scan(&source); err != nil {
 			return err
 		}
-		if strings.HasPrefix(source, "generic:") {
+		if strings.HasPrefix(source, "generic:") || source == "user" {
 			host, err := resourcedomains.ResourceHostname(availability.TicketUrl.String)
 			if err != nil {
 				return ErrUnavailable

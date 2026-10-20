@@ -137,7 +137,7 @@ SELECT e.id, e.title, e.subtitle,
        e.ticket_available, e.status, e.age_rating, e.source, e.source_updated_at, e.is_demo
 FROM events e JOIN venues v ON v.id = e.venue_id
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
+    SELECT CASE WHEN (image_event.source LIKE 'generic:%' OR image_event.source = 'user') THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = e.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE e.id = $4 AND e.is_demo = false AND e.provider_active = true AND e.starts_at > now()
@@ -231,7 +231,7 @@ func (q *Queries) GetDiscoveryUserCity(ctx context.Context, userID uuid.UUID) (p
 }
 
 const listDiscoveryEventImages = `-- name: ListDiscoveryEventImages :many
-SELECT CASE WHEN e.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = $1 ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50
+SELECT CASE WHEN (e.source LIKE 'generic:%' OR e.source = 'user') THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END::text AS url, ei.width, ei.height, ei.role FROM event_images ei JOIN events e ON e.id = ei.event_id WHERE ei.event_id = $1 ORDER BY CASE ei.role WHEN 'hero' THEN 0 WHEN 'card' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 50
 `
 
 type ListDiscoveryEventImagesRow struct {
@@ -322,7 +322,7 @@ SELECT f.id, f.title, f.subtitle,
        EXISTS (SELECT 1 FROM saved_events se WHERE se.user_id = $1 AND se.event_id = f.id) AS saved
 FROM filtered f
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN image_event.source LIKE 'generic:%' THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = f.id
+    SELECT CASE WHEN (image_event.source LIKE 'generic:%' OR image_event.source = 'user') THEN '/api/v1/event-images/' || ei.id::text || '/content' ELSE ei.url END AS url FROM event_images ei JOIN events image_event ON image_event.id = ei.event_id WHERE ei.event_id = f.id
     ORDER BY CASE ei.role WHEN 'card' THEN 0 WHEN 'hero' THEN 1 ELSE 2 END, ei.position, ei.id LIMIT 1
 ) image ON true
 WHERE ($2::timestamptz IS NULL OR (f.starts_at, f.id) > ($2::timestamptz, $3::uuid))

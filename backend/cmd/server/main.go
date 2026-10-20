@@ -22,6 +22,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventresources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsubmissions"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
@@ -188,6 +189,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
 		analyticsHandler.RegisterRoutes,
 		eventSourcesHandler.RegisterRoutes,
+		func(r chi.Router) { eventsubmissions.NewHandler(db).RegisterRoutes(r, authService.Middleware) },
 		eventresources.NewHandler(db).RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
