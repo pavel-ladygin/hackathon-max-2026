@@ -34,11 +34,37 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("TIMEPAD_TIMEOUT", "")
 	t.Setenv("TIMEPAD_PAGE_SIZE", "")
 	t.Setenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE", "")
+	t.Setenv("EVENT_SYNC_CITY_ID", "")
+	t.Setenv("EVENT_SYNC_CITY_PROFILES", "")
+	t.Setenv("TIMEPAD_CITY_NAME", "")
 	t.Setenv("REG_S3_ENDPOINT", "")
 	t.Setenv("REG_S3_REGION", "")
 	t.Setenv("REG_S3_BUCKET", "")
 	t.Setenv("REG_S3_ACCESS_KEY_ID", "")
 	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "")
+}
+
+func TestREGS3AndMulticityConfigurationLoadTogether(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("REG_S3_BUCKET", "hackathon-max")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "test-access")
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("EVENT_SYNC_CITY_ID", "3d3c83de-691b-510e-85e5-79685c4012ee")
+	t.Setenv("KUDAGO_LOCATION", "KZN")
+	t.Setenv("TIMEPAD_CITY_NAME", "Казань")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RegS3Bucket != "hackathon-max" || cfg.RegS3AccessKeyID != "test-access" || cfg.RegS3SecretAccessKey != "test-secret" {
+		t.Fatal("multicity configuration lost S3 upload settings")
+	}
+	if cfg.KudaGoLocation != "kzn" || !cfg.KudaGoLocationExplicit || cfg.TimepadCityName != "Казань" {
+		t.Fatal("S3 configuration lost explicit multicity provider settings")
+	}
+	if err := cfg.ValidateSyncCity("Казань", "Europe/Moscow"); err != nil {
+		t.Fatalf("combined configuration rejected the selected city: %v", err)
+	}
 }
 
 func TestREGS3ConfigurationIsOptionalAndRequiresCompleteCredentials(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,7 @@ type Runner struct {
 	sources  *sourceconfig.Repository
 	store    providers.SyncStore
 	cityID   uuid.UUID
+	cities   sourceconfig.CityBindings
 	logger   *slog.Logger
 	importFn func(context.Context, uuid.UUID, sourceconfig.Source, string, providers.SyncStore) (providers.ImportStats, error)
 }
@@ -34,7 +36,20 @@ func NewRunner(db *store.Pool, sources *sourceconfig.Repository, cityID uuid.UUI
 	if db == nil || sources == nil || cityID == uuid.Nil {
 		return nil, errors.New("event source runner dependencies are required")
 	}
-	return &Runner{db: db, sources: sources, store: providers.NewRepository(db), cityID: cityID, logger: slog.Default(), importFn: importRecords}, nil
+	bindings, err := sourceconfig.LoadCityBindings()
+	if err != nil {
+		return nil, err
+	}
+	return &Runner{db: db, sources: sources, store: providers.NewRepository(db), cityID: cityID, cities: bindings, logger: slog.Default(), importFn: importRecords}, nil
+}
+
+// CityForSource is shared by manual execution and the scheduled source filter.
+// An unbound source retains the caller's legacy default (Moscow in production).
+func (runner *Runner) CityForSource(sourceKey string) uuid.UUID {
+	if city, ok := runner.cities[canonicalSourceKey(sourceKey)]; ok {
+		return city
+	}
+	return runner.cityID
 }
 
 func (runner *Runner) prepare(ctx context.Context, sourceID uuid.UUID) (sourceconfig.Source, string, error) {
@@ -45,8 +60,18 @@ func (runner *Runner) prepare(ctx context.Context, sourceID uuid.UUID) (sourceco
 	if !source.Enabled {
 		return sourceconfig.Source{}, "", ErrSourceDisabled
 	}
+	if err := runner.sources.ValidateExecutionIdentity(ctx, source); err != nil {
+		return sourceconfig.Source{}, "", err
+	}
+	source.SourceKey = canonicalSourceKey(source.SourceKey)
 	if _, err := configured(source, secret); err != nil {
 		return sourceconfig.Source{}, "", ErrSourceInvalid
+	}
+	if city, bound := runner.cities[source.SourceKey]; bound {
+		var timezone string
+		if err := runner.db.QueryRow(ctx, "SELECT timezone FROM cities WHERE id=$1", city).Scan(&timezone); err != nil || strings.TrimSpace(timezone) != strings.TrimSpace(source.Defaults.Timezone) {
+			return sourceconfig.Source{}, "", ErrSourceInvalid
+		}
 	}
 	return source, secret, nil
 }
@@ -65,7 +90,7 @@ func (runner *Runner) Run(ctx context.Context, sourceID uuid.UUID) (providers.Im
 		return providers.ImportStats{}, err
 	}
 	defer lock.Release()
-	return runner.importFn(syncCtx, runner.cityID, source, secret, runner.store)
+	return runner.importFn(syncCtx, runner.CityForSource(source.SourceKey), source, secret, runner.store)
 }
 
 // Start reserves the lock before returning so the HTTP handler can preserve its
@@ -87,7 +112,7 @@ func (runner *Runner) Start(ctx context.Context, sourceID uuid.UUID) error {
 		syncCtx, cancel := context.WithTimeout(ctx, generic.FullSyncTimeout)
 		defer cancel()
 		started := time.Now()
-		stats, runErr := runner.importFn(syncCtx, runner.cityID, source, secret, runner.store)
+		stats, runErr := runner.importFn(syncCtx, runner.CityForSource(source.SourceKey), source, secret, runner.store)
 		attributes := []any{"provider", source.SourceKey, "sync_run_id", stats.SyncRunID, "duration", time.Since(started), "pages_fetched", stats.PagesFetched, "fetched", stats.Fetched, "inserted", stats.Inserted, "updated", stats.Updated, "skipped", stats.Skipped, "errors", stats.Errors}
 		if runErr != nil || stats.Errors > 0 {
 			runner.logger.Error("generic event source sync finished", append(attributes, "final_status", providers.SyncRunFailed, "error", "provider import failed")...)
@@ -104,6 +129,7 @@ type sourceSyncLock struct {
 }
 
 func acquireSourceSyncLock(ctx context.Context, db *store.Pool, sourceKey string) (*sourceSyncLock, error) {
+	sourceKey = canonicalSourceKey(sourceKey)
 	conn, err := pgx.ConnectConfig(ctx, db.Config().ConnConfig.Copy())
 	if err != nil {
 		return nil, errors.New("event source sync lock unavailable")

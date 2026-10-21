@@ -75,6 +75,10 @@ func normalizeEvents(events []eventDTO, actualSince, actualUntil time.Time) []pr
 }
 
 func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []providers.NormalizedEvent {
+	return normalizeEventForTimezone(event, actualSince, actualUntil, moscowZone)
+}
+
+func normalizeEventForTimezone(event eventDTO, actualSince, actualUntil time.Time, timezone string) []providers.NormalizedEvent {
 	title := providers.CleanText(event.Title)
 	if event.ID <= 0 || title == "" || event.Place == nil || providers.CleanText(event.Place.Title) == "" || !validCoordinates(event.Place.Coords) {
 		return nil
@@ -87,7 +91,7 @@ func normalizeEvent(event eventDTO, actualSince, actualUntil time.Time) []provid
 		Subtitle:       subtitle(event),
 		Description:    description(event),
 		Venue:          normalizeVenue(*event.Place),
-		Timezone:       moscowZone,
+		Timezone:       timezone,
 		Currency:       "RUB",
 		TicketURL:      providerPageURL(event.SiteURL),
 		Status:         defaultStatus,

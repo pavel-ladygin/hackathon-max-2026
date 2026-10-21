@@ -18,8 +18,10 @@ func TestExpectedVersionsIncludesFoundation(t *testing.T) {
 	if len(versions) < len(want) || !slices.Equal(versions[:len(want)], want) {
 		t.Fatalf("foundation versions = %v, want prefix %v", versions, want)
 	}
-	if versions[len(versions)-1] != 31 {
-		t.Fatalf("latest migration version = %d, want 31", versions[len(versions)-1])
+	for _, required := range []int64{25, 30, 31, 32} {
+		if !slices.Contains(versions, required) {
+			t.Fatalf("required migration %d is missing: %v", required, versions)
+		}
 	}
 }
 
