@@ -116,7 +116,7 @@ function AnalyticsDashboard() {
   return <main className={styles.page}>
     <header className={styles.header}><div className={styles.brand}><div className={styles.brandMark}>M</div><div><p>WORKNET <span>/ INTERNAL</span></p><h1>Продуктовая аналитика</h1></div></div><div className={styles.headerTools}><span className={styles.live}><i /> Данные PostgreSQL</span><div className={styles.period} aria-label="Период отчёта">{periodOptions.map((period) => <button key={period} aria-pressed={days === period} onClick={() => { setDays(period); setLoadingFor(period); setError('') }}>{period} дней</button>)}</div><a className={styles.navLink} href="/internal/event-moderation">Модерация →</a><a className={styles.navLink} href="/internal/event-sources">Источники API →</a></div></header>
     <div className={styles.content}>
-      <div className={styles.intro}><div><p className={styles.kicker}>ОБЗОР ПРОДУКТА</p><h2>Что происходит в MAX Together</h2><p>Сводка за последние {days} дней · часовой пояс UTC</p></div><div className={styles.updated}>{data?.generated_at ? <>Обновлено<br /><b>{new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(data.generated_at))}</b></> : 'Обновляется автоматически'}</div></div>
+      <div className={styles.intro}><div><p className={styles.kicker}>ОБЗОР ПРОДУКТА · LEGACY МЕТРИКИ</p><h2>Что происходит в MAX Together</h2><p>Сводка за последние {days} дней · часовой пояс UTC</p><p>На экране прежние определения метрик. <a href={`/api/v1/internal/analytics/recommendations?days=${days}&download=1`}>Скачать KPI v2 с N/D и отдельными метриками раундов (JSON)</a></p></div><div className={styles.updated}>{data?.generated_at ? <>Обновлено<br /><b>{new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(data.generated_at))}</b></> : 'Обновляется автоматически'}</div></div>
       {error && <div className={styles.error} role="alert"><strong>Не получилось загрузить аналитику</strong><span>{error}</span><button onClick={() => { setError(''); setLoadingFor(days); setReload((value) => value + 1) }}>Повторить</button></div>}
       {loading && <div className={styles.loading}>Загружаем сводку…</div>}
       {!loading && !error && <>
@@ -129,12 +129,12 @@ function AnalyticsDashboard() {
           <MetricCard label="Created → Match Conversion" value={percent(createdMatchConversion)} detail="комнаты с мэтчем / созданные комнаты" />
           <MetricCard label="Match → Event Open CTR" value={percent(eventOpenCtr)} detail="комнаты с открытием события / комнаты с мэтчем" />
           <MetricCard label="Ticket clicks" value={number(totals.ticketClicks)} detail={`${number(totals.ticketRooms)} комнат · Match → Ticket CTR ${percent(ticketCtr)}`} />
-          <MetricCard label="No-match rate" value={percent(summary?.no_match_rate)} detail="активированные комнаты, завершившиеся без мэтча" />
-          <MetricCard label="Pool exhausted rate" value={percent(summary?.pool_exhausted_rate)} detail="активированные комнаты с исчерпанным пулом" />
+          <MetricCard label="No-match rate" value={percent(summary?.no_match_rate)} detail="Legacy: текущее exhausted среди комнат, где голосовали оба" />
+          <MetricCard label="Pool exhausted rate" value={percent(summary?.pool_exhausted_rate)} detail="Legacy: текущее состояние, без истории прошлых раундов" />
         </div>
         <div className={styles.mainGrid}>
           <Panel title="Динамика" hint="Активные пользователи и новые комнаты по дням" className={styles.trendPanel}>{daily.length && !noData ? <TrendChart rows={daily} /> : <Empty />}</Panel>
-          <Panel title="Воронка комнат" hint="Уникальные комнаты когорты по дате создания · каждый этап включает предыдущие"><div className={styles.funnel}>{[
+          <Panel title="Воронка комнат" hint="Уникальные комнаты когорты по дате создания · каждый этап включает предыдущие. Шаринг — попытка, а не подтверждённая доставка."><div className={styles.funnel}>{[
             ['Комната создана', totals.created], ['Приглашение отправлено или использовано', totals.invites], ['Второй участник вошёл', totals.joined], ['Комната активирована', totals.activated], ['Найден мэтч', totals.matched], ['Переход к билетам', totals.ticketRooms],
           ].map(([label, value], index) => <div className={styles.funnelStep} key={label}><span className={styles.funnelIndex}>0{index + 1}</span><span>{label}</span><b>{number(value as number)}</b></div>)}</div></Panel>
         </div>

@@ -19,6 +19,7 @@ const (
 	featureBudgetHeadroom           = "budget_headroom"
 	featureDistanceQuality          = "distance_quality"
 	featureBehavioralAffinity       = "behavioral_affinity"
+	featurePriceKnown               = "price_known"
 )
 
 type participantFeatures struct {
@@ -54,6 +55,12 @@ func scoreEvent(event catalog.Event, venue platform.Venue, first, second normali
 		featureBudgetHeadroom:           (firstFeatures.budgetHeadroom + secondFeatures.budgetHeadroom) / 2,
 		featureDistanceQuality:          (firstFeatures.distanceQuality + secondFeatures.distanceQuality) / 2,
 		featureBehavioralAffinity:       (firstFeatures.behavioralAffinity + secondFeatures.behavioralAffinity) / 2,
+	}
+	// Null is unknown, never free or confirmed within budget. Keep it eligible
+	// with zero budget headroom, and preserve an aggregate fact for diagnostics.
+	features[featurePriceKnown] = 0
+	if event.PriceFromMinor.Valid {
+		features[featurePriceKnown] = 1
 	}
 	return rankedEvent{
 		event:      event,

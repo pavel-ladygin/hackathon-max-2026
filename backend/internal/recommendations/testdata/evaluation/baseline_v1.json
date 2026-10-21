@@ -1,0 +1,1211 @@
+{
+  "SourceSHA": "cf58086a73c6cb9d24b57f86ea0f82619f331503",
+  "DatasetSHA256": "0f8311fbac9aa6b662ea6047fa820c4a4067a6920704fb3967361c84c2fe2fa9",
+  "Cases": [
+    {
+      "Name": "shared_interests",
+      "InputSHA256": "356d32413d1c9d174a26c5755fcb2dd5637a5aa2361293f854e7a4880c690383",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 9,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 8,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "opposite_interests",
+      "InputSHA256": "2635f48d6610911dedd97342e247326d7e2d28be9bab5bc3aaa923a2e0bc8caa",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "388fcdb7dd5f79247578b235af73880ebe1b2b92b739f223f902d42345e7de02",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.29629629850387573
+        },
+        {
+          "Event": 1,
+          "Score": 0.1913580298423767
+        },
+        {
+          "Event": 2,
+          "Score": 0.1913580298423767
+        }
+      ]
+    },
+    {
+      "Name": "zero_history_both",
+      "InputSHA256": "0f0ecef925e4cdf944dec729900303e934a3a617b95f16150a600da642a3cdc1",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.18518517911434174
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "zero_history_one",
+      "InputSHA256": "ca69a840495da57fa88db7691ec057790d067bb71b552491260cc25c77487637",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "6f2be1c30079bf6d0e07771b79a880e7eaa2d2886c5b3c9edbcf324fddc55a71",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.21759259700775146
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "conflicting_profiles",
+      "InputSHA256": "37ea322eb88f5e526999b04b2ef9a73be7c52212a769e578d00188ac3e502e1a",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "48d3a9ea521e949f9c2cfebaa75f11eb0d04c8bb19df01aef5650312c4a28271",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.37037035822868347
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "asymmetric_budget",
+      "InputSHA256": "f6257734169eb6f2b17cf181f56e9ac64fc0cc9d01b0835a3717bee7c417706a",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "dfb47732587559292f08babff6b2520b0dea88baa459623ca640d80c4422543c",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.35246914625167847
+        },
+        {
+          "Event": 2,
+          "Score": 0.2728395164012909
+        },
+        {
+          "Event": 4,
+          "Score": 0.2469135820865631
+        }
+      ]
+    },
+    {
+      "Name": "raised_other_budget",
+      "InputSHA256": "202fb988b2ee94df88dc419dd835771362a936e2d0af9f69d058cd547352f9d4",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "dcbab05a6735d17d2de9aef8ee97ce62741cf72338557fb5296ec8d3fb5f38a0",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.35506173968315125
+        },
+        {
+          "Event": 2,
+          "Score": 0.27802470326423645
+        },
+        {
+          "Event": 4,
+          "Score": 0.2469135820865631
+        }
+      ]
+    },
+    {
+      "Name": "unknown_price",
+      "InputSHA256": "664a4c9fabada2523da3f897caa91edcdb36640b4287ac8cca63a6df4f0b2e63",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.43209877610206604
+        },
+        {
+          "Event": 3,
+          "Score": 0.4135802388191223
+        },
+        {
+          "Event": 2,
+          "Score": 0.2469135820865631
+        }
+      ]
+    },
+    {
+      "Name": "all_unknown_price",
+      "InputSHA256": "60646dfacf4d61ef47e11c26e1542f896b13c1c969fc58ff845c3da8522ad0e2",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.2469135820865631
+        },
+        {
+          "Event": 6,
+          "Score": 0.2469135820865631
+        },
+        {
+          "Event": 4,
+          "Score": 0.2469135820865631
+        },
+        {
+          "Event": 5,
+          "Score": 0.2469135820865631
+        },
+        {
+          "Event": 1,
+          "Score": 0.2469135820865631
+        },
+        {
+          "Event": 2,
+          "Score": 0.2469135820865631
+        }
+      ]
+    },
+    {
+      "Name": "concentrated_category",
+      "InputSHA256": "a5da17e6ea8bffd3e5f6efaec1a5087da7760b04b823ddc9d18c4560cd178dd9",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 19,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 18,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_0",
+      "InputSHA256": "a5f1bfc402a696aa53287c10d682eb44504aca9bfbfeb3caaef5ecbb30c726cc",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": []
+    },
+    {
+      "Name": "pool_1",
+      "InputSHA256": "f327e381139f17ff30ef1178036aeef2dbb8a017c1f2a66bf2490cbc7e417f22",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_2",
+      "InputSHA256": "8da9207605b0e5372f737d4946a2a1d382288265ac696f4e4ca1041cd5745718",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_20",
+      "InputSHA256": "edb255c5394cc64cc26a6224579e67716237e6bb1f54fbdcb5a12cbcc9259f7f",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_21",
+      "InputSHA256": "c99d23cd607b16c4b6339a892e7289f17d7476e17535e021187bcf91ecc3a891",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 21,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_22",
+      "InputSHA256": "19107e9d2aae2e8b35efa551c8edcfc2395afbff60ff0429d5d547dd22b8f2c4",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 22,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 21,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_23",
+      "InputSHA256": "c983ecf22f8f014b8795e6e8dbd46a5bd9a6ca8583bea372b8bdcf3a582f477c",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 22,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 21,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 23,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_24",
+      "InputSHA256": "0b3fbb37a634537a4aa9a7a087765599a25ad24cecc27235880a432b143c17b1",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 22,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 21,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 24,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 23,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 14,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 15,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 16,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 11,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 8,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "pool_30",
+      "InputSHA256": "e239892a49b94f1e75b13f1c403fdf1aed9dda1d6a7d5d62b566454b6b9baddf",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 27,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 22,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 25,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 21,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 17,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 28,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 30,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 13,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 7,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 24,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 19,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 10,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 18,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 9,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 29,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 20,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 12,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 23,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "repeat_round_2",
+      "InputSHA256": "df8ebd41b45d76fc2a457c9097258652e80bef4444fc0c35f1f4b444ca914d78",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "11d1a6582939951d878476b08677236d1e8b2fd0fbfdc1ea60b4f6db378e244d",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "repeat_round_3",
+      "InputSHA256": "390bf9e8be3f6eeac7bbd06a97b4b262023d0b1d478f49c3c28ffcac7cec188e",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "f2f79407c96bb4418ca6c7c49b8695cb9232b691fce19fc7c1338c857c11b61e",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "distinct_sessions",
+      "InputSHA256": "cd703cce8eefe3b3ea7744f66d80914d29efa33e8246d85f04bc8e3b08a04971",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "same_series",
+      "InputSHA256": "8c3ea1fb251f4891075182733ce3a47790c473eac03eefa790622e24a82d2f2e",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "expired_time",
+      "InputSHA256": "4072c5a52660984ac81ebb2586394dba3389a043fa0c8234502fb345d53b06d8",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "c2c0a7ae053023b66f257c19bba26609c3f824e754c0c93b389c850970e10db1",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "zero_date_overlap",
+      "InputSHA256": "e56ab17bce2b707eb616a539baeb56bce334a1fb30858932e53af4729c3b6806",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "25b18d9eaf2ec4b28cb31b21352efe20f02f3d010c11635e0aad091b0ff61bd4",
+      "IsSmall": false,
+      "Rows": []
+    },
+    {
+      "Name": "zero_slot_overlap",
+      "InputSHA256": "8e221856c65a8defb62b0f708142e3a980206d409dec44684fd84a151a8f5cf3",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "01898c418f1a800ed779ce0ccf6ae36576cb8cb2b8fcf0c74db18c689d0e858c",
+      "IsSmall": false,
+      "Rows": []
+    },
+    {
+      "Name": "secondary_categories",
+      "InputSHA256": "8228fd44b3653a120dcd8db6e586c0c7db023ef793bed5856489d9c1df378f21",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.34567901492118835
+        },
+        {
+          "Event": 2,
+          "Score": 0.14814814925193787
+        }
+      ]
+    },
+    {
+      "Name": "soft_category_only",
+      "InputSHA256": "ba0ab0d9ac7b7d4595e2df2847905396ede26e79c74a21d1e1edf384be809155",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 4,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 1,
+          "Score": 0.14814814925193787
+        },
+        {
+          "Event": 2,
+          "Score": 0.14814814925193787
+        }
+      ]
+    },
+    {
+      "Name": "ticket_status",
+      "InputSHA256": "9d21b861d9133b2164fb0377ddd476aed64dbc198f392d495ad2311a5333ffb4",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "719685564c1ca354819f02ef283446839f9a737f35a168ff291ae99024857e12",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "venue_exclusion",
+      "InputSHA256": "4758dcaa0c49ca8cdf6ed67b37cf3acd8f7e57cf86ce0fccbdbe2a8bbf2a348c",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "d9a7b32f83b41473091564d2bc2eb69b972a15b9c9b856c0384e8aa1481865cd",
+      "IsSmall": true,
+      "Rows": [
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "sparse_behavior",
+      "InputSHA256": "c054f4bf9a9e1881cd900869b3bbf996241c4e809994d259d1911ecd55bbf82b",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "bf8314978715e0f0271024054690fd32c433348d53049ee46bde7e849bd02578",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.20172838866710663
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    },
+    {
+      "Name": "established_behavior",
+      "InputSHA256": "f02419f75725eb474acbd0a7d9dcc7d92664206b25d71f5d0e2b7ba798724584",
+      "RankerVersion": "scoring-diversity-v6-behavioral",
+      "Fingerprint": "a35ecae92bb939f74bef0f97266561506328ec83ef32bfd2c178602979cd685e",
+      "IsSmall": false,
+      "Rows": [
+        {
+          "Event": 3,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 6,
+          "Score": 0.24176955223083496
+        },
+        {
+          "Event": 4,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 5,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 1,
+          "Score": 0.395061731338501
+        },
+        {
+          "Event": 2,
+          "Score": 0.395061731338501
+        }
+      ]
+    }
+  ]
+}
