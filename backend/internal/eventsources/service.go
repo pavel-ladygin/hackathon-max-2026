@@ -36,6 +36,7 @@ type mappingFields struct {
 }
 
 func configured(source sourceconfig.Source, secret string) (configuration, error) {
+	source.SourceKey = canonicalSourceKey(source.SourceKey)
 	query := make(url.Values, len(source.QueryParams))
 	for key, value := range source.QueryParams {
 		query.Set(key, value)
@@ -80,7 +81,7 @@ func configured(source sourceconfig.Source, secret string) (configuration, error
 		PriceFrom: fields.PriceFrom, PriceTo: fields.PriceTo,
 		PriceUnit: generic.PriceUnit(source.PriceUnit),
 		Defaults: generic.Defaults{
-			Category: source.Defaults.Category, Timezone: source.Defaults.Timezone,
+			Category: source.Defaults.Category, Timezone: strings.TrimSpace(source.Defaults.Timezone),
 			Currency: source.Defaults.Currency, Status: source.Defaults.Status,
 		},
 	}
@@ -152,6 +153,8 @@ func ValidateInput(input sourceconfig.Input) error {
 }
 
 func validateSource(input sourceconfig.Input, secret string) error {
+	// Preserve accepted persisted identities: updates require the exact stored
+	// key. Canonicalize execution only, as the normalizer has always done.
 	if !strings.HasPrefix(input.SourceKey, "generic:") || strings.TrimSpace(strings.TrimPrefix(input.SourceKey, "generic:")) == "" || strings.TrimSpace(input.Name) == "" {
 		return errors.New("source_key and name are required")
 	}
@@ -170,6 +173,10 @@ func validateSource(input sourceconfig.Input, secret string) error {
 	}
 	_, err := configured(returnSource, secret)
 	return err
+}
+
+func canonicalSourceKey(sourceKey string) string {
+	return strings.TrimSpace(sourceKey)
 }
 
 type PreviewError struct {
@@ -340,6 +347,7 @@ func importRecords(ctx context.Context, cityID uuid.UUID, source sourceconfig.So
 type importFetcher func(context.Context, generic.HTTPConfig, generic.PaginationConfig) ([]any, int, error)
 
 func importRecordsWithFetcher(ctx context.Context, cityID uuid.UUID, source sourceconfig.Source, secret string, store providers.SyncStore, fetch importFetcher) (stats providers.ImportStats, importErr error) {
+	source.SourceKey = canonicalSourceKey(source.SourceKey)
 	config, err := configured(source, secret)
 	if err != nil {
 		return stats, err

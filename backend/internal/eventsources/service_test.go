@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/generic"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/resourcedomains"
@@ -30,6 +32,8 @@ func TestValidateInput(t *testing.T) {
 	}{
 		{name: "valid", mutate: func(*sourceconfig.Input) {}},
 		{name: "source key namespace", mutate: func(in *sourceconfig.Input) { in.SourceKey = "kudago" }, wantErr: true},
+		{name: "padded source key", mutate: func(in *sourceconfig.Input) { in.SourceKey = " generic:service-test " }, wantErr: true},
+		{name: "legacy trailing whitespace remains editable", mutate: func(in *sourceconfig.Input) { in.SourceKey = "generic:service-test " }},
 		{name: "missing required mapping", mutate: func(in *sourceconfig.Input) { in.Mapping = json.RawMessage(`{"title":{"path":"name"}}`) }, wantErr: true},
 		{name: "unsupported pagination", mutate: func(in *sourceconfig.Input) { in.Pagination = json.RawMessage(`{"mode":"cursor"}`) }, wantErr: true},
 		{name: "private endpoint", mutate: func(in *sourceconfig.Input) { in.EndpointURL = "https://127.0.0.1/events" }, wantErr: true},
@@ -67,6 +71,46 @@ func TestValidateInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfiguredTrimsTimezoneForGenericNormalizer(t *testing.T) {
+	input := validSourceInput()
+	input.Defaults.Timezone = " Europe/Moscow "
+	config, err := configured(sourceconfig.Source{SourceKey: input.SourceKey, EndpointURL: input.EndpointURL, AuthType: input.AuthType, Pagination: input.Pagination, Mapping: input.Mapping, Defaults: input.Defaults, PriceUnit: input.PriceUnit}, "")
+	if err != nil || config.mapping.Defaults.Timezone != "Europe/Moscow" {
+		t.Fatalf("configuration=%+v err=%v", config.mapping.Defaults, err)
+	}
+}
+
+func TestImportLegacyPaddedSourceUsesCanonicalEventAndRunScope(t *testing.T) {
+	input := validSourceInput()
+	source := sourceconfig.Source{SourceKey: "generic:service-test ", EndpointURL: input.EndpointURL, AuthType: input.AuthType, Pagination: input.Pagination, Mapping: input.Mapping, Defaults: input.Defaults, PriceUnit: input.PriceUnit}
+	store := &capturingSyncStore{}
+	_, err := importRecordsWithFetcher(context.Background(), uuid.New(), source, "", store, func(context.Context, generic.HTTPConfig, generic.PaginationConfig) ([]any, int, error) {
+		return []any{map[string]any{"id": "legacy-1", "name": "Legacy", "date": "2026-10-01T12:00:00+03:00", "place": map[string]any{"name": "Hall"}}}, 1, nil
+	})
+	if err != nil || len(store.starts) != 1 || store.starts[0].Provider != "generic:service-test" || len(store.events) != 1 || store.events[0].Source != "generic:service-test" {
+		t.Fatalf("starts=%+v events=%+v err=%v", store.starts, store.events, err)
+	}
+}
+
+type capturingSyncStore struct {
+	starts []providers.SyncRunStart
+	events []providers.NormalizedEvent
+}
+
+func (s *capturingSyncStore) UpsertWithResult(_ context.Context, _ uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
+	s.events = append(s.events, event)
+	return providers.UpsertResult{EventID: uuid.New(), Inserted: true}, nil
+}
+
+func (s *capturingSyncStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {
+	s.starts = append(s.starts, start)
+	return uuid.New(), nil
+}
+
+func (s *capturingSyncStore) FinishSyncRun(context.Context, providers.SyncRunFinish) (int, error) {
+	return 0, nil
 }
 
 func TestPreviewGroupsUnapprovedMediaHostsAsWarnings(t *testing.T) {

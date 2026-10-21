@@ -29,6 +29,7 @@ const (
 )
 
 var errPartialProviderSync = errors.New("provider sync completed with record errors")
+var errProviderSyncBusy = errors.New("provider sync skipped because another worker owns the lock")
 
 type eventImporter interface {
 	Import(context.Context, uuid.UUID, providers.SyncStore, func(error)) (providers.ImportStats, error)
@@ -79,13 +80,13 @@ func run() error {
 		}
 	}
 
-	cityID := uuid.MustParse(catalogseed.MoscowCityID)
-	var cityExists bool
-	if err := db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM cities WHERE id = $1)", cityID).Scan(&cityExists); err != nil {
-		return fmt.Errorf("check Moscow catalog city: %w", err)
+	cityID := cfg.EventSyncCityID
+	var cityName, cityTimezone string
+	if err := db.QueryRow(ctx, "SELECT name,timezone FROM cities WHERE id = $1", cityID).Scan(&cityName, &cityTimezone); err != nil {
+		return errors.New("configured catalog city is missing or unavailable; initialize it first")
 	}
-	if !cityExists {
-		return errors.New("Moscow catalog city is missing; initialize the catalog first")
+	if err := validateSyncCity(cfg, cityName, cityTimezone); err != nil {
+		return err
 	}
 
 	kudaGoClient, err := kudago.NewClient(kudago.Options{
@@ -93,43 +94,55 @@ func run() error {
 		Timeout:  cfg.KudaGoTimeout,
 		Location: cfg.KudaGoLocation,
 		PageSize: cfg.KudaGoPageSize,
+		CityID:   cityID,
+		Timezone: cityTimezone,
 	})
 	if err != nil {
 		return err
 	}
-	syncProviders := []syncProvider{{name: "kudago", priority: kudaGoPriority, importer: kudaGoClient}}
-	if cfg.TimepadToken == "" {
-		logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "TIMEPAD_TOKEN is not configured")
+	lockProvider := func(provider string) func(context.Context) (func() error, bool, error) {
+		return func(lockCtx context.Context) (func() error, bool, error) {
+			lock, acquired, err := providers.TryAcquireProviderSyncLock(lockCtx, db, provider)
+			if lock == nil {
+				return nil, acquired, err
+			}
+			return lock.Release, acquired, err
+		}
+	}
+	// Preserve the existing provider-wide Timepad lock/rate-limit coordination.
+	// It conservatively serializes cities; run audit/reconciliation is city-scoped.
+	syncProviders := []syncProvider{{name: "kudago", priority: kudaGoPriority, importer: kudaGoClient, acquireLock: lockProvider("kudago")}}
+	timepadCity := cfg.TimepadCityName
+	if cityID.String() == catalogseed.MoscowCityID && timepadCity == "" {
+		timepadCity = "Москва"
+	}
+	if cfg.TimepadToken == "" || timepadCity == "" {
+		logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "token or explicit provider city is not configured")
 	} else {
 		timepadClient, err := timepad.NewClient(timepad.Options{
 			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
 			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
 			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
+			CityID:               cityID, CityName: timepadCity, Timezone: cityTimezone,
 		})
 		if err != nil {
 			return err
 		}
 		syncProviders = append(syncProviders, syncProvider{
 			name: "timepad", priority: timepadPriority, importer: timepadClient,
-			acquireLock: func(lockCtx context.Context) (func() error, bool, error) {
-				lock, acquired, err := providers.TryAcquireProviderSyncLock(lockCtx, db, "timepad")
-				if lock == nil {
-					return nil, acquired, err
-				}
-				return lock.Release, acquired, err
-			},
+			acquireLock: lockProvider("timepad"),
 		})
 	}
 
 	repository := providers.NewRepository(db)
 	var genericRunner *eventsources.Runner
 	if sourceRepository != nil {
-		genericRunner, err = eventsources.NewRunner(db, sourceRepository, cityID)
+		genericRunner, err = eventsources.NewRunner(db, sourceRepository, uuid.MustParse(catalogseed.MoscowCityID))
 		if err != nil {
 			return err
 		}
 	}
-	logger.Info("event sync starting", "providers", len(syncProviders), "city", "moscow", "interval", cfg.EventSyncInterval, "run_on_start", cfg.EventSyncRunOnStart)
+	logger.Info("event sync starting", "providers", len(syncProviders), "city_id", cityID, "city", cityName, "timezone", cityTimezone, "interval", cfg.EventSyncInterval, "run_on_start", cfg.EventSyncRunOnStart)
 	runSyncLoop(ctx, cfg.EventSyncInterval, cfg.EventSyncRunOnStart, func() bool {
 		cycleProviders := append([]syncProvider(nil), syncProviders...)
 		if sourceRepository != nil {
@@ -137,7 +150,7 @@ func run() error {
 			if err != nil {
 				logger.Error("generic event source list unavailable", "error", "could not load source configuration")
 			} else {
-				cycleProviders = append(cycleProviders, genericSyncProviders(genericSources, genericRunner)...)
+				cycleProviders = append(cycleProviders, genericSyncProviders(genericSources, genericRunner, cityID)...)
 			}
 		}
 		if err := syncProvidersOnce(ctx, cityID, repository, cycleProviders, logger); err != nil {
@@ -147,6 +160,10 @@ func run() error {
 	})
 	logger.Info("event sync shutdown complete")
 	return nil
+}
+
+func validateSyncCity(cfg config.Config, name, timezone string) error {
+	return cfg.ValidateSyncCity(name, timezone)
 }
 
 func runSyncLoop(ctx context.Context, interval time.Duration, runOnStart bool, syncAll func() bool) {
@@ -187,8 +204,8 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 			return fmt.Errorf("acquire %s sync lock: %w", provider.name, err)
 		}
 		if !acquired {
-			logger.Info("timepad_sync_skipped_already_running", "provider", provider.name)
-			return nil
+			logger.Info("provider_sync_skipped_already_running", "provider", provider.name, "city_id", cityID, "final_status", "skipped")
+			return errProviderSyncBusy
 		}
 		defer func() {
 			if err := release(); err != nil {
