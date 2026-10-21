@@ -151,18 +151,25 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		}
 	}
 
+	diagnostics := &contracts.PoolBuildDiagnostics{CatalogTotal: len(snapshot.Events)}
 	eligibleEvents := make([]catalog.Event, 0, len(snapshot.Events))
 	for _, event := range snapshot.Events {
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
 		}
-		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, referenceTime, first.radius, second.radius) {
+		if !eligible(event, venues, stations, zone, constraints, referenceTime, diagnostics, first.radius, second.radius) {
+			continue
+		}
+		if previous[event.ID] {
+			diagnostics.ExcludedPrevious++
 			continue
 		}
 		eligibleEvents = append(eligibleEvents, event)
 	}
 
 	series := collapseEventSeries(eligibleEvents)
+	diagnostics.CollapsedSeries = len(eligibleEvents) - len(series)
+	diagnostics.FinalEligible = len(series)
 
 	items := make([]rankedEvent, 0, len(series))
 	for _, candidateSeries := range series {
@@ -195,7 +202,9 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		Candidates:       candidates,
 		RankerVersion:    rankerVersion,
 		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first, second),
+		Diagnostics:      contracts.ExhaustionDiagnostics{Internal: diagnostics},
 	}
+	diagnostics.Selected = len(candidates)
 	switch len(candidates) {
 	case 0:
 		result.Diagnostics.Reasons = []contracts.ExhaustionReason{{Code: "catalog_shortage", Text: "Недостаточно подходящих событий в каталоге."}}
@@ -460,21 +469,32 @@ func copySet(a map[string]bool) map[string]bool {
 	}
 	return r
 }
-func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, radii ...radiusConstraint) bool {
-	venue, ok := venues[event.VenueID]
-	if !ok || event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" || !event.StartsAt.Valid {
+func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, diagnostics *contracts.PoolBuildDiagnostics, radii ...radiusConstraint) bool {
+	if !event.StartsAt.Valid || !event.StartsAt.Time.After(referenceTime) {
 		return false
 	}
-	if !event.StartsAt.Time.After(referenceTime) {
+	diagnostics.AllFuture++
+	if event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" {
 		return false
 	}
+	diagnostics.HasValidTicket++
+	local := event.StartsAt.Time.In(zone)
+	if !c.dates[local.Format(time.DateOnly)] || !c.days[dayType(local.Weekday())] {
+		return false
+	}
+	diagnostics.DateOverlap++
+	if !c.slots[timeSlot(local.Hour())] {
+		return false
+	}
+	diagnostics.SlotOverlap++
 	if event.PriceFromMinor.Valid {
 		if event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
 			return false
 		}
 	}
-	local := event.StartsAt.Time.In(zone)
-	if !c.dates[local.Format(time.DateOnly)] || !c.days[dayType(local.Weekday())] || !c.slots[timeSlot(local.Hour())] {
+	diagnostics.Budget++
+	venue, ok := venues[event.VenueID]
+	if !ok {
 		return false
 	}
 	if c.exclusions["nightclubs"] && venue.VenueType == "nightclub" {
@@ -501,6 +521,7 @@ func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations
 			return false
 		}
 	}
+	diagnostics.Venue++
 	return true
 }
 

@@ -92,6 +92,7 @@ type evaluationOutput struct {
 	Name, InputSHA256, RankerVersion, Fingerprint string
 	IsSmall                                       bool
 	Rows                                          []evaluationRow
+	PoolDiagnostics                               *contracts.PoolBuildDiagnostics `json:",omitempty"`
 }
 
 type evaluationBaseline struct {
@@ -269,6 +270,7 @@ func runEvaluation(t testing.TB, dataset evaluationDataset, c evaluationCase) ev
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkPoolDiagnostics(t, result)
 	repeated, err := builder.Build(context.Background(), input)
 	if err != nil || !reflect.DeepEqual(result, repeated) {
 		t.Fatalf("%s: nondeterministic repeated build: %v", c.Name, err)
@@ -286,7 +288,7 @@ func runEvaluation(t testing.TB, dataset evaluationDataset, c evaluationCase) ev
 		t.Fatalf("%s: catalog order changed result: %v", c.Name, err)
 	}
 	output := evaluationOutput{Name: c.Name, InputSHA256: inputSHA, RankerVersion: result.RankerVersion,
-		Fingerprint: result.InputFingerprint, IsSmall: result.IsSmall, Rows: []evaluationRow{}}
+		Fingerprint: result.InputFingerprint, IsSmall: result.IsSmall, Rows: []evaluationRow{}, PoolDiagnostics: result.Diagnostics.Internal}
 	for _, candidate := range result.Candidates {
 		alias, known := aliases[candidate.EventID]
 		if !known {
@@ -421,7 +423,30 @@ func renderEvaluation(dataset evaluationDataset, datasetSHA string, baseline eva
 	for i, c := range dataset.Cases {
 		fmt.Fprintf(&report, "- `%s`: v1 %v; current %v. %s\n", c.Name, evaluationAliases(baseline.Cases[i].Rows), evaluationAliases(current[i].Rows), c.Criterion)
 	}
+	fmt.Fprint(&report, "\nВнутренняя диагностика current: последовательные остатки после фильтров; excluded_previous и collapsed_series — число удалённых. final_eligible — до top-k, selected — после. Только evaluator: эти агрегаты не сериализуются в JSON комнаты.\n\n")
+	fmt.Fprint(&report, "Классы описывают доступность кандидатов. Nonempty не означает no-match: голоса, общий лайк и финальность третьего раунда определяет lifecycle. Счётчики не доказывают, что смена soft-категории или повышение бюджета только одним участником восстановит пул.\n\n")
+	fmt.Fprintln(&report, "| Кейс | Класс | catalog_total | all_future | has_valid_ticket | date_overlap | slot_overlap | budget | venue | excluded_previous | collapsed_series | final_eligible | selected |")
+	fmt.Fprintln(&report, "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+	for i, c := range dataset.Cases {
+		d := current[i].PoolDiagnostics
+		if d == nil {
+			continue
+		} // Historical v1 did not collect private counts.
+		fmt.Fprintf(&report, "| %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+			c.Name, evaluationPoolAvailability(d), d.CatalogTotal, d.AllFuture, d.HasValidTicket, d.DateOverlap, d.SlotOverlap, d.Budget, d.Venue, d.ExcludedPrevious, d.CollapsedSeries, d.FinalEligible, d.Selected)
+	}
 	return report.String()
+}
+
+func evaluationPoolAvailability(d *contracts.PoolBuildDiagnostics) string {
+	switch d.FinalEligible {
+	case 0:
+		return "zero_eligible"
+	case 1, 2:
+		return "small_eligible"
+	default:
+		return "nonempty_eligible"
+	}
 }
 
 func evaluationAliases(rows []evaluationRow) []int {
