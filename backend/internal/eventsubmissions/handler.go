@@ -21,6 +21,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/adminauth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalogseed"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventuploads"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/generic"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/resourcedomains"
@@ -44,6 +45,7 @@ type Handler struct {
 	db      *store.Pool
 	domains *resourcedomains.Repository
 	fetch   func(context.Context, string) ([]byte, string, error)
+	uploads *eventuploads.Service
 	slots   chan struct{}
 }
 
@@ -54,11 +56,15 @@ func NewHandler(db *store.Pool) *Handler {
 // NewHandlerWithFetcher permits deterministic tests of poster policy and
 // outages. Production code should use NewHandler.
 func NewHandlerWithFetcher(db *store.Pool, fetch func(context.Context, string) ([]byte, string, error)) *Handler {
+	return NewHandlerWithUploads(db, fetch, nil)
+}
+
+func NewHandlerWithUploads(db *store.Pool, fetch func(context.Context, string) ([]byte, string, error), uploads *eventuploads.Service) *Handler {
 	domains, err := resourcedomains.NewRepository(db)
 	if db == nil || err != nil || fetch == nil {
 		panic("event submission dependencies are required")
 	}
-	return &Handler{db: db, domains: domains, fetch: fetch, slots: make(chan struct{}, 8)}
+	return &Handler{db: db, domains: domains, fetch: fetch, uploads: uploads, slots: make(chan struct{}, 8)}
 }
 
 // RegisterRoutes mounts authenticated user APIs and internal APIs. The caller
@@ -85,20 +91,21 @@ func (h *Handler) RegisterRoutes(r chi.Router, authenticate func(http.Handler) h
 }
 
 type SubmissionInput struct {
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	CityID         uuid.UUID `json:"city_id"`
-	VenueName      string    `json:"venue_name"`
-	VenueAddress   string    `json:"venue_address"`
-	StartsAtLocal  string    `json:"starts_at_local"`
-	EndsAtLocal    *string   `json:"ends_at_local,omitempty"`
-	PriceMode      string    `json:"price_mode"`
-	PriceFromMinor *int32    `json:"price_from_minor,omitempty"`
-	PriceToMinor   *int32    `json:"price_to_minor,omitempty"`
-	TicketURL      *string   `json:"ticket_url,omitempty"`
-	CategorySlug   string    `json:"category_slug"`
-	ImageURL       *string   `json:"image_url,omitempty"`
-	AgeRating      *string   `json:"age_rating,omitempty"`
+	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	CityID         uuid.UUID  `json:"city_id"`
+	VenueName      string     `json:"venue_name"`
+	VenueAddress   string     `json:"venue_address"`
+	StartsAtLocal  string     `json:"starts_at_local"`
+	EndsAtLocal    *string    `json:"ends_at_local,omitempty"`
+	PriceMode      string     `json:"price_mode"`
+	PriceFromMinor *int32     `json:"price_from_minor,omitempty"`
+	PriceToMinor   *int32     `json:"price_to_minor,omitempty"`
+	TicketURL      *string    `json:"ticket_url,omitempty"`
+	CategorySlug   string     `json:"category_slug"`
+	ImageURL       *string    `json:"image_url,omitempty"`
+	ImageID        *uuid.UUID `json:"image_id,omitempty"`
+	AgeRating      *string    `json:"age_rating,omitempty"`
 }
 
 type Submission struct {
@@ -250,6 +257,20 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		payload, _ := json.Marshal(input)
 		out = Submission{ID: uuid.New(), AuthorID: principal.UserID, CityID: input.CityID, StartsAt: start, Timezone: timezone, Payload: input, Status: "pending"}
 		err = tx.QueryRow(r.Context(), `INSERT INTO event_submissions(id,author_id,city_id,starts_at,timezone,payload,status,idempotency_key,request_hash) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING created_at`, out.ID, out.AuthorID, out.CityID, out.StartsAt, out.Timezone, payload, key, hash[:]).Scan(&out.CreatedAt)
+		if err != nil {
+			return err
+		}
+		if input.ImageID != nil {
+			if h.uploads == nil {
+				return errors.New("image storage unavailable")
+			}
+			if _, err := h.uploads.Claim(r.Context(), tx, *input.ImageID, principal.UserID, out.ID); err != nil {
+				if errors.Is(err, eventuploads.ErrNotFound) || errors.Is(err, eventuploads.ErrNotOwner) || errors.Is(err, eventuploads.ErrClaimed) || errors.Is(err, eventuploads.ErrExpired) || errors.Is(err, eventuploads.ErrDeleting) {
+					return errImageIDInvalid
+				}
+				return err
+			}
+		}
 		return err
 	})
 	if errors.Is(err, errIdempotencyConflict) {
@@ -258,6 +279,13 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, errRateLimit) {
 		writeError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "Submission limit reached")
+		return
+	}
+	if errors.Is(err, errImageIDInvalid) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "VALIDATION_FAILED", "message": "Проверьте данные мероприятия.", "request_id": httpapi.RequestID(r.Context()), "details": map[string]string{"field": "image_id", "reason": "Загрузите новую афишу, принадлежащую вам."}}})
 		return
 	}
 	if err != nil {
@@ -276,6 +304,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 var (
 	errIdempotencyConflict = errors.New("idempotency conflict")
 	errRateLimit           = errors.New("submission rate limit")
+	errImageIDInvalid      = errors.New("image_id upload is invalid")
 )
 
 func validateInput(in *SubmissionInput) error {
@@ -285,6 +314,12 @@ func validateInput(in *SubmissionInput) error {
 	trim(&in.VenueName)
 	trim(&in.VenueAddress)
 	trim(&in.CategorySlug)
+	if in.ImageID != nil && *in.ImageID == uuid.Nil {
+		return errors.New("image_id is invalid")
+	}
+	if in.ImageID != nil && in.ImageURL != nil {
+		return errors.New("image_id and image_url cannot both be provided")
+	}
 	if in.Title == "" || len([]rune(in.Title)) > 200 {
 		return errors.New("title is required and must be at most 200 characters")
 	}
@@ -371,7 +406,7 @@ func validationField(err error) string {
 		return ""
 	}
 	message := strings.ToLower(err.Error())
-	for _, field := range []string{"title", "description", "city_id", "venue_name", "venue_address", "starts_at_local", "ends_at_local", "price_mode", "price_from_minor", "price_to_minor", "ticket_url", "image_url", "category_slug", "age_rating"} {
+	for _, field := range []string{"title", "description", "city_id", "venue_name", "venue_address", "starts_at_local", "ends_at_local", "price_mode", "price_from_minor", "price_to_minor", "ticket_url", "image_url", "image_id", "category_slug", "age_rating"} {
 		if strings.Contains(message, field) {
 			return field
 		}
@@ -403,6 +438,7 @@ func writeSubmissionValidationError(w http.ResponseWriter, r *http.Request, err 
 		"price_to_minor":   "Цена «до» должна быть не меньше цены «от».",
 		"ticket_url":       "Для платного события укажите корректную HTTPS-ссылку.",
 		"image_url":        "Укажите корректную HTTPS-ссылку на афишу длиной до 2048 символов.",
+		"image_id":         "Загрузите афишу заново или выберите загрузку, принадлежащую вам.",
 		"category_slug":    "Выберите категорию из списка.",
 		"age_rating":       "Выберите допустимый возрастной рейтинг.",
 		"request":          "Проверьте введённые данные.",
@@ -671,7 +707,22 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 		if _, err = tx.Exec(r.Context(), `INSERT INTO event_categories(event_id,category_slug,is_primary) VALUES($1,$2,true)`, eventID, s.Payload.CategorySlug); err != nil {
 			return err
 		}
-		if s.Payload.ImageURL != nil {
+		if s.Payload.ImageID != nil {
+			if h.uploads == nil {
+				return errors.New("uploaded image storage is unavailable")
+			}
+			upload, uploadErr := h.uploads.ByIDTx(r.Context(), tx, *s.Payload.ImageID)
+			if errors.Is(uploadErr, eventuploads.ErrNotFound) || (uploadErr == nil && (upload.OwnerID != s.AuthorID || upload.SubmissionID == nil || *upload.SubmissionID != s.ID)) {
+				return errors.New("uploaded image is not linked to this submission")
+			}
+			if uploadErr != nil {
+				return uploadErr
+			}
+			imageURL := "/api/v1/event-images/" + upload.ID.String() + "/content"
+			if _, err = tx.Exec(r.Context(), `INSERT INTO event_images(id,event_id,url,width,height,role,position) VALUES($1,$2,$3,$4,$5,'card',0)`, upload.ID, eventID, imageURL, upload.Width, upload.Height); err != nil {
+				return err
+			}
+		} else if s.Payload.ImageURL != nil {
 			if _, err = tx.Exec(r.Context(), `INSERT INTO event_images(id,event_id,url,role,position) VALUES($1,$2,$3,'card',0)`, uuid.New(), eventID, *s.Payload.ImageURL); err != nil {
 				return err
 			}
@@ -790,14 +841,52 @@ func (h *Handler) pendingImage(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, r, "INVALID_REQUEST", "Query parameters are not allowed")
 		return
 	}
-	var raw *string
-	err := h.db.QueryRow(r.Context(), `SELECT payload->>'image_url' FROM event_submissions WHERE id=$1`, id).Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) || raw == nil {
-		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Pending image not found")
+	var raw, uploadText *string
+	err := h.db.QueryRow(r.Context(), `SELECT payload->>'image_url',payload->>'image_id' FROM event_submissions WHERE id=$1`, id).Scan(&raw, &uploadText)
+	if errors.Is(err, pgx.ErrNoRows) || (raw == nil && uploadText == nil) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Submission image not found")
 		return
 	}
 	if err != nil {
 		serverError(w, r)
+		return
+	}
+	if uploadText != nil {
+		if h.uploads == nil {
+			serverError(w, r)
+			return
+		}
+		uploadID, parseErr := uuid.Parse(*uploadText)
+		if parseErr != nil {
+			serverError(w, r)
+			return
+		}
+		upload, lookupErr := h.uploads.ByID(r.Context(), uploadID)
+		if lookupErr != nil || upload.SubmissionID == nil || *upload.SubmissionID != id {
+			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Pending image not found")
+			return
+		}
+		select {
+		case h.slots <- struct{}{}:
+			defer func() { <-h.slots }()
+		default:
+			writeError(w, r, http.StatusServiceUnavailable, "RESOURCE_UNAVAILABLE", "Image service is busy")
+			return
+		}
+		body, contentType, fetchErr := h.uploads.Fetch(r.Context(), uploadID)
+		if fetchErr != nil {
+			writeError(w, r, http.StatusBadGateway, "RESOURCE_UNAVAILABLE", "Image unavailable")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
+	if raw == nil {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Pending image not found")
 		return
 	}
 	host, err := resourcedomains.ResourceHostname(*raw)

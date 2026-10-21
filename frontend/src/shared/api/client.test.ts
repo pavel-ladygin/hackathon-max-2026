@@ -2,6 +2,34 @@ import { describe, expect, it, vi } from 'vitest'
 import { ApiClient } from './client'
 
 describe('API client', () => {
+  it('uploads a poster as multipart with auth and reports progress', async () => {
+    const fakeXHR = {
+      upload: { onprogress: null as ((event: ProgressEvent) => void) | null },
+      open: vi.fn(), setRequestHeader: vi.fn(), send: vi.fn(), abort: vi.fn(),
+      status: 0, responseText: '', onerror: null as (() => void) | null,
+      onabort: null as (() => void) | null, onload: null as ((event: ProgressEvent) => void) | null,
+      getResponseHeader: vi.fn(() => null),
+    }
+    const xhr = fakeXHR as unknown as XMLHttpRequest
+    const client = new ApiClient({ baseUrl: '/api/v1', getToken: () => 'token-1', xhrFactory: () => xhr })
+    const progress = vi.fn()
+    const file = new File(['poster'], 'poster.png', { type: 'image/png' })
+    const response = client.uploadEventSubmissionImage(file, { onProgress: progress })
+
+    expect(fakeXHR.open).toHaveBeenCalledWith('POST', '/api/v1/event-submissions/images')
+    expect(fakeXHR.setRequestHeader).toHaveBeenCalledWith('Authorization', 'Bearer token-1')
+    expect(fakeXHR.setRequestHeader).toHaveBeenCalledWith('Accept', 'application/json')
+    const form = fakeXHR.send.mock.calls[0]?.[0] as FormData
+    expect(form.get('file')).toBe(file)
+    expect(fakeXHR.setRequestHeader.mock.calls.map(([name]) => name)).not.toContain('Content-Type')
+    fakeXHR.upload.onprogress?.({ lengthComputable: true, total: 100, loaded: 42 } as ProgressEvent)
+    expect(progress).toHaveBeenCalledWith(42)
+    fakeXHR.status = 201
+    fakeXHR.responseText = '{"image_id":"upload-1"}'
+    fakeXHR.onload?.(new ProgressEvent('load'))
+    await expect(response).resolves.toEqual({ image_id: 'upload-1' })
+  })
+
   it('updates notification preferences through the authenticated endpoint', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ daily_notifications_enabled: true }))
     const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl, getToken: () => 'token-1' })

@@ -1930,22 +1930,32 @@ type EventSubmissionDetail struct {
 	Submission      EventSubmission            `json:"submission"`
 }
 
+// EventSubmissionImageUpload defines model for EventSubmissionImageUpload.
+type EventSubmissionImageUpload struct {
+	ImageId openapi_types.UUID `json:"image_id"`
+}
+
 // EventSubmissionInput defines model for EventSubmissionInput.
 type EventSubmissionInput struct {
-	AgeRating      nullable.Nullable[EventSubmissionInputAgeRating] `json:"age_rating,omitempty"`
-	CategorySlug   CategorySlug                                     `json:"category_slug"`
-	CityId         openapi_types.UUID                               `json:"city_id"`
-	Description    string                                           `json:"description"`
-	EndsAtLocal    nullable.Nullable[string]                        `json:"ends_at_local,omitempty"`
-	ImageUrl       nullable.Nullable[string]                        `json:"image_url,omitempty"`
-	PriceFromMinor nullable.Nullable[int]                           `json:"price_from_minor,omitempty"`
-	PriceMode      EventSubmissionInputPriceMode                    `json:"price_mode"`
-	PriceToMinor   nullable.Nullable[int]                           `json:"price_to_minor,omitempty"`
-	StartsAtLocal  string                                           `json:"starts_at_local"`
-	TicketUrl      nullable.Nullable[string]                        `json:"ticket_url,omitempty"`
-	Title          string                                           `json:"title"`
-	VenueAddress   string                                           `json:"venue_address"`
-	VenueName      string                                           `json:"venue_name"`
+	AgeRating    nullable.Nullable[EventSubmissionInputAgeRating] `json:"age_rating,omitempty"`
+	CategorySlug CategorySlug                                     `json:"category_slug"`
+	CityId       openapi_types.UUID                               `json:"city_id"`
+	Description  string                                           `json:"description"`
+	EndsAtLocal  nullable.Nullable[string]                        `json:"ends_at_local,omitempty"`
+
+	// ImageId ID returned by the authenticated image upload endpoint.
+	ImageId nullable.Nullable[openapi_types.UUID] `json:"image_id,omitempty"`
+
+	// ImageUrl Legacy external poster URL. Do not provide together with image_id.
+	ImageUrl       nullable.Nullable[string]     `json:"image_url,omitempty"`
+	PriceFromMinor nullable.Nullable[int]        `json:"price_from_minor,omitempty"`
+	PriceMode      EventSubmissionInputPriceMode `json:"price_mode"`
+	PriceToMinor   nullable.Nullable[int]        `json:"price_to_minor,omitempty"`
+	StartsAtLocal  string                        `json:"starts_at_local"`
+	TicketUrl      nullable.Nullable[string]     `json:"ticket_url,omitempty"`
+	Title          string                        `json:"title"`
+	VenueAddress   string                        `json:"venue_address"`
+	VenueName      string                        `json:"venue_name"`
 }
 
 // EventSubmissionInputAgeRating defines model for EventSubmissionInput.AgeRating.
@@ -2388,6 +2398,11 @@ type CreateEventSubmissionParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// UploadEventSubmissionImageMultipartBody defines parameters for UploadEventSubmissionImage.
+type UploadEventSubmissionImageMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
 // GetEventMapParams defines parameters for GetEventMap.
 type GetEventMapParams struct {
 	// CityId Город каталога. Если параметр не передан, сервер использует city_id из профиля пользователя. Если город не задан и там, сервер вернёт VALIDATION_FAILED.
@@ -2567,6 +2582,9 @@ type IngestBehaviorEventsJSONRequestBody = BehaviorBatchRequest
 
 // CreateEventSubmissionJSONRequestBody defines body for CreateEventSubmission for application/json ContentType.
 type CreateEventSubmissionJSONRequestBody = EventSubmissionInput
+
+// UploadEventSubmissionImageMultipartRequestBody defines body for UploadEventSubmissionImage for multipart/form-data ContentType.
+type UploadEventSubmissionImageMultipartRequestBody UploadEventSubmissionImageMultipartBody
 
 // RecordTicketClickJSONRequestBody defines body for RecordTicketClick for application/json ContentType.
 type RecordTicketClickJSONRequestBody = TicketClickRequest

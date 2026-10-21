@@ -29,4 +29,11 @@ func TestNewHandlerRegistersAuthenticatedDiscoveryRoutes(t *testing.T) {
 			}
 		})
 	}
+	t.Run("poster upload shares the API prefix and requires authentication", func(t *testing.T) {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/api/v1/event-submissions/images", nil))
+		if res.Code != http.StatusUnauthorized {
+			t.Fatalf("upload status=%d body=%s; want 401", res.Code, res.Body.String())
+		}
+	})
 }

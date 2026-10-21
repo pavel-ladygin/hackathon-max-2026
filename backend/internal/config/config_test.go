@@ -34,6 +34,29 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("TIMEPAD_TIMEOUT", "")
 	t.Setenv("TIMEPAD_PAGE_SIZE", "")
 	t.Setenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE", "")
+	t.Setenv("REG_S3_ENDPOINT", "")
+	t.Setenv("REG_S3_REGION", "")
+	t.Setenv("REG_S3_BUCKET", "")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "")
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "")
+}
+
+func TestREGS3ConfigurationIsOptionalAndRequiresCompleteCredentials(t *testing.T) {
+	setValidConfigEnv(t)
+	cfg, err := Load()
+	if err != nil || cfg.RegS3Endpoint != "https://s3.regru.cloud" || cfg.RegS3Region != "us-east-1" || cfg.RegS3Bucket != "" {
+		t.Fatalf("unexpected optional S3 defaults: %+v, %v", cfg, err)
+	}
+	t.Setenv("REG_S3_BUCKET", "hackathon-max")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "test-access")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "REG_S3_BUCKET, REG_S3_ACCESS_KEY_ID, and REG_S3_SECRET_ACCESS_KEY") {
+		t.Fatalf("partial S3 config accepted or reported poorly: %v", err)
+	}
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("REG_S3_ENDPOINT", "http://s3.regru.cloud")
+	if _, err := Load(); err == nil || err.Error() != "REG_S3_ENDPOINT is invalid" {
+		t.Fatalf("insecure S3 endpoint accepted or error leaked config: %v", err)
+	}
 }
 
 func TestTimepadSyncDefaultsAndOverrides(t *testing.T) {
