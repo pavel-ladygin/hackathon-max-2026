@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/catalogseed"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providerpolicy"
 )
 
@@ -42,6 +44,10 @@ type Config struct {
 	TimepadTimeout              time.Duration
 	TimepadPageSize             int
 	TimepadMaxRequestsPerMinute int
+	EventSyncCityID             uuid.UUID
+	KudaGoLocationExplicit      bool
+	TimepadCityName             string
+	SyncCityProfiles            map[uuid.UUID]SyncCityProfile
 }
 
 // Load reads and validates all required environment variables.
@@ -67,13 +73,28 @@ func Load() (Config, error) {
 		TimepadTimeout:              30 * time.Second,
 		TimepadPageSize:             100,
 		TimepadMaxRequestsPerMinute: 20,
+		EventSyncCityID:             uuid.MustParse(catalogseed.MoscowCityID),
 	}
 	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
 		cfg.KudaGoBaseURL = value
 	}
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_LOCATION")); value != "" {
-		cfg.KudaGoLocation = value
+		cfg.KudaGoLocation = strings.ToLower(value)
+		cfg.KudaGoLocationExplicit = true
+	}
+	if value := strings.TrimSpace(os.Getenv("EVENT_SYNC_CITY_ID")); value != "" {
+		cityID, err := uuid.Parse(value)
+		if err != nil || cityID == uuid.Nil {
+			return Config{}, fmt.Errorf("EVENT_SYNC_CITY_ID is invalid")
+		}
+		cfg.EventSyncCityID = cityID
+	}
+	cfg.TimepadCityName = strings.TrimSpace(os.Getenv("TIMEPAD_CITY_NAME"))
+	var profilesErr error
+	cfg.SyncCityProfiles, profilesErr = ParseSyncCityProfiles(os.Getenv("EVENT_SYNC_CITY_PROFILES"))
+	if profilesErr != nil {
+		return Config{}, profilesErr
 	}
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_TIMEOUT")); value != "" {
 		timeout, err := time.ParseDuration(value)

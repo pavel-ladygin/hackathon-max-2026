@@ -21,7 +21,7 @@ func TestSyncOneSkipsBusyTimepadLock(t *testing.T) {
 		name: "timepad", importer: importer,
 		acquireLock: func(context.Context) (func() error, bool, error) { return nil, false, nil },
 	}, slog.New(slog.NewJSONHandler(&logs, nil)))
-	if err != nil || importer.calls != 0 || !strings.Contains(logs.String(), "timepad_sync_skipped_already_running") {
+	if !errors.Is(err, errProviderSyncBusy) || importer.calls != 0 || !strings.Contains(logs.String(), "provider_sync_skipped_already_running") || !strings.Contains(logs.String(), `"final_status":"skipped"`) {
 		t.Fatalf("err=%v calls=%d logs=%s", err, importer.calls, logs.String())
 	}
 }

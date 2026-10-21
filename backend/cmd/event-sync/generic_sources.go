@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
@@ -21,7 +22,7 @@ func (i genericSourceImporter) Import(ctx context.Context, _ uuid.UUID, _ provid
 	return i.runner.Run(ctx, i.sourceID)
 }
 
-func genericSyncProviders(sources []sourceconfig.Source, runner *eventsources.Runner) []syncProvider {
+func genericSyncProviders(sources []sourceconfig.Source, runner *eventsources.Runner, targetCity ...uuid.UUID) []syncProvider {
 	ordered := append([]sourceconfig.Source(nil), sources...)
 	sort.Slice(ordered, func(i, j int) bool {
 		if ordered[i].SourceKey == ordered[j].SourceKey {
@@ -31,7 +32,10 @@ func genericSyncProviders(sources []sourceconfig.Source, runner *eventsources.Ru
 	})
 	result := make([]syncProvider, 0, len(ordered))
 	for _, source := range ordered {
-		if !source.Enabled {
+		if !source.Enabled || !strings.HasPrefix(strings.TrimSpace(source.SourceKey), "generic:") {
+			continue
+		}
+		if len(targetCity) > 0 && (runner == nil || runner.CityForSource(source.SourceKey) != targetCity[0]) {
 			continue
 		}
 		result = append(result, syncProvider{name: source.SourceKey, priority: genericPriority, importer: genericSourceImporter{runner: runner, sourceID: source.ID}})

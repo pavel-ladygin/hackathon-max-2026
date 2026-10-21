@@ -358,6 +358,42 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 	}
 }
 
+func TestImportConfiguredCityUsesMetadataAndPreservesInstant(t *testing.T) {
+	cityID := uuid.New()
+	startsAt := time.Date(2026, 10, 1, 7, 0, 0, 0, time.FixedZone("provider", 5*60*60))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"total":1,"values":[`+timepadImportEventAt(81, "Казань", startsAt)+`]}`)
+	}))
+	defer server.Close()
+	client := testClient(t, server)
+	client.cityID = cityID
+	client.cityName = "Казань"
+	client.timezone = "Asia/Yekaterinburg"
+	client.now = func() time.Time { return startsAt.Add(-time.Second).UTC() }
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	if _, err := client.Import(context.Background(), cityID, store, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.events) != 1 || store.events[0].Timezone != "Asia/Yekaterinburg" || !store.events[0].StartsAt.Equal(startsAt) {
+		t.Fatalf("event=%+v, want configured timezone and unchanged instant", store.events)
+	}
+}
+
+func TestImportConfiguredCityRejectsWrongUUIDBeforeNetwork(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	client := testClient(t, server)
+	client.cityID = uuid.New()
+	client.cityName = "Казань"
+	client.timezone = "Asia/Yekaterinburg"
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+	if err == nil || stats != (ImportStats{}) || requests != 0 || len(store.starts) != 0 {
+		t.Fatalf("stats=%+v err=%v requests=%d starts=%+v", stats, err, requests, store.starts)
+	}
+}
+
 func timepadImportEvent(id int, city string) string {
 	return timepadImportEventAt(id, city, time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC))
 }

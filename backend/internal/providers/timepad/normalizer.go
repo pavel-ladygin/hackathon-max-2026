@@ -24,6 +24,10 @@ func normalizeEvent(event eventDTO) (providers.NormalizedEvent, bool) {
 }
 
 func normalizeEventWithReason(event eventDTO) (providers.NormalizedEvent, providers.RejectionReason) {
+	return normalizeEventWithMetadata(event, moscowCity, moscowZone)
+}
+
+func normalizeEventWithMetadata(event eventDTO, cityName, timezone string) (providers.NormalizedEvent, providers.RejectionReason) {
 	title := providers.CleanText(event.Name)
 	if event.ID <= 0 {
 		return providers.NormalizedEvent{}, providers.RejectionInvalidID
@@ -48,7 +52,7 @@ func normalizeEventWithReason(event eventDTO) (providers.NormalizedEvent, provid
 		venueName = providers.CleanText(event.Organization.Name)
 	}
 	if venueName == "" {
-		venueName = "Москва"
+		venueName = cityName
 	}
 
 	normalized := providers.NormalizedEvent{
@@ -67,7 +71,7 @@ func normalizeEventWithReason(event eventDTO) (providers.NormalizedEvent, provid
 			VenueType:  "other",
 		},
 		StartsAt:        startsAt,
-		Timezone:        moscowZone,
+		Timezone:        timezone,
 		Currency:        "RUB",
 		TicketURL:       registrationURL,
 		TicketAvailable: registrationURL != nil && event.RegistrationData.IsRegistrationOpen,
