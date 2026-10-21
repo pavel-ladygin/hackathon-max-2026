@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	redirectPosterTimeout        = 10 * time.Second
+	redirectPosterTimeout        = 2 * time.Minute
 	redirectPosterMaxHops        = 5
 	redirectPosterMaxAPIResponse = 1 << 20
 )
@@ -100,7 +100,7 @@ func (c *Client) resolveCanonicalEventID(ctx context.Context, currentEventID int
 			continue
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			return 0, fmt.Errorf("timepad event page returned HTTP %d", response.StatusCode)
+			return 0, providers.HTTPError(response.StatusCode)
 		}
 		parentID, err := timepadEventIDFromURL(current)
 		if err != nil {
@@ -130,24 +130,24 @@ func (c *Client) fetchEventPoster(ctx context.Context, canonicalEventID int64) (
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("redirected timepad event API returned HTTP %d", response.StatusCode)
+		return nil, responseError(response)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, redirectPosterMaxAPIResponse+1))
 	if err != nil {
-		return nil, fmt.Errorf("read redirected timepad event: %w", err)
+		return nil, providers.SafeError("provider_transport_error")
 	}
 	if len(body) > redirectPosterMaxAPIResponse {
-		return nil, errors.New("redirected timepad event response is too large")
+		return nil, providers.SafeError("provider_response_too_large")
 	}
 	var parent struct {
 		ID          int64    `json:"id"`
 		PosterImage imageDTO `json:"poster_image"`
 	}
 	if err := json.Unmarshal(body, &parent); err != nil {
-		return nil, fmt.Errorf("decode redirected timepad event: %w", err)
+		return nil, providers.SafeError("provider_decode_error")
 	}
 	if parent.ID != canonicalEventID {
-		return nil, errors.New("redirected timepad API returned an unexpected event ID")
+		return nil, providers.SafeError("provider_origin_error")
 	}
 	return normalizeImages(parent.PosterImage), nil
 }

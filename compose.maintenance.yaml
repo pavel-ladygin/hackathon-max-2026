@@ -14,6 +14,9 @@ services:
       DATABASE_URL: "postgres://${POSTGRES_USER:-max_together}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-max_together}?sslmode=disable"
       TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
       TIMEPAD_TOKEN: ${TIMEPAD_TOKEN:-}
+      EVENT_SYNC_TIMEPAD_ENABLED: ${EVENT_SYNC_TIMEPAD_ENABLED:-false}
+      TIMEPAD_MAX_REQUESTS_PER_MINUTE: ${TIMEPAD_MAX_REQUESTS_PER_MINUTE:-6}
+      EVENT_SYNC_MAX_RUN_DURATION: ${EVENT_SYNC_MAX_RUN_DURATION:-45m}
     depends_on:
       postgres:
         condition: service_healthy

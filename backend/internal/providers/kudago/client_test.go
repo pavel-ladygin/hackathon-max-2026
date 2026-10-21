@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 func testClient(t *testing.T, server *httptest.Server, timeout time.Duration) *Client {
@@ -18,8 +20,15 @@ func testClient(t *testing.T, server *httptest.Server, timeout time.Duration) *C
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.limiter = immediateLimiter{}
+	client.waitRetry = func(context.Context, time.Duration) error { return nil }
+	client.jitter = func(time.Duration) time.Duration { return 0 }
 	return client
 }
+
+type immediateLimiter struct{}
+
+func (immediateLimiter) Wait(context.Context) error { return nil }
 
 func TestClientFetchPageSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +108,7 @@ func TestClientTimeoutAndContextCancellation(t *testing.T) {
 
 	t.Run("client timeout", func(t *testing.T) {
 		_, err := testClient(t, server, 20*time.Millisecond).fetchPage(context.Background(), fetchOptions{})
-		if err == nil || !strings.Contains(err.Error(), "perform kudago request") {
+		if err == nil || !strings.Contains(err.Error(), "provider_timeout") {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -121,7 +130,7 @@ func TestClientHTTPError(t *testing.T) {
 	defer server.Close()
 
 	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
-	if err == nil || !strings.Contains(err.Error(), "status 500") || !strings.Contains(err.Error(), "provider unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "provider_http_500") || strings.Contains(err.Error(), "provider unavailable") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -134,10 +143,10 @@ func TestClientBoundsHTTPErrorBody(t *testing.T) {
 	defer server.Close()
 
 	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
-	if err == nil || !strings.Contains(err.Error(), "[truncated]") || strings.Contains(err.Error(), "secret-tail") {
+	if err == nil || !strings.Contains(err.Error(), "provider_http_502") || strings.Contains(err.Error(), "secret-tail") {
 		t.Fatalf("unexpected bounded error: %v", err)
 	}
-	if len(err.Error()) > maxErrorBodyBytes+100 {
+	if len(err.Error()) > 100 {
 		t.Fatalf("error is not bounded: %d bytes", len(err.Error()))
 	}
 }
@@ -149,7 +158,7 @@ func TestClientRejectsMalformedJSON(t *testing.T) {
 	defer server.Close()
 
 	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
-	if err == nil || !strings.Contains(err.Error(), "decode kudago response") {
+	if err == nil || !strings.Contains(err.Error(), "provider_decode_error") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -197,10 +206,47 @@ func TestClientRejectsCrossOriginPagination(t *testing.T) {
 	defer server.Close()
 	client := testClient(t, server, time.Second)
 	_, err := client.fetchPage(context.Background(), fetchOptions{Cursor: "https://attacker.example/events/?page=2"})
-	if err == nil || !strings.Contains(err.Error(), "unexpected origin") {
+	if err == nil || providers.SyncErrorCode(err) != "provider_origin_error" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, parseErr := url.Parse(server.URL); parseErr != nil {
 		t.Fatal(parseErr)
+	}
+}
+
+func TestClientRejectsPublicNonKudaGoOrigin(t *testing.T) {
+	_, err := NewClient(Options{BaseURL: "https://example.com/api", Timeout: time.Second, Location: "msk", PageSize: 10})
+	if err == nil {
+		t.Fatal("expected public non-KudaGo origin rejection")
+	}
+}
+
+func TestClientDoesNotRetryAuthenticationFailure(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		http.Error(w, "secret", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
+	if requests != 1 || !providers.IsBlockingError(err) {
+		t.Fatalf("requests=%d err=%v", requests, err)
+	}
+}
+
+func TestClientRetriesServerFailuresAndCountsAttempts(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, `{"count":0,"results":[]}`)
+	}))
+	defer server.Close()
+	_, attempts, err := testClient(t, server, time.Second).fetchPageWithAttempts(context.Background(), fetchOptions{})
+	if err != nil || attempts != 3 || requests != 3 {
+		t.Fatalf("attempts=%d requests=%d err=%v", attempts, requests, err)
 	}
 }

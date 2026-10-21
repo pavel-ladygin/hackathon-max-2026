@@ -2,9 +2,11 @@ package timepad
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -124,6 +126,42 @@ func TestImportPosterLookupFailureDoesNotFailInsertedEvent(t *testing.T) {
 	}
 }
 
+func TestImportPosterSecondUpsertPersistenceFailureCountsIngestionError(t *testing.T) {
+	var calls int
+	store := eventStoreFunc(func(context.Context, uuid.UUID, providers.NormalizedEvent) (providers.UpsertResult, error) {
+		calls++
+		if calls == 2 {
+			return providers.UpsertResult{}, errors.New("poster upsert private database detail")
+		}
+		return providers.UpsertResult{EventID: uuid.New(), Inserted: true}, nil
+	})
+	posterStore := &importPosterStore{
+		client: &Client{wait: func(context.Context) error { return nil }}, store: store,
+		postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
+		resolveCanonicalID:   func(context.Context, int64, string) (int64, error) { return 7, nil },
+		fetchEventPoster: func(context.Context, int64) ([]providers.NormalizedImage, error) {
+			return []providers.NormalizedImage{{URL: "https://assets.test/poster.jpg", Role: "card"}}, nil
+		},
+	}
+	ingestion, err := providers.NewIngestion(uuid.New(), posterStore, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketURL := "https://timepad.ru/event/42/"
+	if err := ingestion.Persist(context.Background(), providers.NormalizedEvent{Source: timepadSource, ExternalID: "42", TicketURL: &ticketURL}); err != nil {
+		t.Fatal(err)
+	}
+	if stats := ingestion.Stats(); calls != 2 || stats.Normalized != 1 || stats.Errors != 1 || stats.Inserted != 0 {
+		t.Fatalf("calls=%d stats=%+v, want second persistence failure counted", calls, stats)
+	}
+}
+
+type eventStoreFunc func(context.Context, uuid.UUID, providers.NormalizedEvent) (providers.UpsertResult, error)
+
+func (f eventStoreFunc) UpsertWithResult(ctx context.Context, cityID uuid.UUID, event providers.NormalizedEvent) (providers.UpsertResult, error) {
+	return f(ctx, cityID, event)
+}
+
 func (s *memoryEventStore) BeginSyncRun(_ context.Context, start providers.SyncRunStart) (uuid.UUID, error) {
 	s.starts = append(s.starts, start)
 	return uuid.New(), nil
@@ -146,9 +184,9 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		skips = append(skips, skip)
 		switch skip {
 		case "0":
-			fmt.Fprint(w, `{"total":4,"values":[`+timepadImportEvent(1, "  мОСКвА ")+`,`+timepadImportEvent(2, "Онлайн")+`]}`)
+			fmt.Fprint(w, `{"total":4,"values":[`+timepadImportEvent(1, "  мОСКвА ")+`,`+timepadImportEvent(2, "Москва")+`]}`)
 		case "2":
-			fmt.Fprint(w, `{"total":4,"values":[`+timepadImportEvent(3, "Санкт-Петербург")+`,`+timepadImportEvent(4, "")+`]}`)
+			fmt.Fprint(w, `{"total":4,"values":[`+timepadImportEvent(3, "Москва")+`,`+timepadImportEvent(4, "Москва")+`]}`)
 		default:
 			t.Errorf("unexpected skip %q", skip)
 		}
@@ -168,13 +206,13 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		t.Fatal("first import returned no sync run ID")
 	}
 	first.SyncRunID = uuid.Nil
-	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
+	if first != (ImportStats{HTTPAttempts: 2, InitialTotal: 4, FinalOffset: 4, Scope: "full", PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 4, Inserted: 4, InsideWindow: 4}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
 		t.Fatalf("skip sequence = %s, want %s", got, want)
 	}
-	if got, want := fmt.Sprint(store.persisted), "[1]"; got != want {
+	if got, want := fmt.Sprint(store.persisted), "[1 2 3 4]"; got != want {
 		t.Fatalf("persisted = %s, want %s", got, want)
 	}
 
@@ -187,7 +225,7 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		t.Fatal("second import returned no sync run ID")
 	}
 	second.SyncRunID = uuid.Nil
-	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Updated: 1, Skipped: 3, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
+	if second != (ImportStats{HTTPAttempts: 2, InitialTotal: 4, FinalOffset: 4, Scope: "full", PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 4, Updated: 4, InsideWindow: 4}) {
 		t.Fatalf("second stats = %+v", second)
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
@@ -225,7 +263,7 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1, InsideWindow: 1}) {
+	if requests != 1 || stats != (ImportStats{HTTPAttempts: 1, InitialTotal: 1, FinalOffset: 1, Scope: "full", PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1, InsideWindow: 1}) {
 		t.Fatalf("requests=%d stats=%+v", requests, stats)
 	}
 }
@@ -268,6 +306,7 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 	defer server.Close()
 
 	client := testClient(t, server)
+	client.pageSize = 4
 	clockCalls := 0
 	client.now = func() time.Time {
 		clockCalls++
@@ -282,7 +321,7 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	want := ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, InsideWindow: 2, Rejections: providers.RejectionStats{BeforeWindow: 1, AfterWindow: 1}}
+	want := ImportStats{HTTPAttempts: 1, InitialTotal: 4, FinalOffset: 4, Scope: "full", PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, InsideWindow: 2, Rejections: providers.RejectionStats{BeforeWindow: 1, AfterWindow: 1}}
 	if stats != want {
 		t.Fatalf("stats = %+v", stats)
 	}
@@ -319,7 +358,9 @@ func TestPartialNormalizationEmptyRemainsSuccessfulUpsertOnly(t *testing.T) {
 	}))
 	defer server.Close()
 	store := &memoryEventStore{seen: make(map[string]struct{})}
-	stats, err := testClient(t, server).ImportPages(context.Background(), uuid.New(), store, nil, 1)
+	client := testClient(t, server)
+	client.pageSize = 1
+	stats, err := client.ImportPages(context.Background(), uuid.New(), store, nil, 1)
 	if err != nil || stats.Rejections.MissingStartsAt != 1 {
 		t.Fatalf("stats=%+v err=%v", stats, err)
 	}
@@ -394,6 +435,176 @@ func TestImportConfiguredCityRejectsWrongUUIDBeforeNetwork(t *testing.T) {
 	}
 }
 
+func TestImportUsesProviderCityFilterForDifferentPageCounts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		city := request.URL.Query().Get("cities")
+		total := 205
+		if city == "Санкт-Петербург" {
+			total = 140
+		}
+		skip, _ := strconv.Atoi(request.URL.Query().Get("skip"))
+		count := min(100, total-skip)
+		fmt.Fprint(w, timepadPage(total, skip+1, count, city))
+	}))
+	defer server.Close()
+
+	for _, test := range []struct {
+		city  string
+		pages int
+	}{{"Москва", 3}, {"Санкт-Петербург", 2}} {
+		t.Run(test.city, func(t *testing.T) {
+			client := testClient(t, server)
+			client.pageSize, client.cityName = 100, test.city
+			client.now = func() time.Time { return time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC) }
+			stats, err := client.Import(context.Background(), uuid.New(), &memoryEventStore{seen: make(map[string]struct{})}, nil)
+			if err != nil || stats.PagesFetched != test.pages || stats.Fetched != stats.InitialTotal {
+				t.Fatalf("stats=%+v err=%v", stats, err)
+			}
+		})
+	}
+}
+
+func TestImportFailsWithoutReconciliationOnPaginationCorruption(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		page func(skip string) string
+	}{{
+		name: "missing mandatory values",
+		page: func(string) string { return `{"total":2}` },
+	}, {
+		name: "drifting total",
+		page: func(skip string) string {
+			if skip == "0" {
+				return timepadPage(4, 1, 2, "Москва")
+			}
+			return timepadPage(3, 3, 1, "Москва")
+		},
+	}, {
+		name: "repeated ID",
+		page: func(skip string) string {
+			if skip == "0" {
+				return timepadPage(4, 1, 2, "Москва")
+			}
+			return timepadPage(4, 2, 2, "Москва")
+		},
+	}} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, test.page(r.URL.Query().Get("skip"))) }))
+			defer server.Close()
+			client := testClient(t, server)
+			client.pageSize = 2
+			store := &memoryEventStore{seen: make(map[string]struct{})}
+			_, err := client.Import(context.Background(), uuid.New(), store, nil)
+			if providers.SyncErrorCode(err) != "provider_pagination_error" || len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunFailed {
+				t.Fatalf("err=%v finishes=%+v", err, store.finishes)
+			}
+		})
+	}
+}
+
+func TestImportLateHTTPFailureDoesNotReconcile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("skip") == "0" {
+			fmt.Fprint(w, timepadPage(117, 1, 100, "Москва"))
+			return
+		}
+		http.Error(w, "provider details must not leak", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	client := testClient(t, server)
+	client.pageSize = 100
+	client.waitRetry = func(context.Context, time.Duration) error { return nil }
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+	if providers.SyncErrorCode(err) != "provider_http_500" || stats.PagesFetched != 1 || stats.Fetched != 100 || len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunFailed {
+		t.Fatalf("stats=%+v err=%v finishes=%+v", stats, err, store.finishes)
+	}
+}
+
+func TestImportHandles117PagesAndFailsSafelyOnPage117(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		failLast   bool
+		wantPages  int
+		wantCode   string
+		wantFinish providers.SyncRunState
+	}{
+		{name: "complete", wantPages: 117, wantFinish: providers.SyncRunSucceeded},
+		{name: "page 117 failure", failLast: true, wantPages: 116, wantCode: "provider_http_500", wantFinish: providers.SyncRunFailed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				requests++
+				skip, _ := strconv.Atoi(request.URL.Query().Get("skip"))
+				if test.failLast && skip == 116 {
+					http.Error(w, "private provider payload", http.StatusInternalServerError)
+					return
+				}
+				fmt.Fprint(w, timepadNoPosterPage(117, skip+1, 1, "Москва"))
+			}))
+			defer server.Close()
+			client := testClient(t, server)
+			client.pageSize = 1
+			client.now = func() time.Time { return time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC) }
+			client.waitRetry = func(context.Context, time.Duration) error { return nil }
+			store := &memoryEventStore{seen: make(map[string]struct{})}
+			stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+			if providers.SyncErrorCode(err) != test.wantCode || stats.PagesFetched != test.wantPages || len(store.finishes) != 1 || store.finishes[0].State != test.wantFinish {
+				t.Fatalf("requests=%d stats=%+v err=%v finishes=%+v", requests, stats, err, store.finishes)
+			}
+			if !test.failLast && (requests != 117 || stats.HTTPAttempts != 117 || stats.Fetched != 117) {
+				t.Fatalf("requests=%d stats=%+v, want 117 completed pages", requests, stats)
+			}
+		})
+	}
+}
+
+func TestImportConfiguredPageCapStopsWithoutReconciliation(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests++
+		skip, _ := strconv.Atoi(request.URL.Query().Get("skip"))
+		fmt.Fprint(w, timepadNoPosterPage(3, skip+1, 1, "Москва"))
+	}))
+	defer server.Close()
+	client := testClient(t, server)
+	client.pageSize, client.maxPagesPerRun = 1, 2
+	store := &memoryEventStore{seen: make(map[string]struct{})}
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+	if err != nil || requests != 2 || stats.PagesFetched != 2 || stats.Scope != "limited_upsert_only" || stats.LimitReason != "configured_page_cap" || len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunSucceeded {
+		t.Fatalf("requests=%d stats=%+v err=%v finishes=%+v", requests, stats, err, store.finishes)
+	}
+}
+
+func TestImportRejectsIgnoredCityFilterAndUnverifiedAliases(t *testing.T) {
+	for _, city := range []string{"Санкт-Петербург", "СПб", "Санкт Петербург", ""} {
+		t.Run(city, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("cities") != "Москва" {
+					t.Error("missing server city filter")
+				}
+				fmt.Fprint(w, timepadPage(1, 1, 1, city))
+			}))
+			defer server.Close()
+			client := testClient(t, server)
+			store := &memoryEventStore{seen: map[string]struct{}{}}
+			stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+			if providers.SyncErrorCode(err) != "provider_city_mismatch" || stats.Rejections.City != 1 || len(store.events) != 0 || store.finishes[0].State != providers.SyncRunFailed {
+				t.Fatalf("city=%q stats=%+v err=%v", city, stats, err)
+			}
+		})
+	}
+}
+
+func timepadPage(total, firstID, count int, city string) string {
+	values := make([]string, 0, count)
+	for id := firstID; id < firstID+count; id++ {
+		values = append(values, timepadImportEvent(id, city))
+	}
+	return fmt.Sprintf(`{"total":%d,"values":[%s]}`, total, strings.Join(values, ","))
+}
+
 func timepadImportEvent(id int, city string) string {
 	return timepadImportEventAt(id, city, time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC))
 }
@@ -402,6 +613,16 @@ func timepadImportEventWithoutTicketURL(id int, city string) string {
 	return strings.Replace(timepadImportEvent(id, city), fmt.Sprintf(`,"url":"https://timepad.ru/event/%d"`, id), "", 1)
 }
 
+func timepadNoPosterPage(total, firstID, count int, city string) string {
+	values := make([]string, 0, count)
+	for id := firstID; id < firstID+count; id++ {
+		value := timepadImportEventWithoutTicketURL(id, city)
+		value = strings.Replace(value, `,"poster_image":{"default_url":"https://assets.test/poster.jpg"}`, "", 1)
+		values = append(values, value)
+	}
+	return fmt.Sprintf(`{"total":%d,"values":[%s]}`, total, strings.Join(values, ","))
+}
+
 func timepadImportEventAt(id int, city string, startsAt time.Time) string {
-	return fmt.Sprintf(`{"id":%d,"name":"Event %d","starts_at":%q,"url":"https://timepad.ru/event/%d","location":{"city":%q,"address":"Street","coordinates":[55.75,37.61]},"registration_data":{"is_registration_open":true}}`, id, id, startsAt.Format(time.RFC3339), id, city)
+	return fmt.Sprintf(`{"id":%d,"name":"Event %d","starts_at":%q,"url":"https://timepad.ru/event/%d","poster_image":{"default_url":"https://assets.test/poster.jpg"},"location":{"city":%q,"address":"Street","coordinates":[55.75,37.61]},"registration_data":{"is_registration_open":true}}`, id, id, startsAt.Format(time.RFC3339), id, city)
 }

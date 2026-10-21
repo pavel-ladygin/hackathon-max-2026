@@ -60,7 +60,7 @@ services:
   event-sync:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
     command: ["/app/event-sync"]
-    environment:
+    environment: &event_sync_environment
       <<: *backend_environment
       INVITE_ENCRYPTION_KEY: ${INVITE_ENCRYPTION_KEY:?INVITE_ENCRYPTION_KEY is required}
       INVITE_ENCRYPTION_KEY_VERSION: ${INVITE_ENCRYPTION_KEY_VERSION:-1}
@@ -68,13 +68,45 @@ services:
       KUDAGO_TIMEOUT: ${KUDAGO_TIMEOUT:-30s}
       KUDAGO_LOCATION: ${KUDAGO_LOCATION:-msk}
       KUDAGO_PAGE_SIZE: ${KUDAGO_PAGE_SIZE:-100}
-      EVENT_SYNC_INTERVAL: ${EVENT_SYNC_INTERVAL:-2h}
+      EVENT_SYNC_KUDAGO_ENABLED: ${EVENT_SYNC_KUDAGO_ENABLED:-false}
+      EVENT_SYNC_TIMEPAD_ENABLED: ${EVENT_SYNC_TIMEPAD_ENABLED:-false}
+      EVENT_SYNC_UPSERT_ONLY: ${EVENT_SYNC_UPSERT_ONLY:-true}
+      EVENT_SYNC_MAX_RUN_DURATION: ${EVENT_SYNC_MAX_RUN_DURATION:-45m}
+      KUDAGO_MAX_PAGES_PER_RUN: ${KUDAGO_MAX_PAGES_PER_RUN:-20}
+      TIMEPAD_MAX_PAGES_PER_RUN: ${TIMEPAD_MAX_PAGES_PER_RUN:-20}
+      KUDAGO_MAX_REQUESTS_PER_MINUTE: ${KUDAGO_MAX_REQUESTS_PER_MINUTE:-6}
+      EVENT_SYNC_CITY_ID: ${EVENT_SYNC_CITY_ID:-a0f625ee-2154-5a45-8afe-37adf955ec24}
+      EVENT_SYNC_CITY_PROFILES: ${EVENT_SYNC_CITY_PROFILES:-}
+      TIMEPAD_CITY_NAME: ${TIMEPAD_CITY_NAME:-Москва}
+      EVENT_SYNC_INTERVAL: ${EVENT_SYNC_INTERVAL:-24h}
       EVENT_SYNC_RUN_ON_START: ${EVENT_SYNC_RUN_ON_START:-false}
       TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
       TIMEPAD_TOKEN: ${TIMEPAD_TOKEN:-}
       TIMEPAD_TIMEOUT: ${TIMEPAD_TIMEOUT:-30s}
       TIMEPAD_PAGE_SIZE: ${TIMEPAD_PAGE_SIZE:-100}
-      TIMEPAD_MAX_REQUESTS_PER_MINUTE: ${TIMEPAD_MAX_REQUESTS_PER_MINUTE:-20}
+      TIMEPAD_MAX_REQUESTS_PER_MINUTE: ${TIMEPAD_MAX_REQUESTS_PER_MINUTE:-6}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  # Opt-in profile; deploy/deploy.sh deliberately does not include this service.
+  event-sync-spb:
+    profiles: ["spb"]
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    command: ["/app/event-sync"]
+    environment:
+      <<: *event_sync_environment
+      EVENT_SYNC_CITY_ID: "19096037-cba9-55e0-8a99-322ce61554a4"
+      KUDAGO_LOCATION: "spb"
+      TIMEPAD_CITY_NAME: "Санкт-Петербург"
+      EVENT_SYNC_KUDAGO_ENABLED: ${SPB_EVENT_SYNC_KUDAGO_ENABLED:-false}
+      EVENT_SYNC_TIMEPAD_ENABLED: ${SPB_EVENT_SYNC_TIMEPAD_ENABLED:-false}
+      EVENT_SYNC_UPSERT_ONLY: ${SPB_EVENT_SYNC_UPSERT_ONLY:-true}
+      EVENT_SYNC_RUN_ON_START: "false"
     depends_on:
       postgres:
         condition: service_healthy

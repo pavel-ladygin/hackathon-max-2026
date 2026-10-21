@@ -21,6 +21,11 @@ func (normalizationEmptyError) Error() string {
 }
 func (normalizationEmptyError) SyncErrorCode() string { return "timepad_normalization_empty" }
 
+type safetyError struct{ code string }
+
+func (e safetyError) Error() string         { return "timepad import safety check failed" }
+func (e safetyError) SyncErrorCode() string { return e.code }
+
 // Import fetches every Timepad page in the configured horizon and persists
 // valid normalized events through the shared provider ingestion path.
 func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.SyncStore, reportError func(error)) (stats ImportStats, importErr error) {
@@ -44,8 +49,27 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 		return ImportStats{}, errors.New("import city is required")
 	}
 	if c.cityID != uuid.Nil && cityID != c.cityID {
-		return ImportStats{}, errors.New("timepad import city does not match configured city")
+		return ImportStats{}, safetyError{code: "provider_city_mismatch"}
 	}
+	if c.maxRunDuration > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.maxRunDuration)
+		defer cancel()
+	}
+	effectiveMaxPages := maxPages
+	limitReason := ""
+	if c.maxPagesPerRun > 0 && (effectiveMaxPages == 0 || c.maxPagesPerRun < effectiveMaxPages) {
+		effectiveMaxPages = c.maxPagesPerRun
+		limitReason = "configured_page_cap"
+	}
+	if maxPages > 0 && effectiveMaxPages == maxPages {
+		limitReason = "caller_page_cap"
+	}
+	if effectiveMaxPages == 0 {
+		effectiveMaxPages = hardPageCeiling
+	}
+	upsertOnly := c.upsertOnly || maxPages > 0 || c.maxPagesPerRun > 0
+	attemptStart := c.attempts.Load()
 	posterStore := &importPosterStore{
 		client: c, store: store, reportError: reportError,
 		postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
@@ -58,18 +82,32 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 	}
 	startsAtMin := c.now().UTC()
 	startsAtMax := startsAtMin.Add(importHorizon)
+	initialTotal := 0
+	haveInitialTotal := false
 	runID, err := store.BeginSyncRun(ctx, providers.SyncRunStart{
-		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: maxPages > 0,
+		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: upsertOnly,
 	})
 	if err != nil {
-		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)
+		return ImportStats{}, providers.SafeError("provider_persistence_error")
 	}
 	defer func() {
+		stats.HTTPAttempts = int(c.attempts.Load() - attemptStart)
+		stats.InitialTotal = initialTotal
+		stats.FinalOffset = stats.Fetched
+		if upsertOnly {
+			stats.Scope = "limited_upsert_only"
+			if limitReason == "" && c.upsertOnly {
+				limitReason = "configured_upsert_only"
+			}
+			stats.LimitReason = limitReason
+		} else {
+			stats.Scope = "full"
+		}
 		stats.SyncRunID = runID
 		reconciled, finishErr := providers.FinalizeSyncRun(ctx, store, runID, stats, importErr)
 		stats.Reconciled = reconciled
 		if finishErr != nil {
-			finishErr = fmt.Errorf("finish timepad sync run: %w", finishErr)
+			finishErr = providers.SafeError("provider_finalization_error")
 			if importErr != nil {
 				importErr = errors.Join(importErr, finishErr)
 			} else {
@@ -79,6 +117,7 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 	}()
 	skip := 0
 	firstPage := true
+	seenEventIDs := make(map[int64]struct{})
 	for {
 		if !firstPage {
 			if err := c.wait(ctx); err != nil {
@@ -88,14 +127,37 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 		firstPage = false
 		page, err := c.fetchPage(ctx, skip, startsAtMin, startsAtMax)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return ingestion.Stats(), safetyError{code: "provider_timeout"}
+			}
 			return ingestion.Stats(), fmt.Errorf("fetch timepad page: %w", err)
+		}
+		if !haveInitialTotal {
+			initialTotal = int(page.Total)
+			haveInitialTotal = true
+		} else if int(page.Total) != initialTotal {
+			return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
+		}
+		if len(page.Values) == 0 && skip < int(page.Total) {
+			return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
+		}
+		if len(page.Values) > c.pageSize || skip+len(page.Values) > int(page.Total) {
+			return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
+		}
+		if len(page.Values) < c.pageSize && skip+len(page.Values) < int(page.Total) {
+			return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
 		}
 		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Values))
 		for _, event := range page.Values {
+			if _, duplicate := seenEventIDs[event.ID]; duplicate {
+				ingestion.AddRejection(providers.RejectionDuplicate, 1)
+				return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
+			}
+			seenEventIDs[event.ID] = struct{}{}
 			if !c.matchesCity(event.Location.City) {
 				ingestion.AddRejection(providers.RejectionCity, 1)
-				continue
+				return ingestion.Stats(), safetyError{code: "provider_city_mismatch"}
 			}
 			ingestion.AddMatched(1)
 			normalized, rejection := normalizeEventWithMetadata(event, c.effectiveCityName(), c.effectiveTimezone())
@@ -117,24 +179,38 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 				return ingestion.Stats(), err
 			}
 		}
-		if maxPages > 0 && ingestion.Stats().PagesFetched >= maxPages {
-			return completeTimepadImport(ingestion.Stats(), maxPages)
+		if ingestion.Stats().PagesFetched >= effectiveMaxPages {
+			if skip+len(page.Values) < int(page.Total) && effectiveMaxPages == hardPageCeiling && maxPages == 0 && c.maxPagesPerRun == 0 {
+				return ingestion.Stats(), safetyError{code: "provider_pagination_error"}
+			}
+			return completeTimepadImport(ingestion.Stats(), !upsertOnly)
 		}
 		if len(page.Values) == 0 || len(page.Values) < c.pageSize {
-			return completeTimepadImport(ingestion.Stats(), maxPages)
+			return completeTimepadImport(ingestion.Stats(), !upsertOnly)
 		}
 		skip += len(page.Values)
 		if skip >= int(page.Total) {
-			return completeTimepadImport(ingestion.Stats(), maxPages)
+			return completeTimepadImport(ingestion.Stats(), !upsertOnly)
 		}
 	}
 }
 
-func completeTimepadImport(stats ImportStats, maxPages int) (ImportStats, error) {
-	if maxPages == 0 && stats.Matched > 0 && stats.Normalized == 0 {
+func completeTimepadImport(stats ImportStats, fullRun bool) (ImportStats, error) {
+	if fullRun && stats.Matched == 0 {
+		return stats, safetyError{code: "provider_empty_result"}
+	}
+	if fullRun && stats.Matched > 0 && stats.Normalized == 0 {
 		return stats, normalizationEmptyError{}
 	}
+	if fullRun && normalizationRejections(stats.Rejections) > 0 {
+		return stats, providers.SafeError("provider_decode_error")
+	}
 	return stats, nil
+}
+
+func normalizationRejections(rejections providers.RejectionStats) int {
+	return rejections.InvalidID + rejections.MissingTitle + rejections.MissingStartsAt +
+		rejections.InvalidStartsAt + rejections.MalformedCategories + rejections.Other
 }
 
 // importPosterStore tries redirect poster recovery only after the normal upsert
@@ -167,6 +243,9 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
+		if providers.IsBlockingError(resolveErr) {
+			return result, resolveErr
+		}
 		s.report(fmt.Errorf("resolve timepad poster for event %q: %w", event.ExternalID, resolveErr))
 		return result, nil
 	}
@@ -183,6 +262,9 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}
+			if providers.IsBlockingError(err) {
+				return result, err
+			}
 			s.report(fmt.Errorf("fetch timepad poster for event %q: %w", event.ExternalID, err))
 			return result, nil
 		}
@@ -196,7 +278,7 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
-		s.report(fmt.Errorf("persist recovered timepad poster for event %q: %w", event.ExternalID, err))
+		return result, providers.SafeError("provider_persistence_error")
 	}
 	return result, nil
 }

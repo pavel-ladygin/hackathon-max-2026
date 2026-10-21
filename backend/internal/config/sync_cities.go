@@ -24,6 +24,7 @@ type SyncCityProfile struct {
 
 func ParseSyncCityProfiles(raw string) (map[uuid.UUID]SyncCityProfile, error) {
 	profiles := []SyncCityProfile{
+		{uuid.MustParse("19096037-cba9-55e0-8a99-322ce61554a4"), "Санкт-Петербург", "Europe/Moscow", "spb", "Санкт-Петербург"},
 		{uuid.MustParse(catalogseed.MoscowCityID), "Москва", "Europe/Moscow", "msk", "Москва"},
 		{uuid.MustParse("3d3c83de-691b-510e-85e5-79685c4012ee"), "Казань", "Europe/Moscow", "kzn", "Казань"},
 	}

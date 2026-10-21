@@ -31,11 +31,10 @@ func parseExternalID(value string) (int64, error) {
 }
 
 func runContinuous(ctx context.Context, db *store.Pool, client *timepad.Client, limit int) error {
-	pacer := &serializedPacer{interval: continuousAPIPace}
 	for {
 		candidates, err := loadDueCandidates(ctx, db, limit)
 		if err != nil {
-			fmt.Printf("continuous status=db_error error=%q retry_in=%s\n", err, idlePollInterval)
+			fmt.Printf("continuous status=db_error error_code=%s retry_in=%s\n", providers.SyncErrorCode(err), idlePollInterval)
 			if err := waitContext(ctx, idlePollInterval); err != nil {
 				return err
 			}
@@ -47,14 +46,20 @@ func runContinuous(ctx context.Context, db *store.Pool, client *timepad.Client, 
 			}
 			continue
 		}
-		fmt.Printf("continuous batch=%d workers=%d\n", len(candidates), continuousWorkers)
+		fmt.Printf("continuous batch=%d workers=%d\n", len(candidates), 1)
 		cache := newContinuousPosterCache()
-		if err := runCandidateBatch(ctx, candidates, continuousWorkers, func(ctx context.Context, item candidate) {
-			if err := processContinuousCandidate(ctx, db, client, cache, pacer, item); err != nil && ctx.Err() == nil {
-				fmt.Printf("event=%s status=processing_error error=%q\n", item.id, err)
+		for _, item := range candidates {
+			err := processContinuousCandidate(ctx, db, client, cache, nil, item)
+			if err == nil {
+				continue
 			}
-		}); err != nil {
-			return err
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if providers.IsBlockingError(err) {
+				return providers.SafeError(providers.SyncErrorCode(err))
+			}
+			fmt.Printf("event=%s status=processing_error error_code=%s\n", item.id, providers.SyncErrorCode(err))
 		}
 		// Do not load the next batch until all writes and recovery outcomes from
 		// this batch have finished.
@@ -147,17 +152,20 @@ sendLoop:
 	return ctx.Err()
 }
 
-func processContinuousCandidate(ctx context.Context, db *store.Pool, client *timepad.Client, cache *continuousPosterCache, pacer *serializedPacer, item candidate) error {
+func processContinuousCandidate(ctx context.Context, db *store.Pool, client *timepad.Client, cache *continuousPosterCache, _ *serializedPacer, item candidate) error {
 	parsedID, err := parseExternalID(item.externalID)
 	if err != nil {
-		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
+		return recordAttempt(ctx, db, item.id, "error", providers.SyncErrorCode(err), retryDelay)
 	}
 	canonicalID, err := client.ResolveCanonicalEventID(ctx, parsedID, item.url)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
+		if providers.IsBlockingError(err) {
+			return err
+		}
+		return recordAttempt(ctx, db, item.id, "error", providers.SyncErrorCode(err), retryDelay)
 	}
 	if canonicalID == 0 {
 		fmt.Printf("event=%s external_id=%s status=no_redirect\n", item.id, item.externalID)
@@ -165,13 +173,8 @@ func processContinuousCandidate(ctx context.Context, db *store.Pool, client *tim
 	}
 	images, err := cache.get(ctx, canonicalID, func(ctx context.Context, id int64) ([]providers.NormalizedImage, error) {
 		var fetched []providers.NormalizedImage
-		err := pacer.request(ctx, func(ctx context.Context) error {
-			return waitForTimepadSync(ctx, db)
-		}, func(ctx context.Context) error {
-			var fetchErr error
-			fetched, fetchErr = client.FetchEventPoster(ctx, id)
-			return fetchErr
-		})
+		var err error
+		fetched, err = client.FetchEventPoster(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +184,10 @@ func processContinuousCandidate(ctx context.Context, db *store.Pool, client *tim
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
+		if providers.IsBlockingError(err) {
+			return err
+		}
+		return recordAttempt(ctx, db, item.id, "error", providers.SyncErrorCode(err), retryDelay)
 	}
 	if len(images) == 0 {
 		fmt.Printf("event=%s external_id=%s canonical_id=%d status=no_poster\n", item.id, item.externalID, canonicalID)
@@ -192,10 +198,10 @@ func processContinuousCandidate(ctx context.Context, db *store.Pool, client *tim
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return recordAttempt(ctx, db, item.id, "error", err.Error(), retryDelay)
+		return recordAttempt(ctx, db, item.id, "error", providers.SyncErrorCode(err), retryDelay)
 	}
 	if inserted {
-		fmt.Printf("event=%s external_id=%s canonical_id=%d status=inserted image_url=%s\n", item.id, item.externalID, canonicalID, images[0].URL)
+		fmt.Printf("event=%s external_id=%s canonical_id=%d status=inserted\n", item.id, item.externalID, canonicalID)
 		return recordAttempt(ctx, db, item.id, "inserted", "", 0)
 	}
 	fmt.Printf("event=%s status=already_filled\n", item.id)

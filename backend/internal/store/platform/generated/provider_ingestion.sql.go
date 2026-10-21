@@ -211,7 +211,7 @@ func (q *Queries) InsertProviderEventImage(ctx context.Context, arg InsertProvid
 
 const reconcileProviderSyncRun = `-- name: ReconcileProviderSyncRun :one
 WITH current_run AS (
-    SELECT id, provider, city_id, started_at, reconcile_missing
+    SELECT id, provider, city_id, started_at, reconcile_missing, window_start, window_end
     FROM provider_sync_runs
     WHERE provider_sync_runs.id = $1
 ), inactivated AS (
@@ -222,6 +222,7 @@ WITH current_run AS (
       AND e.venue_id = v.id
       AND e.source = run.provider
       AND e.source <> 'user'
+      AND (e.source NOT IN ('kudago', 'timepad') OR (e.starts_at >= run.window_start AND e.starts_at <= run.window_end))
       AND v.city_id = run.city_id
       AND e.is_demo = false
       AND e.provider_active = true

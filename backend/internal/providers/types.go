@@ -136,6 +136,11 @@ type SyncStore interface {
 }
 
 type ImportStats struct {
+	HTTPAttempts int
+	InitialTotal int
+	FinalOffset  int
+	Scope        string
+	LimitReason  string
 	SyncRunID    uuid.UUID
 	PagesFetched int
 	Fetched      int
@@ -263,6 +268,9 @@ func (i *Ingestion) Persist(ctx context.Context, event NormalizedEvent) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if IsBlockingError(err) {
+			return err
+		}
 		i.stats.Errors++
 		if i.reportError != nil {
 			i.reportError(fmt.Errorf("persist %s occurrence %s: %w", event.Source, event.ExternalID, err))
@@ -289,7 +297,7 @@ func FinalizeSyncRun(ctx context.Context, store SyncStore, runID uuid.UUID, stat
 	switch {
 	case errors.Is(importErr, context.Canceled):
 		state = SyncRunCancelled
-		errorText = "provider import cancelled"
+		errorText = "provider_cancelled"
 	case importErr != nil:
 		state = SyncRunFailed
 		errorText = "provider import failed"
@@ -298,23 +306,18 @@ func FinalizeSyncRun(ctx context.Context, store SyncStore, runID uuid.UUID, stat
 		}
 	case stats.Errors > 0:
 		state = SyncRunFailed
-		errorText = "provider records failed to persist"
+		errorText = "provider_persistence_error"
 	}
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return store.FinishSyncRun(finishCtx, SyncRunFinish{
+	reconciled, err := store.FinishSyncRun(finishCtx, SyncRunFinish{
 		RunID: runID, State: state, Stats: stats, ErrorText: errorText,
 	})
-}
-
-type syncErrorCoder interface{ SyncErrorCode() string }
-
-// SyncErrorCode extracts a bounded safe operational code without exposing a
-// provider response or payload.
-func SyncErrorCode(err error) string {
-	var coded syncErrorCoder
-	if errors.As(err, &coded) {
-		return coded.SyncErrorCode()
+	if err != nil {
+		if SyncErrorCode(err) == "provider_coverage_drop" {
+			return 0, err
+		}
+		return 0, SafeError("provider_finalization_error")
 	}
-	return ""
+	return reconciled, nil
 }

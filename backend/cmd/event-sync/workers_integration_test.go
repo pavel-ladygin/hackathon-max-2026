@@ -69,7 +69,7 @@ func TestMulticityWorkersRetryAfterProviderLockContention(t *testing.T) {
 			return
 		}
 		start := time.Now().UTC().Add(24 * time.Hour)
-		_ = json.NewEncoder(w).Encode(map[string]any{"next": nil, "results": []any{map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "next": nil, "results": []any{map[string]any{
 			"id": ids[index], "title": "Synthetic worker fixture", "location": map[string]any{"slug": location},
 			"dates":      []any{map[string]any{"start": start.Unix(), "end": start.Add(time.Hour).Unix()}},
 			"categories": []string{"concert"}, "is_free": true, "site_url": "https://kudago.com/event/worker-fixture/",

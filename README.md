@@ -225,16 +225,11 @@ python -m unittest discover -s backend/tests/contract -v
 
 Production: <https://worknet.team>. Nginx завершает HTTPS и проксирует frontend/API; PostgreSQL не публикуется наружу. Скрипт `deploy/deploy.sh <40-character-commit-sha>` создаёт резервную копию PostgreSQL, обновляет образы, применяет миграции, выполняет smoke-проверки и предусматривает откат образов при ошибке. Реальные переменные находятся в приватном env-файле на сервере. Отдельно проверяются доступность MAX, TLS, домены билетов и состояние источников.
 
-Импорт событий **не входит** в стандартный локальный запуск. Для включения KudaGo и, при наличии токена, Timepad:
+Встроенные KudaGo и Timepad независимо выключены по умолчанию. Запуск контейнера и последующий timer tick не включают их. Настройки `EVENT_SYNC_KUDAGO_ENABLED`/`EVENT_SYNC_TIMEPAD_ENABLED` применяются при пересоздании worker; они также закрывают ручные import/backfill команды. Production Compose оставляет `EVENT_SYNC_RUN_ON_START=false`, интервал 24h, rate 6/min, cap 20 страниц и upsert-only.
 
-```bash
-docker compose --env-file .env.submission.example --profile live up -d event-sync
-docker compose --env-file .env.submission.example logs --since=1h event-sync
-```
+[Операторская инструкция безопасного включения провайдеров и СПб](docs/PROVIDER_SYNC_RUNBOOK.md) содержит go/no-go, конфигурацию, разовые ограниченные команды и откат flags. KudaGo рекомендуется оставить OFF до официального выяснения 403. Локальный профиль `live` сам по себе не разрешает API-трафик.
 
-При запуске `event-sync` импорт по умолчанию ждёт первого интервала: 60 минут в submission-стенде, 2 часа в production. В production немедленный импорт управляется `EVENT_SYNC_RUN_ON_START`; локальный Compose эту переменную не передаёт.
-
-Восстановление постеров Timepad вынесено в maintenance-профиль, требует `TIMEPAD_TOKEN` и не запускается автоматически. Команда без `--apply` — предварительный просмотр:
+Восстановление постеров Timepad вынесено в maintenance-профиль, требует `EVENT_SYNC_TIMEPAD_ENABLED=true`, `TIMEPAD_TOKEN` и не запускается автоматически. Команда без `--apply` — предварительный просмотр:
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml -f compose.maintenance.yaml \

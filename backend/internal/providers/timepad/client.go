@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -14,17 +15,20 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 const (
-	maxErrorBodyBytes  = 4 * 1024
 	importHorizon      = 90 * 24 * time.Hour
 	maxRequestAttempts = 3
 	retryBaseDelay     = time.Second
 	maxRetryDelay      = 30 * time.Second
+	maxRateLimitPause  = 30 * time.Second
+	hardPageCeiling    = 10000
 	moscowCity         = "Москва"
 	requestedFields    = "location,registration_data,ticket_types,description_short,ends_at,created_at,age_limit,organization,access_status,moderation_status,poster_image"
 )
@@ -40,6 +44,9 @@ type Options struct {
 	CityID               uuid.UUID
 	CityName             string
 	Timezone             string
+	MaxPagesPerRun       int
+	MaxRunDuration       time.Duration
+	UpsertOnly           bool
 }
 
 type requestLimiter interface{ Wait(context.Context) error }
@@ -55,6 +62,9 @@ func newIntervalLimiter(requestsPerMinute int) *intervalLimiter {
 }
 
 func (l *intervalLimiter) Wait(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	now := time.Now()
 	start := now
@@ -78,15 +88,19 @@ func (l *intervalLimiter) Wait(ctx context.Context) error {
 }
 
 type Client struct {
-	baseURL    *url.URL
-	token      string
-	httpClient *http.Client
-	pageSize   int
-	cityID     uuid.UUID
-	cityName   string
-	timezone   string
-	limiter    requestLimiter
-	now        func() time.Time
+	baseURL        *url.URL
+	token          string
+	httpClient     *http.Client
+	pageSize       int
+	cityID         uuid.UUID
+	cityName       string
+	timezone       string
+	maxPagesPerRun int
+	maxRunDuration time.Duration
+	upsertOnly     bool
+	attempts       atomic.Int64
+	limiter        requestLimiter
+	now            func() time.Time
 	// wait is retained for importer pacing hooks; actual HTTP attempts use limiter.
 	wait      func(context.Context) error
 	waitRetry func(context.Context, time.Duration) error
@@ -111,6 +125,12 @@ func NewClient(options Options) (*Client, error) {
 	if options.MaxRequestsPerMinute <= 0 {
 		return nil, errors.New("timepad max requests per minute must be positive")
 	}
+	if options.MaxPagesPerRun < 0 {
+		return nil, errors.New("timepad max pages per run must not be negative")
+	}
+	if options.MaxRunDuration < 0 {
+		return nil, errors.New("timepad max run duration must not be negative")
+	}
 	cityName := strings.TrimSpace(options.CityName)
 	timezone := strings.TrimSpace(options.Timezone)
 	if cityName == "" {
@@ -131,18 +151,24 @@ func NewClient(options Options) (*Client, error) {
 		}
 	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/"
+	if !strings.EqualFold(baseURL.Hostname(), "api.timepad.ru") || baseURL.Port() != "" {
+		return nil, errors.New("timepad base URL must use api.timepad.ru")
+	}
 	return &Client{
-		baseURL:    baseURL,
-		token:      token,
-		httpClient: &http.Client{Timeout: options.Timeout},
-		pageSize:   options.PageSize,
-		cityID:     options.CityID,
-		cityName:   cityName,
-		timezone:   timezone,
-		limiter:    newIntervalLimiter(options.MaxRequestsPerMinute),
-		now:        time.Now,
-		wait:       func(context.Context) error { return nil },
-		waitRetry:  waitForRetry,
+		baseURL:        baseURL,
+		token:          token,
+		httpClient:     &http.Client{Timeout: options.Timeout},
+		pageSize:       options.PageSize,
+		cityID:         options.CityID,
+		cityName:       cityName,
+		timezone:       timezone,
+		maxPagesPerRun: options.MaxPagesPerRun,
+		maxRunDuration: options.MaxRunDuration,
+		upsertOnly:     options.UpsertOnly,
+		limiter:        newIntervalLimiter(options.MaxRequestsPerMinute),
+		now:            time.Now,
+		wait:           func(context.Context) error { return nil },
+		waitRetry:      waitForRetry,
 		jitter: func(delay time.Duration) time.Duration {
 			return time.Duration(float64(delay) * (0.8 + rand.Float64()*0.4))
 		},
@@ -161,6 +187,7 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 	query.Set("starts_at_min", startsAtMin.In(timepadMoscowLocation).Format(time.RFC3339))
 	query.Set("starts_at_max", startsAtMax.In(timepadMoscowLocation).Format(time.RFC3339))
 	query.Set("fields", requestedFields)
+	query.Set("cities", c.effectiveCityName())
 	requestURL.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
@@ -172,16 +199,22 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 
 	var page eventsPage
 	response, err := c.doWithHandler(ctx, request, func(response *http.Response) error {
-		decoder := json.NewDecoder(response.Body)
+		decoder := json.NewDecoder(io.LimitReader(response.Body, 16<<20))
 		if err := decoder.Decode(&page); err != nil {
-			return err
+			if retryableResponseReadError(err) {
+				return err
+			}
+			if errors.Is(err, errInvalidPage) {
+				return providers.SafeError("provider_pagination_error")
+			}
+			return providers.SafeError("provider_decode_error")
 		}
 		var extra any
 		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-			if err == nil {
-				return errors.New("multiple JSON values")
+			if retryableResponseReadError(err) {
+				return err
 			}
-			return err
+			return providers.SafeError("provider_decode_error")
 		}
 		return nil
 	})
@@ -203,10 +236,12 @@ func (c *Client) do(ctx context.Context, request *http.Request) (*http.Response,
 }
 
 func (c *Client) doWithHandler(ctx context.Context, request *http.Request, handle func(*http.Response) error) (*http.Response, error) {
+	rateLimited := false
 	for attempt := 1; attempt <= maxRequestAttempts; attempt++ {
 		if err := c.limiter.Wait(ctx); err != nil {
 			return nil, err
 		}
+		c.attempts.Add(1)
 		client := *c.httpClient
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		response, err := client.Do(request)
@@ -215,15 +250,27 @@ func (c *Client) doWithHandler(ctx context.Context, request *http.Request, handl
 				return nil, ctx.Err()
 			}
 			if attempt == maxRequestAttempts {
-				return nil, fmt.Errorf("perform timepad request after %d attempts: %w", attempt, err)
+				if providers.SyncErrorCode(err) == "provider_timeout" {
+					return nil, providers.SafeError("provider_timeout")
+				}
+				return nil, providers.SafeError("provider_transport_error")
 			}
 			if err := c.waitRetry(ctx, c.retryDelay(attempt, nil)); err != nil {
 				return nil, err
 			}
 			continue
 		}
+		if response.StatusCode == http.StatusTooManyRequests {
+			if rateLimited {
+				return response, nil
+			}
+			rateLimited = true
+		}
 		if (response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError) && attempt < maxRequestAttempts {
 			delay := c.retryDelay(attempt, response)
+			if response.StatusCode == http.StatusTooManyRequests && delay > maxRateLimitPause {
+				return response, nil
+			}
 			response.Body.Close()
 			if err := c.waitRetry(ctx, delay); err != nil {
 				return nil, err
@@ -240,10 +287,13 @@ func (c *Client) doWithHandler(ctx context.Context, request *http.Request, handl
 				return response, nil
 			}
 			if !retryableResponseReadError(handleErr) {
-				return nil, fmt.Errorf("decode timepad response: %w", handleErr)
+				return nil, handleErr
 			}
 			if attempt == maxRequestAttempts {
-				return nil, fmt.Errorf("decode timepad response after %d attempts: %w", attempt, handleErr)
+				if providers.SyncErrorCode(handleErr) == "provider_timeout" {
+					return nil, providers.SafeError("provider_timeout")
+				}
+				return nil, providers.SafeError("provider_decode_error")
 			}
 			if err := c.waitRetry(ctx, c.retryDelay(attempt, nil)); err != nil {
 				return nil, err
@@ -269,7 +319,10 @@ func (c *Client) retryDelay(attempt int, response *http.Response) time.Duration 
 }
 
 func retryAfter(value string, now time.Time) (time.Duration, bool) {
-	if seconds, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && seconds >= 0 {
+	if seconds, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && seconds >= 0 {
+		if seconds > math.MaxInt64/int64(time.Second) {
+			return maxRateLimitPause + time.Second, true
+		}
 		return time.Duration(seconds) * time.Second, true
 	}
 	when, err := http.ParseTime(value)
@@ -304,26 +357,7 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 }
 
 func responseError(response *http.Response) error {
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
-	if err != nil {
-		return fmt.Errorf("read timepad error response with status %d: %w", response.StatusCode, err)
-	}
-	truncated := len(body) > maxErrorBodyBytes
-	if truncated {
-		body = body[:maxErrorBodyBytes]
-	}
-	message := strings.TrimSpace(string(body))
-	if truncated {
-		message += " [truncated]"
-	}
-	if response.StatusCode == http.StatusTooManyRequests {
-		if message == "" {
-			return errors.New("timepad rate limit exceeded (status 429)")
-		}
-		return fmt.Errorf("timepad rate limit exceeded (status 429): %s", message)
-	}
-	if message == "" {
-		return fmt.Errorf("timepad response status %d", response.StatusCode)
-	}
-	return fmt.Errorf("timepad response status %d: %s", response.StatusCode, message)
+	// Response bodies can contain provider data or credentials. The shared HTTP
+	// error preserves only the status for operational classification.
+	return providers.HTTPError(response.StatusCode)
 }

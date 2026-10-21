@@ -3,13 +3,43 @@ package timepad
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 )
 
+var errInvalidPage = errors.New("timepad invalid pagination response")
+
 type eventsPage struct {
 	Total  flexibleInt `json:"total"`
 	Values []eventDTO  `json:"values"`
+}
+
+// UnmarshalJSON distinguishes an omitted/null pagination field from a valid
+// zero value. Treating either as zero could turn a malformed upstream reply
+// into a seemingly complete import and reconcile valid local events away.
+func (p *eventsPage) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	total, totalOK := raw["total"]
+	values, valuesOK := raw["values"]
+	if !totalOK || !valuesOK || bytes.Equal(bytes.TrimSpace(total), []byte("null")) || bytes.Equal(bytes.TrimSpace(values), []byte("null")) {
+		return errInvalidPage
+	}
+	var decoded struct {
+		Total  flexibleInt `json:"total"`
+		Values []eventDTO  `json:"values"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.Total < 0 {
+		return errInvalidPage
+	}
+	p.Total, p.Values = decoded.Total, decoded.Values
+	return nil
 }
 
 type eventDTO struct {

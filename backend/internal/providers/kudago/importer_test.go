@@ -53,7 +53,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "2" {
-			fmt.Fprint(w, `{"count":4,"next":"","results":[`+validImportEvent(1, 1700000000)+`,`+validImportEvent(3, 1700000300)+`]}`)
+			fmt.Fprint(w, `{"count":4,"next":"","results":[`+validImportEvent(3, 1700000300)+`,`+validImportEvent(4, 1700000400)+`]}`)
 			return
 		}
 		since, sinceErr := strconv.ParseInt(r.URL.Query().Get("actual_since"), 10, 64)
@@ -61,8 +61,8 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		if sinceErr != nil || untilErr != nil || since != importNow.Unix() || until != importNow.Add(importHorizon).Unix() {
 			t.Errorf("import window actual_since=%q actual_until=%q", r.URL.Query().Get("actual_since"), r.URL.Query().Get("actual_until"))
 		}
-		fmt.Fprintf(w, `{"count":4,"next":%q,"results":[%s,{"id":2,"title":"invalid","dates":[{"start":1700000200}]}]}`,
-			server.URL+"/events/?page=2", validImportEvent(1, 1700000000))
+		fmt.Fprintf(w, `{"count":4,"next":%q,"results":[%s,%s]}`,
+			server.URL+"/events/?page=2", validImportEvent(1, 1700000000), validImportEvent(2, 1700000200))
 	}))
 	defer server.Close()
 
@@ -70,6 +70,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.limiter = immediateLimiter{}
 	nowCalls := 0
 	client.now = func() time.Time {
 		nowCalls++
@@ -85,7 +86,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		t.Fatal("first import returned no sync run ID")
 	}
 	first.SyncRunID = uuid.Nil
-	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, Rejections: providers.RejectionStats{Duplicate: 1}}) {
+	if first != (ImportStats{Scope: "full", PagesFetched: 2, HTTPAttempts: 2, InitialTotal: 4, FinalOffset: 4, Fetched: 4, Matched: 4, Normalized: 4, Inserted: 4}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	second, err := client.Import(context.Background(), cityID, store, nil)
@@ -96,7 +97,7 @@ func TestImportPaginatesSkipsInvalidAndSupportsRerun(t *testing.T) {
 		t.Fatal("second import returned no sync run ID")
 	}
 	second.SyncRunID = uuid.Nil
-	if second != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 4, Normalized: 2, Updated: 2, Skipped: 2, Rejections: providers.RejectionStats{Duplicate: 1}}) {
+	if second != (ImportStats{Scope: "full", PagesFetched: 2, HTTPAttempts: 2, InitialTotal: 4, FinalOffset: 4, Fetched: 4, Matched: 4, Normalized: 4, Updated: 4}) {
 		t.Fatalf("second stats = %+v", second)
 	}
 	if nowCalls != 2 {
@@ -117,6 +118,7 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.limiter = immediateLimiter{}
 	client.now = func() time.Time { return importNow }
 	store := &memoryEventStore{seen: make(map[string]struct{}), fail: map[string]error{"7:1700000700": errors.New("database failure")}}
 	var reported int
@@ -128,7 +130,7 @@ func TestImportContinuesAfterPersistenceError(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	if stats != (ImportStats{PagesFetched: 1, Fetched: 2, Matched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
+	if stats != (ImportStats{Scope: "full", PagesFetched: 1, HTTPAttempts: 1, InitialTotal: 2, FinalOffset: 2, Fetched: 2, Matched: 2, Normalized: 2, Inserted: 1, Errors: 1}) || reported != 1 || len(store.persisted) != 1 {
 		t.Fatalf("stats=%+v reported=%d persisted=%v", stats, reported, store.persisted)
 	}
 	if len(store.finishes) != 1 || store.finishes[0].State != providers.SyncRunFailed {
@@ -151,6 +153,7 @@ func TestImportConfiguredCityUsesTimezoneWithoutChangingInstant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.limiter = immediateLimiter{}
 	client.now = func() time.Time { return time.Unix(timestamp-1, 0).UTC() }
 	store := &memoryEventStore{seen: make(map[string]struct{}), fail: make(map[string]error)}
 	if _, err := client.Import(context.Background(), cityID, store, nil); err != nil {
@@ -173,6 +176,7 @@ func TestImportConfiguredCityRejectsMismatchedLocationBeforeWrites(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.limiter = immediateLimiter{}
 	client.now = func() time.Time { return time.Unix(1_699_999_900, 0).UTC() }
 	store := &memoryEventStore{seen: make(map[string]struct{}), fail: make(map[string]error)}
 	stats, err := client.Import(context.Background(), cityID, store, nil)

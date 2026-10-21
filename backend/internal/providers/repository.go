@@ -189,9 +189,10 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 	}
 	if finish.State == SyncRunSucceeded && finish.Stats.Errors > 0 {
 		finish.State = SyncRunFailed
-		finish.ErrorText = "provider records failed to persist"
+		finish.ErrorText = "provider_persistence_error"
 	}
 
+	coverageRejected := false
 	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := platform.New(tx)
 		run, err := queries.GetProviderSyncRunForUpdate(ctx, finish.RunID)
@@ -210,12 +211,32 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 			if err != nil {
 				return fmt.Errorf("check newer provider sync run: %w", err)
 			}
+			// A superseded run cannot reconcile. Preserve its audit completion without
+			// applying coverage checks against events now owned by the newer run.
 			if !newer {
-				count, err := queries.ReconcileProviderSyncRun(ctx, finish.RunID)
-				if err != nil {
-					return fmt.Errorf("reconcile provider sync run: %w", err)
+				if run.Provider == "kudago" || run.Provider == "timepad" {
+					var active, seen int
+					err := tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE e.provider_last_seen_run_id = r.id)
+      FROM provider_sync_runs r JOIN events e ON e.source=r.provider
+      JOIN venues v ON v.id=e.venue_id AND v.city_id=r.city_id
+      WHERE r.id=$1 AND e.provider_active AND NOT e.is_demo
+       AND e.starts_at >= r.window_start AND e.starts_at <= r.window_end`, finish.RunID).Scan(&active, &seen)
+					if err != nil {
+						return err
+					}
+					if active > 0 && seen*2 < active {
+						finish.State = SyncRunFailed
+						finish.ErrorText = "provider_coverage_drop"
+						coverageRejected = true
+					}
 				}
-				reconciled = int(count)
+				if finish.State == SyncRunSucceeded {
+					count, err := queries.ReconcileProviderSyncRun(ctx, finish.RunID)
+					if err != nil {
+						return fmt.Errorf("reconcile provider sync run: %w", err)
+					}
+					reconciled = int(count)
+				}
 			}
 		}
 
@@ -238,6 +259,9 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 	})
 	if err != nil {
 		return 0, err
+	}
+	if coverageRejected {
+		return 0, SafeError("provider_coverage_drop")
 	}
 	return reconciled, nil
 }
@@ -263,6 +287,9 @@ func validateImportStats(stats ImportStats) error {
 
 func safeSyncErrorText(value string) string {
 	value = strings.TrimSpace(value)
+	if allowedSyncCode(value) {
+		return value
+	}
 	switch value {
 	case "", "provider import cancelled", "provider import failed", "provider records failed to persist", "timepad_normalization_empty":
 		return value

@@ -28,3 +28,10 @@ func TestManualDryRunRemainsValid(t *testing.T) {
 		t.Fatalf("manual dry-run rejected: %v", err)
 	}
 }
+
+func TestRunDisabledDoesNotRequireCommandConfiguration(t *testing.T) {
+	t.Setenv("EVENT_SYNC_TIMEPAD_ENABLED", "false")
+	if err := run([]string{}); err != nil {
+		t.Fatalf("disabled command returned %v", err)
+	}
+}

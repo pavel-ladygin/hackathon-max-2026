@@ -16,9 +16,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/config"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
-	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/kudago"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
-	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/timepad"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/migrations"
 )
@@ -28,7 +26,7 @@ const (
 	timepadPriority = 50
 )
 
-var errPartialProviderSync = errors.New("provider sync completed with record errors")
+var errPartialProviderSync = providers.SafeError("provider_persistence_error")
 var errProviderSyncBusy = errors.New("provider sync skipped because another worker owns the lock")
 
 type eventImporter interface {
@@ -89,17 +87,6 @@ func run() error {
 		return err
 	}
 
-	kudaGoClient, err := kudago.NewClient(kudago.Options{
-		BaseURL:  cfg.KudaGoBaseURL,
-		Timeout:  cfg.KudaGoTimeout,
-		Location: cfg.KudaGoLocation,
-		PageSize: cfg.KudaGoPageSize,
-		CityID:   cityID,
-		Timezone: cityTimezone,
-	})
-	if err != nil {
-		return err
-	}
 	lockProvider := func(provider string) func(context.Context) (func() error, bool, error) {
 		return func(lockCtx context.Context) (func() error, bool, error) {
 			lock, acquired, err := providers.TryAcquireProviderSyncLock(lockCtx, db, provider)
@@ -109,30 +96,18 @@ func run() error {
 			return lock.Release, acquired, err
 		}
 	}
-	// Preserve the existing provider-wide Timepad lock/rate-limit coordination.
-	// It conservatively serializes cities; run audit/reconciliation is city-scoped.
-	syncProviders := []syncProvider{{name: "kudago", priority: kudaGoPriority, importer: kudaGoClient, acquireLock: lockProvider("kudago")}}
-	timepadCity := cfg.TimepadCityName
-	if cityID.String() == catalogseed.MoscowCityID && timepadCity == "" {
-		timepadCity = "Москва"
+	syncProviders, err := builtInProviders(cfg, cityTimezone, lockProvider)
+	if err != nil {
+		return err
 	}
-	if cfg.TimepadToken == "" || timepadCity == "" {
-		logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "token or explicit provider city is not configured")
-	} else {
-		timepadClient, err := timepad.NewClient(timepad.Options{
-			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
-			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
-			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
-			CityID:               cityID, CityName: timepadCity, Timezone: cityTimezone,
-		})
-		if err != nil {
-			return err
+	for _, name := range []string{"kudago", "timepad"} {
+		enabled, cap := cfg.EventSyncKudaGoEnabled, cfg.KudaGoMaxPagesPerRun
+		if name == "timepad" {
+			enabled, cap = cfg.EventSyncTimepadEnabled, cfg.TimepadMaxPagesPerRun
 		}
-		syncProviders = append(syncProviders, syncProvider{
-			name: "timepad", priority: timepadPriority, importer: timepadClient,
-			acquireLock: lockProvider("timepad"),
-		})
+		logger.Info("provider configuration", "provider", name, "provider_enabled", enabled, "city_id", cityID, "max_pages", cap, "upsert_only", cfg.EventSyncUpsertOnly || cap > 0, "max_duration", cfg.EventSyncMaxRunDuration)
 	}
+	blocked := make(map[string]bool)
 
 	repository := providers.NewRepository(db)
 	var genericRunner *eventsources.Runner
@@ -153,7 +128,7 @@ func run() error {
 				cycleProviders = append(cycleProviders, genericSyncProviders(genericSources, genericRunner, cityID)...)
 			}
 		}
-		if err := syncProvidersOnce(ctx, cityID, repository, cycleProviders, logger); err != nil {
+		if err := syncProvidersCycle(ctx, cityID, repository, cycleProviders, logger, blocked); err != nil {
 			return false
 		}
 		return true
@@ -187,9 +162,21 @@ func runSyncLoop(ctx context.Context, interval time.Duration, runOnStart bool, s
 }
 
 func syncProvidersOnce(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, syncProviders []syncProvider, logger *slog.Logger) error {
+	return syncProvidersCycle(ctx, cityID, repository, syncProviders, logger, nil)
+}
+
+func syncProvidersCycle(ctx context.Context, cityID uuid.UUID, repository providers.SyncStore, syncProviders []syncProvider, logger *slog.Logger, blocked map[string]bool) error {
 	for _, provider := range syncProviders {
-		if err := syncOne(ctx, cityID, repository, provider, logger); err != nil && ctx.Err() != nil {
+		if blocked[provider.name] {
+			continue
+		}
+		err := syncOne(ctx, cityID, repository, provider, logger)
+		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if (provider.name == "kudago" || provider.name == "timepad") && providers.IsBlockingError(err) && blocked != nil {
+			blocked[provider.name] = true
+			logger.Error("provider blocked until operator restart", "provider", provider.name, "error_code", providers.SyncErrorCode(err))
 		}
 	}
 	return nil
@@ -236,6 +223,12 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 	}
 	attributes := []any{
 		"provider", provider.name,
+		"city_id", cityID,
+		"scope", stats.Scope,
+		"limit_reason", stats.LimitReason,
+		"http_attempts", stats.HTTPAttempts,
+		"initial_total", stats.InitialTotal,
+		"final_offset", stats.FinalOffset,
 		"sync_run_id", syncRunID,
 		"priority", provider.priority,
 		"duration", time.Since(startedAt),

@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 func testClient(t *testing.T, server *httptest.Server) *Client {
@@ -20,10 +22,12 @@ func testClient(t *testing.T, server *httptest.Server) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
+	httpClient := server.Client()
+	httpClient.Transport = offlineOnlyTransport{base: httpClient.Transport}
 	return &Client{
 		baseURL:    baseURL,
 		token:      "test-token",
-		httpClient: server.Client(),
+		httpClient: httpClient,
 		pageSize:   2,
 		limiter:    limiterFunc(func(context.Context) error { return nil }),
 		now:        time.Now,
@@ -33,7 +37,7 @@ func testClient(t *testing.T, server *httptest.Server) *Client {
 	}
 }
 
-func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
+func TestClientFormsRequestWithConfiguredCityFilter(t *testing.T) {
 	startsAtMin := time.Date(2026, 9, 29, 16, 44, 37, 0, time.UTC)
 	startsAtMax := startsAtMin.Add(90 * 24 * time.Hour)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -55,8 +59,8 @@ func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
 		if !includesPosterImage {
 			t.Errorf("fields = %q, want poster_image requested", query.Get("fields"))
 		}
-		if _, exists := query["cities"]; exists {
-			t.Errorf("cities must be omitted, got %q", query.Get("cities"))
+		if got := query.Get("cities"); got != moscowCity {
+			t.Errorf("cities = %q, want %q", got, moscowCity)
 		}
 		for key, want := range map[string]string{
 			"limit":         "2",
@@ -99,8 +103,8 @@ func TestClientRateLimitErrorIsClear(t *testing.T) {
 	defer server.Close()
 
 	_, err := testClient(t, server).fetchPage(context.Background(), 0, time.Now(), time.Now().Add(time.Hour))
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "rate limit") || !strings.Contains(err.Error(), "429") {
-		t.Fatalf("error = %v, want a clear rate-limit error", err)
+	if providers.SyncErrorCode(err) != "provider_http_429" {
+		t.Fatalf("error code = %q, want provider_http_429", providers.SyncErrorCode(err))
 	}
 }
 
@@ -119,21 +123,13 @@ func TestClientRetriesServerErrorsAndEventuallySucceeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Options{
-		BaseURL:  server.URL,
-		Token:    "test-token",
-		Timeout:  5 * time.Second,
-		PageSize: 100, MaxRequestsPerMinute: 20,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client.httpClient = server.Client()
+	client := testClient(t, server)
+	client.pageSize = 100
 	client.limiter = limiterFunc(func(context.Context) error { return nil })
 	client.waitRetry = func(context.Context, time.Duration) error { return nil }
 
 	start := time.Now()
-	_, err = client.fetchPage(
+	_, err := client.fetchPage(
 		context.Background(),
 		0,
 		start,
@@ -226,23 +222,15 @@ func TestClientRetriesRateLimitAndHonorsRetryAfter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Options{
-		BaseURL:  server.URL,
-		Token:    "test-token",
-		Timeout:  5 * time.Second,
-		PageSize: 100, MaxRequestsPerMinute: 20,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client.httpClient = server.Client()
+	client := testClient(t, server)
+	client.pageSize = 100
 	client.limiter = limiterFunc(func(context.Context) error { return nil })
 	client.waitRetry = func(context.Context, time.Duration) error { return nil }
 	var delays []time.Duration
 	client.waitRetry = func(_ context.Context, delay time.Duration) error { delays = append(delays, delay); return nil }
 
 	start := time.Now()
-	_, err = client.fetchPage(
+	_, err := client.fetchPage(
 		context.Background(),
 		0,
 		start,
@@ -252,11 +240,11 @@ func TestClientRetriesRateLimitAndHonorsRetryAfter(t *testing.T) {
 		t.Fatal("fetchPage() error = nil, want rate limit error")
 	}
 
-	if got := atomic.LoadInt32(&attempts); got != 3 {
-		t.Fatalf("attempts = %d, want 3", got)
+	if got := atomic.LoadInt32(&attempts); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
 	}
-	if len(delays) != 2 || delays[0] != 30*time.Second || delays[1] != 30*time.Second {
-		t.Fatalf("retry delays = %v, want two Retry-After delays of 30s", delays)
+	if len(delays) != 1 || delays[0] != 30*time.Second {
+		t.Fatalf("retry delays = %v, want one Retry-After delay of 30s", delays)
 	}
 }
 
@@ -299,6 +287,42 @@ func TestClientLimiterRunsForEveryRetry(t *testing.T) {
 	}
 }
 
+func TestConfiguredSixRPMCountsRedirectAndPosterRequestsWithoutSleeping(t *testing.T) {
+	client, err := NewClient(Options{
+		BaseURL: "https://api.timepad.ru/api/", Token: "test-token", Timeout: time.Second,
+		PageSize: 1, MaxRequestsPerMinute: 6,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, ok := client.limiter.(*intervalLimiter)
+	if !ok || configured.interval != 10*time.Second {
+		t.Fatalf("configured limiter=%T interval=%v, want 6 RPM / 10s", client.limiter, configured.interval)
+	}
+	var permits int32
+	client.limiter = limiterFunc(func(context.Context) error { atomic.AddInt32(&permits, 1); return nil })
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.String() {
+		case "https://timepad.ru/event/1/":
+			return redirectResponse(http.StatusFound, "https://timepad.ru/event/2/"), nil
+		case "https://timepad.ru/event/2/":
+			return response(http.StatusOK, ""), nil
+		case "https://api.timepad.ru/api/events/2.json":
+			return response(http.StatusOK, `{"id":2,"poster_image":{"default_url":"https://assets.test/poster.jpg"}}`), nil
+		default:
+			t.Fatalf("unexpected request %s", request.URL)
+			return nil, nil
+		}
+	})}
+	images, err := client.ResolveRedirectPoster(context.Background(), 1, "https://timepad.ru/event/1/")
+	if err != nil || len(images) != 1 || images[0].URL != "https://assets.test/poster.jpg" {
+		t.Fatalf("ResolveRedirectPoster() images=%+v err=%v", images, err)
+	}
+	if permits != 3 {
+		t.Fatalf("limiter permits=%d, want redirect hops plus poster API request", permits)
+	}
+}
+
 func TestClientRetryBackoffHonorsCancellation(t *testing.T) {
 	var attempts int32
 
@@ -308,23 +332,16 @@ func TestClientRetryBackoffHonorsCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Options{
-		BaseURL:  server.URL,
-		Token:    "test-token",
-		Timeout:  5 * time.Second,
-		PageSize: 100, MaxRequestsPerMinute: 20,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	client.httpClient = server.Client()
+	client := testClient(t, server)
+	client.pageSize = 100
 	client.limiter = limiterFunc(func(context.Context) error { return nil })
+	client.waitRetry = waitForRetry
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	_, err = client.fetchPage(
+	_, err := client.fetchPage(
 		ctx,
 		0,
 		start,

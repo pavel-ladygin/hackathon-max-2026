@@ -20,6 +20,13 @@ import (
 
 // Config contains the configuration required to start a backend process.
 type Config struct {
+	EventSyncKudaGoEnabled      bool
+	EventSyncTimepadEnabled     bool
+	EventSyncUpsertOnly         bool
+	EventSyncMaxRunDuration     time.Duration
+	KudaGoMaxPagesPerRun        int
+	TimepadMaxPagesPerRun       int
+	KudaGoMaxRequestsPerMinute  int
 	AppEnv                      string
 	HTTPAddr                    string
 	DatabaseURL                 string
@@ -53,6 +60,10 @@ type Config struct {
 // Load reads and validates all required environment variables.
 func Load() (Config, error) {
 	cfg := Config{
+		EventSyncMaxRunDuration:     45 * time.Minute,
+		KudaGoMaxPagesPerRun:        20,
+		TimepadMaxPagesPerRun:       20,
+		KudaGoMaxRequestsPerMinute:  6,
 		AppEnv:                      strings.TrimSpace(os.Getenv("APP_ENV")),
 		HTTPAddr:                    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		DatabaseURL:                 strings.TrimSpace(os.Getenv("DATABASE_URL")),
@@ -72,8 +83,11 @@ func Load() (Config, error) {
 		TimepadToken:                strings.TrimSpace(os.Getenv("TIMEPAD_TOKEN")),
 		TimepadTimeout:              30 * time.Second,
 		TimepadPageSize:             100,
-		TimepadMaxRequestsPerMinute: 20,
+		TimepadMaxRequestsPerMinute: 6,
 		EventSyncCityID:             uuid.MustParse(catalogseed.MoscowCityID),
+	}
+	if err := cfg.loadProviderSafety(); err != nil {
+		return Config{}, err
 	}
 	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {
@@ -118,7 +132,7 @@ func Load() (Config, error) {
 		cfg.EventSyncInterval = interval
 	}
 	if value := strings.TrimSpace(os.Getenv("EVENT_SYNC_RUN_ON_START")); value != "" {
-		runOnStart, err := strconv.ParseBool(value)
+		runOnStart, err := strictBool("EVENT_SYNC_RUN_ON_START", false)
 		if err != nil {
 			return Config{}, fmt.Errorf("EVENT_SYNC_RUN_ON_START is invalid")
 		}
@@ -146,7 +160,7 @@ func Load() (Config, error) {
 	}
 	if value := strings.TrimSpace(os.Getenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE")); value != "" {
 		requestsPerMinute, err := strconv.Atoi(value)
-		if err != nil || requestsPerMinute <= 0 {
+		if err != nil || requestsPerMinute <= 0 || requestsPerMinute > 30 {
 			return Config{}, fmt.Errorf("TIMEPAD_MAX_REQUESTS_PER_MINUTE is invalid")
 		}
 		cfg.TimepadMaxRequestsPerMinute = requestsPerMinute

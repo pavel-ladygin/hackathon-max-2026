@@ -4,12 +4,37 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 type eventsPage struct {
 	Count   int        `json:"count"`
 	Next    string     `json:"next"`
 	Results []eventDTO `json:"results"`
+}
+
+// Missing pagination fields must never look like a complete empty catalog.
+func (p *eventsPage) UnmarshalJSON(data []byte) error {
+	type plain eventsPage
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, key := range []string{"count", "results"} {
+		raw, ok := fields[key]
+		if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return providers.SafeError("provider_pagination_error")
+		}
+	}
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value.Count < 0 {
+		return providers.SafeError("provider_pagination_error")
+	}
+	*p = eventsPage(value)
+	return nil
 }
 
 type eventDTO struct {

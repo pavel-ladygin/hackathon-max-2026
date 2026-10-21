@@ -2,6 +2,7 @@ package config
 
 import (
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,17 @@ import (
 
 func setValidConfigEnv(t *testing.T) {
 	t.Helper()
+	for _, name := range []string{"EVENT_SYNC_KUDAGO_ENABLED", "EVENT_SYNC_TIMEPAD_ENABLED", "EVENT_SYNC_UPSERT_ONLY", "EVENT_SYNC_MAX_RUN_DURATION", "KUDAGO_MAX_PAGES_PER_RUN", "TIMEPAD_MAX_PAGES_PER_RUN", "KUDAGO_MAX_REQUESTS_PER_MINUTE"} {
+		previous, present := os.LookupEnv(name)
+		os.Unsetenv(name)
+		t.Cleanup(func() {
+			if present {
+				os.Setenv(name, previous)
+			} else {
+				os.Unsetenv(name)
+			}
+		})
+	}
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("HTTP_ADDR", "127.0.0.1:8080")
 	t.Setenv("DATABASE_URL", "postgres://test_user:test_password@127.0.0.1:5432/test_db")
@@ -42,7 +54,7 @@ func TestTimepadSyncDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.EventSyncInterval != 2*time.Hour || cfg.EventSyncRunOnStart || cfg.TimepadMaxRequestsPerMinute != 20 {
+	if cfg.EventSyncInterval != 2*time.Hour || cfg.EventSyncRunOnStart || cfg.TimepadMaxRequestsPerMinute != 6 {
 		t.Fatalf("unexpected Timepad sync defaults: %+v", cfg)
 	}
 	t.Setenv("EVENT_SYNC_INTERVAL", "15m")
