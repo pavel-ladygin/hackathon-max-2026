@@ -241,7 +241,7 @@ func newRecommendationExport(facts recommendationFacts) recommendationExport {
 	r, p := facts.RoomCounts, facts.RoundCounts
 	return recommendationExport{
 		MetricsVersion:  "recommendation-analytics-v2",
-		ReleaseVersion:  "recommendation-analytics-v2/000027",
+		ReleaseVersion:  "recommendation-analytics-v2/000032",
 		ReleaseRevision: analyticsBuildRevision(),
 		SnapshotAt:      facts.SnapshotAt.UTC(), PeriodStart: facts.PeriodStart.UTC(), PeriodEnd: facts.PeriodEnd.UTC(), Timezone: "UTC",
 		RoomCounts: r, RoundCounts: p,

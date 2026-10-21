@@ -348,7 +348,7 @@ func TestRecommendationAnalyticsMigrationIsAdditiveAndReversible(t *testing.T) {
 	if err := tx.QueryRow(ctx, "SELECT pg_get_viewdef('analytics_room_funnel_metrics'::regclass)").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	data, err := migrations.Files.ReadFile("000027_recommendation_analytics.sql")
+	data, err := migrations.Files.ReadFile("000032_recommendation_analytics.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

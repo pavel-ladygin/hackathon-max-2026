@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 		}
 	})
 
-	t.Run("M02/M04 upgrade from 30 applies only 31 and preserves related data", func(t *testing.T) {
+	t.Run("M02/M04 upgrade from 30 applies pending migrations and preserves related data", func(t *testing.T) {
 		db, pool := newMulticityMigrationDatabase(t, fixture, false)
 		upTo(t, db, 30)
 		before := seedVersion30References(t, db)
@@ -192,7 +193,7 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 		assertVersion30References(t, db, before)
 	})
 
-	t.Run("M10 CheckCurrent boundary rejects 30 and accepts 31", func(t *testing.T) {
+	t.Run("M10 CheckCurrent boundary rejects 30 and accepts current", func(t *testing.T) {
 		db, pool := newMulticityMigrationDatabase(t, fixture, false)
 		upTo(t, db, 30)
 		assertCurrent(t, pool, false)
@@ -319,7 +320,7 @@ func assertCurrent(t *testing.T, pool *pgxpool.Pool, want bool) {
 		t.Fatalf("CheckCurrent rejected complete database: %v", err)
 	}
 	if !want && err == nil {
-		t.Fatal("CheckCurrent accepted database missing migration 31")
+		t.Fatal("CheckCurrent accepted database missing required migrations")
 	}
 }
 
@@ -330,9 +331,9 @@ func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-	var versions []int
+	var versions []int64
 	for rows.Next() {
-		var version int
+		var version int64
 		if err := rows.Scan(&version); err != nil {
 			t.Fatal(err)
 		}
@@ -341,8 +342,18 @@ func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(versions) != 1 || versions[0] != 31 {
-		t.Fatalf("versions applied after 30 = %v, want [31]", versions)
+	expected, err := ExpectedVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pending []int64
+	for _, version := range expected {
+		if version > 30 {
+			pending = append(pending, version)
+		}
+	}
+	if !slices.Equal(versions, pending) {
+		t.Fatalf("versions applied after 30 = %v, want %v", versions, pending)
 	}
 }
 

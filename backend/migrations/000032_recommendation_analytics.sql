@@ -2,8 +2,8 @@
 -- Additive analytics only. Existing analytics_* views and source events remain
 -- unchanged. All facts describe the current transaction snapshot, not replay of
 -- an arbitrary past snapshot. Windows use [start,end), timestamps are UTC.
--- Existing databases already above version 27 need an explicit missing-version
--- migration application by the integrator; never renumber applied migrations.
+-- Appended after released migrations 30/31 so existing databases upgrade through
+-- the standard ordered migration path.
 
 -- A generated round is a room/round pair, not a pool version. Ignore ranking
 -- drafts; the latest committed ready/exhausted version represents the round.
