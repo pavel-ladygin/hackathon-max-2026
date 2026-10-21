@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CreateRoomForm } from './CreateRoomForm'
 import { budgetToMinor, KAZAN_CITY_ID, MOSCOW_CITY_ID } from './public-plan'
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   window.sessionStorage.clear()
 })
@@ -23,32 +24,33 @@ describe('CreateRoomForm', () => {
     window.sessionStorage.setItem('user:one:create-room', JSON.stringify({ version: 1, cityId: KAZAN_CITY_ID, citySelectedExplicitly: true, name: 'Черновик', publicPlanEnabled: false, plan: { dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false } }))
     render(<CreateRoomForm {...baseProps(onSubmit)} profileCityId={MOSCOW_CITY_ID} />)
 
-    expect(screen.getByRole('combobox')).toHaveValue(KAZAN_CITY_ID)
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Казань — город готовится')
     expect(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ })).not.toBeChecked()
 
-    await user.selectOptions(screen.getByRole('combobox'), MOSCOW_CITY_ID)
+    await user.click(screen.getByRole('combobox', { name: /Город комнаты/ }))
+    await user.click(screen.getByRole('option', { name: 'Москва' }))
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledWith({ name: 'Черновик', city_id: MOSCOW_CITY_ID })
   })
 
   it('uses profile city and keeps unknown profile selection gated instead of silently substituting Moscow', () => {
   render(<CreateRoomForm {...baseProps()} profileCityId={KAZAN_CITY_ID} />)
-    expect(screen.getByRole('combobox')).toHaveValue(KAZAN_CITY_ID)
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Казань — город готовится')
     expect(screen.getByRole('button', { name: 'Создать комнату' })).toBeDisabled()
     cleanup()
     window.sessionStorage.removeItem('user:one:create-room')
     render(<CreateRoomForm {...baseProps()} profileCityId="unknown-profile-city" />)
-    expect(screen.getByRole('combobox')).toHaveValue('unknown-profile-city')
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Город профиля не поддерживается — выберите вручную')
     expect(screen.getByRole('button', { name: 'Создать комнату' })).toBeDisabled()
   })
 
   it('does not treat an autosaved fallback as an explicit choice when profile data arrives later', () => {
     const props = baseProps()
     const { unmount } = render(<CreateRoomForm {...props} profileCityId={null} />)
-    expect(screen.getByRole('combobox')).toHaveValue(MOSCOW_CITY_ID)
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Москва')
     unmount()
     render(<CreateRoomForm {...props} profileCityId={KAZAN_CITY_ID} />)
-    expect(screen.getByRole('combobox')).toHaveValue(KAZAN_CITY_ID)
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Казань — город готовится')
     expect(screen.getByRole('button', { name: 'Создать комнату' })).toBeDisabled()
   })
 
@@ -67,15 +69,19 @@ describe('CreateRoomForm', () => {
   })
 
   it('submits selected dates, slots, category and exact minor-unit budget only after explicit choices', async () => {
-    const user = userEvent.setup()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2030, 0, 1, 12))
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onSubmit = vi.fn()
     render(<CreateRoomForm {...baseProps(onSubmit)} />)
     await user.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
-    fireEvent.change(screen.getByLabelText('Новая дата публичного предложения'), { target: { value: '2030-01-12' } })
+    await user.click(screen.getByRole('button', { name: 'Другая дата' }))
+    await user.click(screen.getByRole('gridcell', { name: '12 января 2030 г.' }))
+    await user.click(screen.getByRole('button', { name: 'Применить' }))
     await user.click(screen.getByRole('button', { name: 'Добавить дату' }))
-    await user.click(screen.getByLabelText('Вечер'))
-    await user.click(screen.getByLabelText('Концерты'))
-    await user.type(screen.getByRole('spinbutton'), '2500.75')
+    await user.click(screen.getByRole('button', { name: 'Вечер' }))
+    await user.click(screen.getByRole('button', { name: 'Концерты' }))
+    await user.type(screen.getByRole('textbox', { name: /Бюджет на человека/ }), '2500.75')
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
@@ -86,24 +92,29 @@ describe('CreateRoomForm', () => {
   })
 
   it('limits dates to fourteen and does not shift past selections', async () => {
-    const user = userEvent.setup()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2030, 0, 1, 12))
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onSubmit = vi.fn()
     render(<CreateRoomForm {...baseProps(onSubmit)} />)
     await user.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
-    const date = screen.getByLabelText('Новая дата публичного предложения')
-    fireEvent.change(date, { target: { value: '2000-01-01' } })
-    await user.click(screen.getByRole('button', { name: 'Добавить дату' }))
-    expect(screen.getAllByText('Выберите корректную будущую дату без повторов.')).toHaveLength(2)
-    expect(screen.queryByRole('button', { name: /Удалить дату/ })).not.toBeInTheDocument()
-
-    for (let day = 1; day <= 14; day += 1) {
-      const value = `2030-01-${String(day).padStart(2, '0')}`
-      fireEvent.change(date, { target: { value } })
+    await user.click(screen.getByRole('button', { name: 'Другая дата' }))
+    await user.click(screen.getByRole('button', { name: 'Предыдущий месяц' }))
+    expect(screen.getByRole('gridcell', { name: '31 декабря 2029 г.' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Закрыть календарь' }))
+    for (let day = 1; day <= 7; day += 1) {
+      const label = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(2030, 0, day)))
+      await user.click(screen.getByRole('button', { name: label }))
+    }
+    for (let day = 8; day <= 14; day += 1) {
+      await user.click(screen.getByRole('button', { name: 'Другая дата' }))
+      await user.click(screen.getByRole('gridcell', { name: `${day} января 2030 г.` }))
+      await user.click(screen.getByRole('button', { name: 'Применить' }))
       await user.click(screen.getByRole('button', { name: 'Добавить дату' }))
     }
-    const dateList = screen.getAllByRole('list').find((list) => within(list).queryAllByRole('listitem').length > 0)
-    expect(dateList).toBeDefined()
-    expect(within(dateList!).getAllByRole('listitem')).toHaveLength(14)
+    const dateChoices = within(screen.getByRole('group', { name: 'Подходящие даты' }))
+    expect(dateChoices.getAllByRole('button', { pressed: true })).toHaveLength(14)
+    expect(dateChoices.getByRole('button', { name: 'вторник, 1 января 2030 г.' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Добавить дату' })).toBeDisabled()
     expect(budgetToMinor('1000000.01')).toBeNull()
   })

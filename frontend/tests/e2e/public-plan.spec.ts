@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type BrowserContextOptions, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Browser, type BrowserContextOptions, type Locator, type Page, type TestInfo } from '@playwright/test'
 
 const creator = { id: 'creator-public-plan', display_name: 'Создатель', avatar_url: null, city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', locale: 'ru' }
 const recipient = { id: 'recipient-public-plan', display_name: 'Участник', avatar_url: null, city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', locale: 'ru' }
@@ -85,6 +85,28 @@ async function submitIntent(page: Page) {
   await page.getByRole('button', { name: 'Сохранить предпочтения' }).click()
 }
 
+async function activate(locator: Locator, touch: boolean) {
+  if (touch) await locator.tap()
+  else await locator.click()
+}
+
+async function expectFocusedFieldClearOfSaveBar(page: Page, selector: ReturnType<Page['getByLabel']>, screenshotPath: string) {
+  const saveButton = page.getByRole('button', { name: 'Сохранить предпочтения' })
+  await selector.scrollIntoViewIfNeeded()
+  await selector.focus()
+  await expect(selector).toBeFocused()
+  const fieldBox = await selector.boundingBox()
+  const saveBox = await saveButton.boundingBox()
+  const viewport = page.viewportSize()
+  expect(fieldBox).not.toBeNull()
+  expect(saveBox).not.toBeNull()
+  expect(fieldBox!.y).toBeGreaterThanOrEqual(0)
+  expect(fieldBox!.y + fieldBox!.height).toBeLessThanOrEqual(viewport!.height)
+  const overlaps = fieldBox!.x < saveBox!.x + saveBox!.width && fieldBox!.x + fieldBox!.width > saveBox!.x && fieldBox!.y < saveBox!.y + saveBox!.height && fieldBox!.y + fieldBox!.height > saveBox!.y
+  expect(overlaps, 'sticky save button must not cover the focused field').toBe(false)
+  await page.screenshot({ path: screenshotPath })
+}
+
 test('two participants preview, join, and separately confirm their own plan-derived preferences', async ({ browser, viewport, isMobile, hasTouch, userAgent, deviceScaleFactor }, testInfo: TestInfo) => {
   roomState.created = false
   roomState.members = new Set()
@@ -98,13 +120,43 @@ test('two participants preview, join, and separately confirm their own plan-deri
 
   try {
     const creatorPage = creatorClient.page
+    await creatorPage.clock.install({ time: new Date('2099-11-20T12:00:00Z') })
+    await recipientClient.page.clock.install({ time: new Date('2099-11-20T12:00:00Z') })
     await creatorPage.goto('/rooms/new', { waitUntil: 'domcontentloaded' })
     await expect(creatorPage.getByRole('heading', { name: 'Создать комнату' })).toBeVisible()
+    const citySelect = creatorPage.getByRole('combobox', { name: 'Город комнаты' })
+    await expect(citySelect).toContainText('Москва')
+    await activate(citySelect, isMobile)
+    await expect(creatorPage.getByRole('option', { name: 'Казань — город готовится' })).toBeDisabled()
+    const cityMenu = creatorPage.getByRole('listbox', { name: 'Город комнаты' })
+    await cityMenu.screenshot({ path: testInfo.outputPath('room-city-options.png') })
+    const cityMenuBox = await cityMenu.boundingBox()
+    const cityViewport = creatorPage.viewportSize()
+    expect(cityMenuBox).not.toBeNull()
+    expect(cityMenuBox!.x).toBeGreaterThanOrEqual(0)
+    expect(cityMenuBox!.y).toBeGreaterThanOrEqual(0)
+    expect(cityMenuBox!.x + cityMenuBox!.width).toBeLessThanOrEqual(cityViewport!.width)
+    expect(cityMenuBox!.y + cityMenuBox!.height).toBeLessThanOrEqual(cityViewport!.height)
+    if (isMobile) await activate(creatorPage.getByRole('option', { name: 'Москва', exact: true }), true)
+    else {
+      await citySelect.press('ArrowDown')
+      await citySelect.press('ArrowDown')
+      await citySelect.press('Enter')
+    }
+    await expect(citySelect).toContainText('Москва')
     await creatorPage.getByRole('checkbox', { name: /Добавить публичное предложение/ }).check()
-    await creatorPage.getByLabel('Новая дата публичного предложения').fill(plan.dates[0])
+    await activate(creatorPage.getByLabel('Другая дата'), isMobile)
+    await activate(creatorPage.getByRole('gridcell', { name: /20 ноября 2099/ }), isMobile)
+    await activate(creatorPage.getByRole('button', { name: 'Применить' }), isMobile)
     await creatorPage.getByRole('button', { name: 'Добавить дату' }).click()
-    await creatorPage.getByRole('checkbox', { name: 'Вечер', exact: true }).check()
-    await creatorPage.getByRole('checkbox', { name: 'Концерты' }).check()
+    await creatorPage.getByRole('button', { name: 'Вечер', exact: true }).click()
+    await creatorPage.getByRole('button', { name: 'Концерты', exact: true }).click()
+    const anyTime = creatorPage.getByRole('button', { name: 'Любое время', exact: true })
+    await anyTime.click()
+    await expect(anyTime).toHaveAttribute('aria-pressed', 'true')
+    await anyTime.click()
+    await expect(anyTime).toHaveAttribute('aria-pressed', 'false')
+    await creatorPage.getByRole('button', { name: 'Вечер', exact: true }).click()
     await creatorPage.getByLabel(/Бюджет на человека · максимум/).fill('2500.25')
     if (isMobile) {
       await creatorPage.setViewportSize({ width: 375, height: 812 })
@@ -116,6 +168,18 @@ test('two participants preview, join, and separately confirm their own plan-deri
       await creatorPage.setViewportSize(viewport ?? { width: 393, height: 851 })
     }
     await creatorPage.screenshot({ path: testInfo.outputPath('public-plan-create.png'), fullPage: true })
+    await creatorPage.getByLabel('Другая дата').click()
+    await expect(creatorPage.getByRole('dialog', { name: 'Выбор даты' })).toBeVisible()
+    const calendarBox = await creatorPage.getByRole('dialog', { name: 'Выбор даты' }).boundingBox()
+    const viewportSize = creatorPage.viewportSize()
+    expect(calendarBox).not.toBeNull()
+    expect(calendarBox!.x).toBeGreaterThanOrEqual(0)
+    expect(calendarBox!.y).toBeGreaterThanOrEqual(0)
+    expect(calendarBox!.x + calendarBox!.width).toBeLessThanOrEqual(viewportSize!.width)
+    expect(calendarBox!.y + calendarBox!.height).toBeLessThanOrEqual(viewportSize!.height)
+    await creatorPage.screenshot({ path: testInfo.outputPath('public-plan-calendar.png'), fullPage: true })
+    await creatorPage.keyboard.press('Escape')
+    await expect(creatorPage.getByLabel('Другая дата')).toBeFocused()
     await creatorPage.getByRole('button', { name: 'Создать комнату' }).click()
     await expect(creatorPage).toHaveURL(new RegExp(`/rooms/${roomId}/invite$`))
     await expect(creatorPage.getByRole('region', { name: 'Публичное предложение комнаты' })).toContainText('20 ноября')
@@ -136,6 +200,9 @@ test('two participants preview, join, and separately confirm their own plan-deri
     await expect(recipientPage).toHaveURL(new RegExp(`/rooms/${roomId}/intent$`))
     await expect(recipientPage.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
     await expect(recipientPage.getByLabel(/Бюджет, ₽/)).toHaveValue('2500.25')
+    await recipientPage.screenshot({ path: testInfo.outputPath('private-room-preferences.png'), fullPage: true })
+    await expectFocusedFieldClearOfSaveBar(recipientPage, recipientPage.getByLabel(/Бюджет, ₽/), testInfo.outputPath('private-budget-focused-viewport.png'))
+    await expectFocusedFieldClearOfSaveBar(recipientPage, recipientPage.getByLabel('Дополнительное пожелание'), testInfo.outputPath('private-note-focused-viewport.png'))
     expect(roomState.joinCalls).toBe(1)
     expect(roomState.intentCalls).toEqual([])
 
@@ -158,7 +225,9 @@ test('two participants preview, join, and separately confirm their own plan-deri
     expect([...roomState.members].map((id) => [id, Boolean(roomState.intents[id])])).toEqual([[creator.id, true], [recipient.id, false]])
 
     await recipientPage.getByLabel(/Бюджет, ₽/).fill('4000.50')
-    await recipientPage.getByLabel('Другая дата').fill('2099-11-24')
+    await recipientPage.getByLabel('Другая дата').click()
+    await recipientPage.getByRole('gridcell', { name: '24 ноября 2099 г.', exact: true }).click()
+    await recipientPage.getByRole('button', { name: 'Применить' }).click()
     await recipientPage.getByRole('button', { name: 'Добавить дату' }).click()
     expect(roomState.intents[creator.id]).toMatchObject({ category_slugs: ['cinema'], budget_max_minor: 150_025 })
     expect(roomState.intents[recipient.id]).toBeUndefined()

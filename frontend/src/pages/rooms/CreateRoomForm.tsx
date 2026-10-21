@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { CategorySlug, PublicPlan } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { Button } from '../../shared/ui'
+import { CustomSelect } from '../../shared/ui/CustomSelect'
+import { ChoiceChips } from '../../shared/ui/ChoiceChips'
+import { MoneyInput } from '../../shared/ui/MoneyInput'
+import { RoomDateChoices } from '../../shared/ui/RoomDateChoices'
 import { roomErrorMessage } from '../../features/rooms/errors'
 import { budgetToMinor, cityToday, formatPlanDate, isCanonicalDate, publicPlanSchema, publicPlanPreset, resolveCreateCity, ROOM_CITIES, roomCity, TIME_SLOT_OPTIONS } from './public-plan'
 import styles from './public-plan.module.css'
@@ -29,6 +33,7 @@ export type CreateRoomFormProps = {
 
 const defaultPlanFields = (): PublicPlanFields => ({ dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false })
 const DEFAULT_ROOM_NAME = 'Куда идём в субботу?'
+function upcomingPlanDates(today: string) { const [year, month, day] = today.split('-').map(Number); const start = new Date(Date.UTC(year, month - 1, day)); return Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setUTCDate(date.getUTCDate() + index); const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`; const label = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date); return [value, label] as [string, string] }) }
 
 function readDraft(key: string): Draft | null {
   try {
@@ -107,6 +112,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
   }
 
   const tonightAvailable = Boolean(city?.ready && publicPlanPreset('tonight', city.timezone, presetNow))
+  const planDateChoices: Array<[string, string]> = [...new Set([...plan.dates, ...(today ? upcomingPlanDates(today).map(([date]) => date) : [])])].map((date) => [date, formatPlanDate(date)])
 
   const addDate = () => {
     const currentToday = city ? cityToday(city.timezone) : null
@@ -176,18 +182,13 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
         {errors.name ? <span id="create-room-name-error" className={styles.error} role="alert">{errors.name}</span> : null}
       </label>
 
-      <label className={styles.field} htmlFor="create-room-city">
-        <span>Город комнаты</span>
-        <select id="create-room-city" className={styles.input} value={cityId} aria-invalid={Boolean(errors.city)} aria-describedby={fieldDescription('create-room-city', errors.city) ?? (!knownCity ? 'create-room-city-help' : undefined)} onChange={(event) => { setExplicitCityId(event.target.value); setErrors((current) => ({ ...current, city: undefined, dates: undefined })) }}>
-          {!knownCity ? <option value={cityId} disabled>{invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Сохранённый город недоступен — выберите вручную'}</option> : null}
-          <option value="">Выберите город</option>
-          {ROOM_CITIES.map((item) => <option value={item.id} key={item.id}>{item.ready ? item.name : `${item.name} — город готовится`}</option>)}
-        </select>
+      <div className={styles.field}>
+        <CustomSelect id="create-room-city" label="Город комнаты" value={cityId} placeholder={invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Выберите город'} error={errors.city} options={[...(!knownCity ? [{ value: cityId, label: invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Сохранённый город недоступен — выберите вручную', disabled: true }] : []), { value: '', label: 'Выберите город' }, ...ROOM_CITIES.map((item) => ({ value: item.id, label: item.ready ? item.name : `${item.name} — город готовится`, disabled: !item.ready }))]} onChange={(value) => { setExplicitCityId(value); setErrors((current) => ({ ...current, city: undefined, dates: undefined })) }} />
         {!knownCity ? <span id="create-room-city-help" className={styles.hint}>Город из профиля пока недоступен. Выберите город для этой комнаты.</span> : null}
         {city && !city.ready ? <span className={styles.hint}>Каталог для Казани готовится. Создать комнату в этом городе пока нельзя.</span> : null}
         {city ? <span className={styles.hint}>Часовой пояс: {city.timezone}</span> : null}
         {errors.city ? <span id="create-room-city-error" className={styles.error} role="alert">{errors.city}</span> : null}
-      </label>
+      </div>
 
       <section className={styles.planSection} aria-labelledby="public-plan-heading">
         <label className={styles.enablePlan}>
@@ -208,37 +209,27 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
             {cityReady && !tonightAvailable ? <p className={styles.hint}>Сегодняшний вечер уже закончился. Выберите другую дату.</p> : null}
             <p className={styles.hint} role="status" aria-live="polite">{presetFeedback}</p>
           </fieldset>
-          <fieldset className={styles.fieldset} aria-describedby={errors.dates ? 'create-plan-dates-error' : 'create-plan-dates-help'}>
+          <fieldset className={styles.fieldset} aria-describedby={errors.dates ? 'create-plan-date-input-error' : 'create-plan-date-input-help'}>
             <legend>Подходящие даты</legend>
-            <p id="create-plan-dates-help" className={styles.hint}>{city ? `Выбирайте даты начиная с ${today}, ${city.timezone}.` : 'Сначала выберите город с часовым поясом.'}</p>
-            <div className={styles.dateAdd}>
-              <input id="create-plan-date-input" className={styles.input} type="date" min={today ?? undefined} max="9999-12-31" value={dateInput} aria-label="Новая дата публичного предложения" aria-invalid={Boolean(errors.dates)} aria-describedby={errors.dates ? 'create-plan-dates-error' : 'create-plan-dates-help'} onChange={(event) => setDateInput(event.target.value)} />
-              <Button type="button" tone="secondary" disabled={!dateInput || plan.dates.length >= 14} onClick={addDate}>Добавить дату</Button>
-            </div>
-            {plan.dates.length ? <ul className={styles.dateList}>{plan.dates.map((date) => <li key={date}><span>{formatPlanDate(date)}</span><button type="button" className={styles.removeDate} aria-label={`Удалить дату ${formatPlanDate(date)}`} onClick={() => changePlan({ dates: plan.dates.filter((item) => item !== date) })}>Удалить</button></li>)}</ul> : <p className={styles.hint}>Даты не выбраны.</p>}
-            {errors.dates ? <span id="create-plan-dates-error" className={styles.error} role="alert">{errors.dates}</span> : null}
+            <RoomDateChoices id="create-plan-date-input" options={planDateChoices} selected={plan.dates} onToggle={(value) => changePlan({ dates: plan.dates.includes(value) ? plan.dates.filter((date) => date !== value) : [...plan.dates, value].sort() })} onLimitReached={() => setErrors((current) => ({ ...current, dates: 'Можно выбрать не больше 14 дат.' }))} date={dateInput} onDateChange={setDateInput} onAddDate={addDate} min={today ?? undefined} error={errors.dates} description={city ? `Выбирайте даты начиная с ${today}, ${city.timezone}.` : 'Сначала выберите город с часовым поясом.'} disabled={pending || success || !cityReady} />
+            {!plan.dates.length ? <p className={styles.hint}>Даты не выбраны.</p> : null}
           </fieldset>
 
           <fieldset id="create-plan-time" className={styles.fieldset} tabIndex={-1} aria-invalid={Boolean(errors.time)} aria-describedby={errors.time ? 'create-plan-time-error' : undefined}>
             <legend>Время</legend>
-            <div className={styles.choices}>
-              {TIME_SLOT_OPTIONS.map(({ value, label }) => <label className={styles.choice} key={value}><input type="checkbox" checked={plan.time_slots.includes(value)} disabled={plan.anyTime} onChange={(event) => changePlan({ time_slots: event.target.checked ? [...plan.time_slots, value] : plan.time_slots.filter((slot) => slot !== value) })} /><span>{label}</span></label>)}
-              <label className={styles.choice}><input type="checkbox" checked={plan.anyTime} onChange={(event) => changePlan({ anyTime: event.target.checked, time_slots: event.target.checked ? [] : plan.time_slots })} /><span>Любое время</span></label>
-            </div>
+            <ChoiceChips options={[...TIME_SLOT_OPTIONS.map(({ value, label }) => [value, label] as [string, string]), ['any', 'Любое время']]} selected={[...plan.time_slots, ...(plan.anyTime ? ['any'] : [])]} onToggle={(value) => value === 'any' ? changePlan({ anyTime: !plan.anyTime, time_slots: plan.anyTime ? plan.time_slots : [] }) : changePlan({ anyTime: false, time_slots: plan.time_slots.includes(value as PublicPlan['time_slots'][number]) ? plan.time_slots.filter((slot) => slot !== value) : [...plan.time_slots, value as PublicPlan['time_slots'][number]] })} className={styles.choices} />
             {errors.time ? <span id="create-plan-time-error" className={styles.error} role="alert">{errors.time}</span> : null}
           </fieldset>
 
           <fieldset id="create-plan-categories" className={styles.fieldset} tabIndex={-1} aria-invalid={Boolean(errors.categories)} aria-describedby={errors.categories ? 'create-plan-categories-error' : undefined}>
             <legend>Категории</legend>
-            <div className={styles.choices}>
-              {CATEGORY_OPTIONS.map(({ slug, label }) => <label className={styles.choice} key={slug}><input type="checkbox" checked={plan.category_slugs.includes(slug)} onChange={(event) => changePlan({ category_slugs: event.target.checked ? [...plan.category_slugs, slug] : plan.category_slugs.filter((item) => item !== slug) })} /><span>{label}</span></label>)}
-            </div>
+            <ChoiceChips options={CATEGORY_OPTIONS.map(({ slug, label }) => [slug, label] as [CategorySlug, string])} selected={plan.category_slugs} onToggle={(value) => changePlan({ category_slugs: plan.category_slugs.includes(value) ? plan.category_slugs.filter((item) => item !== value) : [...plan.category_slugs, value] })} className={styles.choices} />
             {errors.categories ? <span id="create-plan-categories-error" className={styles.error} role="alert">{errors.categories}</span> : null}
           </fieldset>
 
           <label className={styles.field} htmlFor="create-plan-budget">
             <span>Бюджет на человека · максимум</span>
-            <div className={styles.budgetInput}><input id="create-plan-budget" className={styles.input} type="number" min="0" max="1000000" step="0.01" inputMode="decimal" value={plan.budget} aria-invalid={Boolean(errors.budget)} aria-describedby={errors.budget ? 'create-plan-budget-error' : 'create-plan-budget-help'} onChange={(event) => changePlan({ budget: event.target.value })} /><span>₽</span></div>
+            <MoneyInput id="create-plan-budget" suffix="₽" value={plan.budget} invalid={Boolean(errors.budget)} describedBy={errors.budget ? 'create-plan-budget-error' : 'create-plan-budget-help'} onChange={(budget) => changePlan({ budget })} />
             <span id="create-plan-budget-help" className={styles.hint}>От 0 до 1 000 000 ₽. Можно указать копейки.</span>
             {errors.budget ? <span id="create-plan-budget-error" className={styles.error} role="alert">{errors.budget}</span> : null}
           </label>

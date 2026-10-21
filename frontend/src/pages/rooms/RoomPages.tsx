@@ -20,6 +20,10 @@ import type { CategorySlug, RoomIntentRequestDto, RoomSnapshot, VoteValue } from
 import { CATEGORY_OPTIONS, CATEGORY_SLUGS } from '../../shared/api/categories'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Chip, ChipGroup, Empty, EventImage, PageContent, PageShell, PrivacyNote, ScreenSkeleton, TopBar } from '../../shared/ui/index'
+import { ChoiceChips } from '../../shared/ui/ChoiceChips'
+import { MoneyInput } from '../../shared/ui/MoneyInput'
+import { decimalToMinor } from '../../shared/ui/money'
+import { RoomDateChoices } from '../../shared/ui/RoomDateChoices'
 import styles from '../pages.module.css'
 import intentStyles from './intent.module.css'
 import reliabilityStyles from './reliability.module.css'
@@ -200,7 +204,9 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const [dateError, setDateError] = useState('')
   const errorSummary = useRef<HTMLParagraphElement>(null)
   const upcoming = timezone ? upcomingCityDates(7, timezone) : room.public_plan ? [] : upcomingDates(7)
-  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema(timezone)), defaultValues: intentDefaults(room, upcoming[0]?.[0] ?? '') })
+  const formDefaults = intentDefaults(room, upcoming[0]?.[0] ?? '')
+  const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema(timezone)), defaultValues: formDefaults })
+  const [budgetText, setBudgetText] = useState(String(formDefaults.budget))
   const dates = useWatch({ control: form.control, name: 'dates' })
   const dateChoices: Array<[string, string]> = [...new Set([...initialDates, ...dates, ...upcoming.map(([date]) => date), ...additionalDates])].map((date) => [date, formatRoomDate(date)])
   const dayTypes = useWatch({ control: form.control, name: 'day_types' })
@@ -224,21 +230,18 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
       <p className={styles.subtitle}>{city ? `${city.name} · ${city.timezone}` : 'Часовой пояс города проверит сервер.'}</p><PrivacyNote />
       <form className={`${styles.formStack} ${intentStyles.intentForm}`} onSubmit={(event) => { void form.handleSubmit((values) => { if (!save.isPending) save.mutate(values) }, () => window.requestAnimationFrame(() => errorSummary.current?.focus()))(event) }}>
         {Object.keys(form.formState.errors).length ? <p ref={errorSummary} tabIndex={-1} className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время, бюджет и интересы.</p> : null}
-        <ChoiceField title="Когда удобно" error={form.formState.errors.dates?.message} options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} />
-        <div className={intentStyles.dateEntry}>
-          <label className={intentStyles.textField} htmlFor="intent-add-date">Другая дата<input id="intent-add-date" className={styles.input} type="date" min={timezone ? cityToday(timezone) : undefined} value={dateToAdd} onChange={(event) => { setDateToAdd(event.target.value); setDateError('') }} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? 'intent-date-error' : undefined} /></label>
-          <Button type="button" tone="secondary" disabled={save.isPending || dates.length >= 14} onClick={() => {
+        <fieldset className={intentStyles.choiceField}><legend>Когда удобно</legend><RoomDateChoices id="intent-add-date" options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} onLimitReached={() => setDateError('Можно выбрать не больше 14 дат.')} date={dateToAdd} onDateChange={(value) => { setDateToAdd(value); setDateError('') }} min={timezone ? cityToday(timezone) : undefined} error={dateError || form.formState.errors.dates?.message} description={timezone ? `Выберите удобные даты, начиная с ${cityToday(timezone)}.` : undefined} disabled={save.isPending} onAddDate={() => {
             if (!isCanonicalDate(dateToAdd) || (timezone && dateToAdd < cityToday(timezone))) { setDateError('Выберите актуальную дату в часовом поясе города.'); return }
+            if (dates.includes(dateToAdd)) { setDateError('Эта дата уже выбрана.'); return }
+            if (dates.length >= 14) { setDateError('Можно выбрать не больше 14 дат.'); return }
             setAdditionalDates((values) => values.includes(dateToAdd) ? values : [...values, dateToAdd])
             if (!dates.includes(dateToAdd)) form.setValue('dates', [...dates, dateToAdd], { shouldValidate: true, shouldDirty: true })
             setDateToAdd('')
-          }}>Добавить дату</Button>
-          {dateError ? <p id="intent-date-error" className={intentStyles.fieldError} role="alert">{dateError}</p> : null}
-        </div>
+          }} /></fieldset>
         <ChoiceField title="Тип дня (необязательно)" error={form.formState.errors.day_types?.message} options={[['weekday', 'Будни'], ['weekend', 'Выходные']]} selected={dayTypes} onToggle={(value) => form.setValue('day_types', toggleValue(dayTypes, value as IntentForm['day_types'][number]), { shouldValidate: true })} />
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
         <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={CATEGORY_OPTIONS.map(({ slug, label }) => [slug, label] as [CategorySlug, string])} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
-        <label className={intentStyles.rangeField} htmlFor="room-budget">Бюджет, ₽<input id="room-budget" aria-label="Бюджет, ₽" aria-describedby="room-budget-help" className={styles.input} type="number" inputMode="decimal" min="0" max="1000000" step="0.01" required aria-invalid={Boolean(form.formState.errors.budget)} {...form.register('budget', { valueAsNumber: true })} /><span id="room-budget-help" className={styles.subtitle}>До {Number(budget || 0).toLocaleString('ru', { maximumFractionDigits: 2 })} ₽ для вас</span>{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</label>
+        <div className={intentStyles.rangeField}><MoneyInput id="room-budget" label="Бюджет, ₽" suffix="₽" value={budgetText} required invalid={Boolean(form.formState.errors.budget)} describedBy="room-budget-help" onChange={(value) => { setBudgetText(value); const minor = decimalToMinor(value); form.setValue('budget', minor === null ? Number.NaN : minor / 100, { shouldValidate: true, shouldDirty: true }) }} /><span id="room-budget-help" className={styles.subtitle}>До {Number(budget || 0).toLocaleString('ru', { maximumFractionDigits: 2 })} ₽ для вас</span>{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</div>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {save.isError ? <AuthRecoveryAction error={save.error} /> : null}{save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
         <div className={`${styles.footer} ${intentStyles.intentFooter}`}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button></div>
@@ -447,7 +450,7 @@ function ClosedScreen({ room }: { room: RoomSnapshot }) {
 }
 
 function ChoiceField<T extends string>({ title, options, selected, onToggle, error }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void; error?: string }) {
-  return <fieldset className={intentStyles.choiceField} aria-invalid={Boolean(error)}><legend>{title}</legend><ChipGroup className={intentStyles.choiceOptions}>{options.map(([value, label]) => <Chip key={value} selected={selected.includes(value)} onClick={() => onToggle(value)}>{label}</Chip>)}</ChipGroup>{error ? <span className={intentStyles.fieldError} role="alert">{error}</span> : null}</fieldset>
+  return <fieldset className={intentStyles.choiceField} aria-invalid={Boolean(error)}><legend>{title}</legend><ChoiceChips className={intentStyles.choiceOptions} options={options} selected={selected} onToggle={onToggle} />{error ? <span className={intentStyles.fieldError} role="alert">{error}</span> : null}</fieldset>
 }
 
 function expectedScreen(room: RoomSnapshot) {
