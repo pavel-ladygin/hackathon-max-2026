@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -391,6 +392,67 @@ func TestImportConfiguredCityRejectsWrongUUIDBeforeNetwork(t *testing.T) {
 	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
 	if err == nil || stats != (ImportStats{}) || requests != 0 || len(store.starts) != 0 {
 		t.Fatalf("stats=%+v err=%v requests=%d starts=%+v", stats, err, requests, store.starts)
+	}
+}
+
+func TestCityFilterKeepsAllPagesAndAllowsVerifiedReconciliation(t *testing.T) {
+	for _, city := range []string{"Москва", "Санкт-Петербург"} {
+		t.Run(city, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.URL.Query().Get("cities") != city {
+					t.Errorf("cities=%q", r.URL.Query().Get("cities"))
+				}
+				var filtered []string
+				for id := 1; id <= 345; id++ {
+					eventCity := "Москва"
+					if id > 205 {
+						eventCity = "Санкт-Петербург"
+					}
+					if eventCity == r.URL.Query().Get("cities") {
+						filtered = append(filtered, timepadImportEventWithoutTicketURL(id, eventCity))
+					}
+				}
+				skip, _ := strconv.Atoi(r.URL.Query().Get("skip"))
+				limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+				end := skip + limit
+				if end > len(filtered) {
+					end = len(filtered)
+				}
+				fmt.Fprintf(w, `{"total":%d,"values":[%s]}`, len(filtered), strings.Join(filtered[skip:end], ","))
+			}))
+			defer server.Close()
+			client := testClient(t, server)
+			client.cityName = city
+			client.pageSize = 100
+			client.upsertOnly = true
+			client.now = func() time.Time { return time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC) }
+			store := &memoryEventStore{seen: map[string]struct{}{}}
+			wantEvents, wantPages := 205, 3
+			if city != "Москва" {
+				wantEvents, wantPages = 140, 2
+			}
+			for run := 0; run < 2; run++ {
+				stats, err := client.Import(context.Background(), uuid.New(), store, nil)
+				if err != nil || stats.PagesFetched != wantPages || stats.Fetched != wantEvents || stats.Matched != wantEvents {
+					t.Fatalf("stats=%+v error=%v", stats, err)
+				}
+				if store.starts[run].UpsertOnly != (run == 0) {
+					t.Fatal("transition reconciliation mode not preserved")
+				}
+				client.upsertOnly = false
+			}
+			if requests != 2*wantPages {
+				t.Fatalf("requests=%d", requests)
+			}
+			for _, event := range store.events {
+				id, _ := strconv.Atoi(event.ExternalID)
+				if (city == "Москва" && id > 205) || (city != "Москва" && id <= 205) {
+					t.Fatal("foreign city persisted")
+				}
+			}
+		})
 	}
 }
 

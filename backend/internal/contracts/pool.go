@@ -112,6 +112,31 @@ type Explanation struct {
 
 type ExhaustionDiagnostics struct {
 	Reasons []ExhaustionReason `json:"reasons"`
+	// Internal is available to the builder's caller and offline evaluator only.
+	// It must not enter room storage, public API JSON or participant responses.
+	// Runtime persistence/logging requires a separate integration decision.
+	Internal *PoolBuildDiagnostics `json:"-"`
+}
+
+// PoolBuildDiagnostics describes candidate availability, never vote outcomes,
+// no-match, terminal room state or another participant's private parameters.
+// AllFuture through Venue are successive survivor counts, in this order.
+// DateOverlap includes both local dates and day types. HasValidTicket also
+// requires published, non-demo events. Venue includes city membership, radius,
+// metro and exclusions. These counts are order-dependent, not independent
+// causes or proof that relaxing any one constraint will recover a pool.
+type PoolBuildDiagnostics struct {
+	CatalogTotal     int `json:"catalog_total"`
+	AllFuture        int `json:"all_future"`
+	HasValidTicket   int `json:"has_valid_ticket"`
+	DateOverlap      int `json:"date_overlap"`
+	SlotOverlap      int `json:"slot_overlap"`
+	Budget           int `json:"budget"`
+	Venue            int `json:"venue"`
+	ExcludedPrevious int `json:"excluded_previous"` // Removed after eligibility.
+	CollapsedSeries  int `json:"collapsed_series"`  // Removed after previous IDs.
+	FinalEligible    int `json:"final_eligible"`    // Representatives before top-k.
+	Selected         int `json:"selected"`          // Actual bounded output size.
 }
 
 type ExhaustionReason struct {

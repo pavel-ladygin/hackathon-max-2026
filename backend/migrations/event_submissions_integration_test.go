@@ -35,7 +35,9 @@ func TestEventSubmissionMigrationRoundTripAndPublishedDataGuard(t *testing.T) {
 	if err := Up(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownContext(ctx, db, "."); err != nil {
+	// Exercise migration 30 even when newer migrations are present.
+	const beforeSubmissionMigration = 29
+	if err := goose.DownToContext(ctx, db, ".", beforeSubmissionMigration); err != nil {
 		t.Fatalf("down on empty database: %v", err)
 	}
 	var absent bool
@@ -64,7 +66,7 @@ func TestEventSubmissionMigrationRoundTripAndPublishedDataGuard(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO events(id,source,external_id,title,description,venue_id,starts_at,timezone,currency,ticket_available,status) VALUES($1,'user',$2,'Migration fixture','Fixture',$3,now()+interval '1 day','Europe/Moscow','RUB',false,'published')`, event, event.String(), venue); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownContext(ctx, db, "."); err == nil || !strings.Contains(err.Error(), "cannot roll back") {
+	if err := goose.DownToContext(ctx, db, ".", beforeSubmissionMigration); err == nil || !strings.Contains(err.Error(), "cannot roll back user event submissions while published user events exist") {
 		t.Fatalf("expected published event rollback guard, got %v", err)
 	}
 	var intact bool

@@ -40,7 +40,8 @@ func collapseEventSeries(events []catalog.Event) []eventSeries {
 		if i, exists := index[key]; exists {
 			result[i].OtherOccurrences++
 
-			if event.StartsAt.Time.Before(result[i].Event.StartsAt.Time) {
+			if event.StartsAt.Time.Before(result[i].Event.StartsAt.Time) ||
+				(event.StartsAt.Time.Equal(result[i].Event.StartsAt.Time) && bytesCompare(event.ID[:], result[i].Event.ID[:]) < 0) {
 				result[i].Event = event
 			}
 			continue

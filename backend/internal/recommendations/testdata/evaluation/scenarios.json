@@ -1,0 +1,4547 @@
+{
+  "schema": 1,
+  "source": "synthetic; authored by Codex from S1 specification; no pilot or production data",
+  "label_status": "machine-authored expectations; independent human review pending",
+  "human_reviewed": false,
+  "now": "2026-10-21T09:00:00Z",
+  "timezone": "Europe/Moscow",
+  "cases": [
+    {
+      "name": "shared_interests",
+      "criterion": "Shared music events should lead unrelated options; categories remain soft.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "theatre",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "sports",
+          "fit": [
+            0,
+            0
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "name": "opposite_interests",
+      "criterion": "A compromise should beat an option with zero fit for one participant.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "sports"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            0
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "sports",
+          "fit": [
+            0,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "theatre",
+          "fit": [
+            0.6,
+            0.6
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true,
+          "secondary": [
+            {
+              "slug": "music",
+              "weight": 0.6
+            },
+            {
+              "slug": "sports",
+              "weight": 0.6
+            }
+          ]
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "zero_history_both",
+      "criterion": "Explicit room choices are the only personal signals; absent history is neutral.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "zero_history_one",
+      "criterion": "Current shared music intent takes priority over conflicting saved profile.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "profile": [
+          "cinema"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "conflicting_profiles",
+      "criterion": "Room music intent should remain relevant despite both saved cinema profiles.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "profile": [
+          "cinema"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "profile": [
+          "cinema"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "asymmetric_budget",
+      "criterion": "Known price must fit min(A,B); null remains unknown.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 20000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 10000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20001,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "raised_other_budget",
+      "criterion": "Raising only B cannot admit an event over A budget.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 20000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 500000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 10000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20001,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "name": "unknown_price",
+      "criterion": "Unknown price is eligible but is neither free nor confirmed within budget.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 10000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "all_unknown_price",
+      "criterion": "Do not silently discard an entire unknown-price catalog.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": null,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "concentrated_category",
+      "criterion": "Category discovery must be measured against loss of shared music relevance.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "theatre",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "sports",
+          "fit": [
+            0,
+            0
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "name": "pool_0",
+      "criterion": "Keep exactly min(0,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": []
+    },
+    {
+      "name": "pool_1",
+      "criterion": "Keep exactly min(1,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1
+      ]
+    },
+    {
+      "name": "pool_2",
+      "criterion": "Keep exactly min(2,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "pool_20",
+      "criterion": "Keep exactly min(20,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "name": "pool_21",
+      "criterion": "Keep exactly min(21,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 21,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ]
+    },
+    {
+      "name": "pool_22",
+      "criterion": "Keep exactly min(22,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 21,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 22,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "name": "pool_23",
+      "criterion": "Keep exactly min(23,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 21,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 22,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 23,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "name": "pool_24",
+      "criterion": "Keep exactly min(24,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 21,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 22,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 23,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 24,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ]
+    },
+    {
+      "name": "pool_30",
+      "criterion": "Keep exactly min(30,24) events; IsSmall only for 1 or 2.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 7,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 8,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 9,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 10,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 11,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 12,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 13,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 14,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 15,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 16,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 17,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 18,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 19,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 20,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 21,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 22,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 23,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 24,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 25,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 26,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 27,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 28,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 29,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 30,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "name": "repeat_round_2",
+      "criterion": "Previously served event IDs must be absent in round two.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        3,
+        4,
+        5
+      ],
+      "round": 2,
+      "previous": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "repeat_round_3",
+      "criterion": "Round three still excludes every previous event ID.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        5
+      ],
+      "round": 3,
+      "previous": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "distinct_sessions",
+      "criterion": "Different stable provider event identities remain separate.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true,
+          "source": "synthetic",
+          "external_id": "show-1"
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true,
+          "source": "synthetic",
+          "external_id": "show-2"
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "same_series",
+      "criterion": "Verified identical provider identity collapses to earliest eligible occurrence.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true,
+          "source": "synthetic",
+          "external_id": "show"
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T14:00:00+03:00",
+          "venue": 2,
+          "eligible": true,
+          "source": "synthetic",
+          "external_id": "show"
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1
+      ]
+    },
+    {
+      "name": "expired_time",
+      "criterion": "An event before or exactly at fixed now must be excluded.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24",
+          "2026-10-21"
+        ],
+        "slots": []
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24",
+          "2026-10-21"
+        ],
+        "slots": []
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-21T11:59:59+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-21T12:00:00+03:00",
+          "venue": 2,
+          "eligible": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        3
+      ]
+    },
+    {
+      "name": "zero_date_overlap",
+      "criterion": "No shared local date means zero candidates; do not expose peer dates.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-25"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": []
+    },
+    {
+      "name": "zero_slot_overlap",
+      "criterion": "Disjoint requested time slots mean zero candidates.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "evening"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": []
+    },
+    {
+      "name": "secondary_categories",
+      "criterion": "Music on a secondary category is relevant; do not use primary-only fit.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "theatre",
+          "fit": [
+            0.9,
+            0.9
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true,
+          "secondary": [
+            {
+              "slug": "music",
+              "weight": 0.8
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "soft_category_only",
+      "criterion": "A category change never creates eligibility; unrelated valid events remain eligible.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "ticket_status",
+      "criterion": "Cancelled, unavailable-ticket and demo events must never be served.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": false,
+          "status": "cancelled"
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": false,
+          "ticket": false
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": false,
+          "demo": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        4
+      ]
+    },
+    {
+      "name": "venue_exclusion",
+      "criterion": "Participant nightclub exclusion applies to both; venue cap may relax on shortage.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "exclusions": [
+          "nightclubs"
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 4,
+          "eligible": false
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1
+      ]
+    },
+    {
+      "name": "sparse_behavior",
+      "criterion": "One or two votes should not overrule shared room preferences.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "behavior": [
+          {
+            "CategorySlug": "cinema",
+            "Likes": 2,
+            "Dislikes": 0
+          }
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "behavior": [
+          {
+            "CategorySlug": "cinema",
+            "Likes": 1,
+            "Dislikes": 0
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "cinema",
+          "fit": [
+            0.1,
+            0.1
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "established_behavior",
+      "criterion": "History is measured separately from explicit room intent.",
+      "a": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "behavior": [
+          {
+            "CategorySlug": "cinema",
+            "Likes": 30,
+            "Dislikes": 2
+          }
+        ]
+      },
+      "b": {
+        "categories": [
+          "music"
+        ],
+        "budget": 100000,
+        "dates": [
+          "2026-10-24"
+        ],
+        "slots": [
+          "day"
+        ],
+        "behavior": [
+          {
+            "CategorySlug": "cinema",
+            "Likes": 30,
+            "Dislikes": 2
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": 1,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 2,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 3,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        },
+        {
+          "id": 4,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 1,
+          "eligible": true
+        },
+        {
+          "id": 5,
+          "primary": "music",
+          "fit": [
+            1,
+            1
+          ],
+          "price": 20000,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 2,
+          "eligible": true
+        },
+        {
+          "id": 6,
+          "primary": "cinema",
+          "fit": [
+            0.2,
+            0.2
+          ],
+          "price": 0,
+          "starts": "2026-10-24T13:00:00+03:00",
+          "venue": 3,
+          "eligible": true
+        }
+      ],
+      "relevant_categories": [
+        "music"
+      ],
+      "expected_representatives": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -263,8 +264,14 @@ func validateImportStats(stats ImportStats) error {
 
 func safeSyncErrorText(value string) string {
 	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "kudago_http_") && len(value) == len("kudago_http_000") {
+		status, err := strconv.Atoi(strings.TrimPrefix(value, "kudago_http_"))
+		if err == nil && status >= 100 && status <= 599 {
+			return value
+		}
+	}
 	switch value {
-	case "", "provider import cancelled", "provider import failed", "provider records failed to persist", "timepad_normalization_empty":
+	case "kudago_transport_error", "kudago_timeout", "", "provider import cancelled", "provider import failed", "provider records failed to persist", "timepad_normalization_empty":
 		return value
 	default:
 		// Sync audit rows intentionally retain only a coarse error class. Raw

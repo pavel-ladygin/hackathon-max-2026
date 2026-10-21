@@ -27,6 +27,9 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("KUDAGO_TIMEOUT", "")
 	t.Setenv("KUDAGO_LOCATION", "")
 	t.Setenv("KUDAGO_PAGE_SIZE", "")
+	t.Setenv("KUDAGO_MAX_REQUESTS_PER_MINUTE", "")
+	t.Setenv("EVENT_SYNC_PROVIDER", "")
+	t.Setenv("TIMEPAD_UPSERT_ONLY", "true")
 	t.Setenv("EVENT_SYNC_INTERVAL", "")
 	t.Setenv("EVENT_SYNC_RUN_ON_START", "")
 	t.Setenv("TIMEPAD_BASE_URL", "")
@@ -49,6 +52,9 @@ func TestREGS3AndMulticityConfigurationLoadTogether(t *testing.T) {
 	t.Setenv("REG_S3_BUCKET", "hackathon-max")
 	t.Setenv("REG_S3_ACCESS_KEY_ID", "test-access")
 	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("EVENT_SYNC_PROVIDER", "timepad")
+	t.Setenv("TIMEPAD_UPSERT_ONLY", "false")
+	t.Setenv("KUDAGO_MAX_REQUESTS_PER_MINUTE", "12")
 	t.Setenv("EVENT_SYNC_CITY_ID", "3d3c83de-691b-510e-85e5-79685c4012ee")
 	t.Setenv("KUDAGO_LOCATION", "KZN")
 	t.Setenv("TIMEPAD_CITY_NAME", "Казань")
@@ -59,7 +65,7 @@ func TestREGS3AndMulticityConfigurationLoadTogether(t *testing.T) {
 	if cfg.RegS3Bucket != "hackathon-max" || cfg.RegS3AccessKeyID != "test-access" || cfg.RegS3SecretAccessKey != "test-secret" {
 		t.Fatal("multicity configuration lost S3 upload settings")
 	}
-	if cfg.KudaGoLocation != "kzn" || !cfg.KudaGoLocationExplicit || cfg.TimepadCityName != "Казань" {
+	if cfg.EventSyncProvider != "timepad" || cfg.TimepadUpsertOnly || cfg.KudaGoMaxRequestsPerMinute != 12 || cfg.KudaGoLocation != "kzn" || !cfg.KudaGoLocationExplicit || cfg.TimepadCityName != "Казань" {
 		t.Fatal("S3 configuration lost explicit multicity provider settings")
 	}
 	if err := cfg.ValidateSyncCity("Казань", "Europe/Moscow"); err != nil {
@@ -82,6 +88,33 @@ func TestREGS3ConfigurationIsOptionalAndRequiresCompleteCredentials(t *testing.T
 	t.Setenv("REG_S3_ENDPOINT", "http://s3.regru.cloud")
 	if _, err := Load(); err == nil || err.Error() != "REG_S3_ENDPOINT is invalid" {
 		t.Fatalf("insecure S3 endpoint accepted or error leaked config: %v", err)
+	}
+}
+
+func TestMinimalProviderSyncSettings(t *testing.T) {
+	setValidConfigEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EventSyncProvider != "" || !cfg.TimepadUpsertOnly || cfg.KudaGoMaxRequestsPerMinute != 6 || cfg.EventSyncInterval != 2*time.Hour || cfg.TimepadMaxRequestsPerMinute != 20 {
+		t.Fatal("existing automatic defaults changed")
+	}
+	t.Setenv("EVENT_SYNC_PROVIDER", "timepad")
+	t.Setenv("TIMEPAD_UPSERT_ONLY", "false")
+	t.Setenv("KUDAGO_MAX_REQUESTS_PER_MINUTE", "12")
+	cfg, err = Load()
+	if err != nil || cfg.EventSyncProvider != "timepad" || cfg.TimepadUpsertOnly || cfg.KudaGoMaxRequestsPerMinute != 12 {
+		t.Fatalf("cfg=%+v error=%v", cfg, err)
+	}
+	for name, value := range map[string]string{"EVENT_SYNC_PROVIDER": "unknown", "KUDAGO_MAX_REQUESTS_PER_MINUTE": "0", "TIMEPAD_UPSERT_ONLY": "maybe"} {
+		t.Run(name, func(t *testing.T) {
+			setValidConfigEnv(t)
+			t.Setenv(name, value)
+			if _, err := Load(); err == nil {
+				t.Fatal("invalid setting accepted")
+			}
+		})
 	}
 }
 

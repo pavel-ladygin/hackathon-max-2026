@@ -21,13 +21,16 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v6-behavioral"
+	rankerVersion = "scoring-diversity-v7-relevance-band"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
 	// distanceEpsM only absorbs floating-point noise at an inclusive boundary;
 	// distances are never rounded before comparison.
 	distanceEpsM = 1e-6
+	// Require at least five observations per category before applying affinity.
+	// One or two votes are insufficient evidence, including negative votes.
+	behaviorMinObservations = 5
 )
 
 // Catalog provides the coherent, read-only city snapshot used to build a pool.
@@ -148,18 +151,25 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		}
 	}
 
+	diagnostics := &contracts.PoolBuildDiagnostics{CatalogTotal: len(snapshot.Events)}
 	eligibleEvents := make([]catalog.Event, 0, len(snapshot.Events))
 	for _, event := range snapshot.Events {
 		if err := ctx.Err(); err != nil {
 			return contracts.BuildResult{}, err
 		}
-		if previous[event.ID] || !eligible(event, venues, stations, zone, constraints, referenceTime, first.radius, second.radius) {
+		if !eligible(event, venues, stations, zone, constraints, referenceTime, diagnostics, first.radius, second.radius) {
+			continue
+		}
+		if previous[event.ID] {
+			diagnostics.ExcludedPrevious++
 			continue
 		}
 		eligibleEvents = append(eligibleEvents, event)
 	}
 
 	series := collapseEventSeries(eligibleEvents)
+	diagnostics.CollapsedSeries = len(eligibleEvents) - len(series)
+	diagnostics.FinalEligible = len(series)
 
 	items := make([]rankedEvent, 0, len(series))
 	for _, candidateSeries := range series {
@@ -192,7 +202,9 @@ func (b *PoolBuilder) Build(ctx context.Context, input contracts.BuildInput) (co
 		Candidates:       candidates,
 		RankerVersion:    rankerVersion,
 		InputFingerprint: fingerprint(input, constraints, snapshot.City.Timezone, b.tieBreakSecret, first, second),
+		Diagnostics:      contracts.ExhaustionDiagnostics{Internal: diagnostics},
 	}
+	diagnostics.Selected = len(candidates)
 	switch len(candidates) {
 	case 0:
 		result.Diagnostics.Reasons = []contracts.ExhaustionReason{{Code: "catalog_shortage", Text: "Недостаточно подходящих событий в каталоге."}}
@@ -329,15 +341,31 @@ func (b *PoolBuilder) loadBehavior(ctx context.Context, userIDs ...uuid.UUID) (m
 		Dislikes int64  `json:"dislikes"`
 	}
 	for _, userID := range unique {
-		counts := countsByUser[userID]
-		sort.Slice(counts, func(i, j int) bool {
-			return normalizeCategorySlug(counts[i].CategorySlug) < normalizeCategorySlug(counts[j].CategorySlug)
-		})
+		// Normalize and merge aliases without sorting or mutating loader slices.
+		// Affinity must not depend on the order of equivalent category records.
+		counts := make(map[string]digestCount)
+		for _, count := range countsByUser[userID] {
+			category := normalizeCategorySlug(count.CategorySlug)
+			if category == "" || count.Likes < 0 || count.Dislikes < 0 || (count.Likes == 0 && count.Dislikes == 0) {
+				continue
+			}
+			merged := counts[category]
+			// Invalid/overflowing aggregates cannot be useful ranking evidence.
+			if count.Likes > math.MaxInt64-count.Dislikes || merged.Likes > math.MaxInt64-merged.Dislikes-(count.Likes+count.Dislikes) {
+				return nil, errors.New("behavioral category counts overflow")
+			}
+			counts[category] = digestCount{category, merged.Likes + count.Likes, merged.Dislikes + count.Dislikes}
+		}
+		keys := make([]string, 0, len(counts))
+		for category := range counts {
+			keys = append(keys, category)
+		}
+		sort.Strings(keys)
 		categories := make(map[string]float64, len(counts))
 		digestCounts := make([]digestCount, 0, len(counts))
-		for _, count := range counts {
-			category := normalizeCategorySlug(count.CategorySlug)
-			if category == "" || count.Likes < 0 || count.Dislikes < 0 || count.Likes+count.Dislikes == 0 {
+		for _, category := range keys {
+			count := counts[category]
+			if count.Likes+count.Dislikes < behaviorMinObservations {
 				continue
 			}
 			// Four virtual neutral observations smooth cold and sparse history;
@@ -441,21 +469,32 @@ func copySet(a map[string]bool) map[string]bool {
 	}
 	return r
 }
-func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, radii ...radiusConstraint) bool {
-	venue, ok := venues[event.VenueID]
-	if !ok || event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" || !event.StartsAt.Valid {
+func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations []platform.MetroStation, zone *time.Location, c hardConstraints, referenceTime time.Time, diagnostics *contracts.PoolBuildDiagnostics, radii ...radiusConstraint) bool {
+	if !event.StartsAt.Valid || !event.StartsAt.Time.After(referenceTime) {
 		return false
 	}
-	if !event.StartsAt.Time.After(referenceTime) {
+	diagnostics.AllFuture++
+	if event.IsDemo || event.Status != "published" || !event.TicketAvailable || !event.TicketUrl.Valid || strings.TrimSpace(event.TicketUrl.String) == "" {
 		return false
 	}
+	diagnostics.HasValidTicket++
+	local := event.StartsAt.Time.In(zone)
+	if !c.dates[local.Format(time.DateOnly)] || !c.days[dayType(local.Weekday())] {
+		return false
+	}
+	diagnostics.DateOverlap++
+	if !c.slots[timeSlot(local.Hour())] {
+		return false
+	}
+	diagnostics.SlotOverlap++
 	if event.PriceFromMinor.Valid {
 		if event.PriceFromMinor.Int32 < 0 || event.PriceFromMinor.Int32 > c.budget {
 			return false
 		}
 	}
-	local := event.StartsAt.Time.In(zone)
-	if !c.dates[local.Format(time.DateOnly)] || !c.days[dayType(local.Weekday())] || !c.slots[timeSlot(local.Hour())] {
+	diagnostics.Budget++
+	venue, ok := venues[event.VenueID]
+	if !ok {
 		return false
 	}
 	if c.exclusions["nightclubs"] && venue.VenueType == "nightclub" {
@@ -482,6 +521,7 @@ func eligible(event catalog.Event, venues map[uuid.UUID]platform.Venue, stations
 			return false
 		}
 	}
+	diagnostics.Venue++
 	return true
 }
 

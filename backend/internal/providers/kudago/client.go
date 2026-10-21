@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,22 +25,29 @@ const (
 )
 
 type Options struct {
-	BaseURL  string
-	Timeout  time.Duration
-	Location string
-	PageSize int
-	CityID   uuid.UUID
-	Timezone string
+	BaseURL              string
+	Timeout              time.Duration
+	Location             string
+	PageSize             int
+	MaxRequestsPerMinute int
+	CityID               uuid.UUID
+	Timezone             string
 }
 
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
-	location   string
-	cityID     uuid.UUID
-	timezone   string
-	pageSize   int
-	now        func() time.Time
+	baseURL       *url.URL
+	httpClient    *http.Client
+	location      string
+	cityID        uuid.UUID
+	timezone      string
+	pageSize      int
+	now           func() time.Time
+	wallNow       func() time.Time
+	wait          func(context.Context, time.Duration) error
+	interval      time.Duration
+	mu            sync.Mutex
+	nextRequest   time.Time
+	cooldownUntil time.Time
 }
 
 type fetchOptions struct {
@@ -62,6 +70,12 @@ func NewClient(options Options) (*Client, error) {
 	if options.PageSize < 1 || options.PageSize > 100 {
 		return nil, errors.New("kudago page size must be between 1 and 100")
 	}
+	if options.MaxRequestsPerMinute == 0 {
+		options.MaxRequestsPerMinute = 6
+	}
+	if options.MaxRequestsPerMinute < 1 || options.MaxRequestsPerMinute > 60 {
+		return nil, errors.New("kudago max requests per minute must be between 1 and 60")
+	}
 	timezone := strings.TrimSpace(options.Timezone)
 	if timezone == "" {
 		timezone = moscowZone
@@ -77,12 +91,15 @@ func NewClient(options Options) (*Client, error) {
 	transport.TLSHandshakeTimeout = options.Timeout
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{Transport: transport, Timeout: options.Timeout},
+		httpClient: &http.Client{Transport: transport, Timeout: options.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		location:   strings.TrimSpace(options.Location),
 		cityID:     options.CityID,
 		timezone:   timezone,
 		pageSize:   options.PageSize,
 		now:        time.Now,
+		wallNow:    time.Now,
+		wait:       waitFor,
+		interval:   time.Minute / time.Duration(options.MaxRequestsPerMinute),
 	}, nil
 }
 
@@ -97,12 +114,25 @@ func (c *Client) fetchPage(ctx context.Context, options fetchOptions) (eventsPag
 	}
 	request.Header.Set("Accept", "application/json")
 
+	if err := c.pace(ctx); err != nil {
+		return eventsPage{}, err
+	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return eventsPage{}, fmt.Errorf("perform kudago request: %w", err)
+		if ctx.Err() != nil {
+			return eventsPage{}, ctx.Err()
+		}
+		code := "kudago_transport_error"
+		if errors.Is(err, context.DeadlineExceeded) {
+			code = "kudago_timeout"
+		}
+		return eventsPage{}, &syncError{code: code, err: fmt.Errorf("perform kudago request: %w", err)}
 	}
 	defer response.Body.Close()
 
+	if response.StatusCode == http.StatusTooManyRequests {
+		c.setCooldown(response.Header.Get("Retry-After"))
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return eventsPage{}, responseError(response)
 	}
@@ -155,21 +185,70 @@ func (c *Client) requestURL(options fetchOptions) (*url.URL, error) {
 	return requestURL, nil
 }
 
+func (c *Client) pace(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.wallNow()
+	if now.Before(c.cooldownUntil) {
+		return &syncError{code: "kudago_http_429", err: errors.New("kudago request is cooling down")}
+	}
+	start := now
+	if c.nextRequest.After(start) {
+		start = c.nextRequest
+	}
+	if err := c.wait(ctx, start.Sub(now)); err != nil {
+		return err
+	}
+	c.nextRequest = start.Add(c.interval)
+	return nil
+}
+
+func (c *Client) setCooldown(retryAfter string) {
+	delay := retryAfterDelay(retryAfter, c.wallNow())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	until := c.wallNow().Add(delay)
+	if until.After(c.cooldownUntil) {
+		c.cooldownUntil = until
+	}
+}
+
+func retryAfterDelay(value string, now time.Time) time.Duration {
+	if seconds, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && seconds > 0 {
+		if seconds > int64((time.Duration(1<<63-1))/time.Second) {
+			return time.Duration(1<<63 - 1)
+		}
+		return time.Duration(seconds) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now)
+	}
+	return time.Minute
+}
+
+func waitFor(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+type syncError struct {
+	code string
+	err  error
+}
+
+func (e *syncError) Error() string         { return e.code }
+func (e *syncError) Unwrap() error         { return e.err }
+func (e *syncError) SyncErrorCode() string { return e.code }
+
 func responseError(response *http.Response) error {
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
-	if err != nil {
-		return fmt.Errorf("read kudago error response with status %d: %w", response.StatusCode, err)
-	}
-	truncated := len(body) > maxErrorBodyBytes
-	if truncated {
-		body = body[:maxErrorBodyBytes]
-	}
-	message := strings.TrimSpace(string(body))
-	if truncated {
-		message += " [truncated]"
-	}
-	if message == "" {
-		return fmt.Errorf("kudago response status %d", response.StatusCode)
-	}
-	return fmt.Errorf("kudago response status %d: %s", response.StatusCode, message)
+	return &syncError{code: fmt.Sprintf("kudago_http_%d", response.StatusCode), err: fmt.Errorf("kudago response status %d", response.StatusCode)}
 }

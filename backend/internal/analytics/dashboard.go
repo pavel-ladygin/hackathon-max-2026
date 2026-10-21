@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -36,14 +37,25 @@ type Handler struct {
 }
 
 func NewHandler(db queryer) *Handler {
-	return &Handler{db: db, now: time.Now, cache: make(map[int]cacheEntry, 3)}
+	return &Handler{db: db, now: time.Now, cache: make(map[int]cacheEntry, 6)}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/api/v1/internal/analytics/dashboard", h.GetDashboard)
+	r.Get("/api/v1/internal/analytics/recommendations", h.GetRecommendationAnalytics)
 }
 
 func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	h.getDashboard(w, r, dashboardQuery, 0)
+}
+
+// GetRecommendationAnalytics exports versioned aggregate KPIs and their N/D
+// definitions. It uses the same internal-admin boundary as the legacy dashboard.
+func (h *Handler) GetRecommendationAnalytics(w http.ResponseWriter, r *http.Request) {
+	h.getDashboard(w, r, recommendationAnalyticsQuery, 100)
+}
+
+func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request, query string, cacheOffset int) {
 	w.Header().Set("Cache-Control", "no-store")
 	days := 30
 	if raw := r.URL.Query().Get("days"); raw != "" {
@@ -55,11 +67,13 @@ func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		days = parsed
 	}
 	now := h.now()
+	key := days + cacheOffset
 	h.mu.Lock()
-	if entry, ok := h.cache[days]; ok && now.Before(entry.expires) {
+	if entry, ok := h.cache[key]; ok && now.Before(entry.expires) {
 		body := append([]byte(nil), entry.body...)
 		h.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		setAnalyticsDownload(w, r, cacheOffset)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 		return
@@ -69,7 +83,13 @@ func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), queryTimeout)
 	defer cancel()
 	var payload []byte
-	if err := h.db.QueryRow(ctx, dashboardQuery, days).Scan(&payload); err != nil {
+	var err error
+	if cacheOffset == 100 {
+		payload, err = recommendationPayload(ctx, h.db, days)
+	} else {
+		err = h.db.QueryRow(ctx, query, days).Scan(&payload)
+	}
+	if err != nil {
 		slog.Error("analytics dashboard query failed", "request_id", httpapi.RequestID(r.Context()), "period_days", days, "error", err)
 		status := http.StatusInternalServerError
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -83,12 +103,261 @@ func (h *Handler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.mu.Lock()
-	// The only cache keys are the three validated periods, so memory use is fixed.
-	h.cache[days] = cacheEntry{body: append([]byte(nil), payload...), expires: now.Add(cacheTTL)}
+	// Three validated periods per version, with disjoint cache keys.
+	h.cache[key] = cacheEntry{body: append([]byte(nil), payload...), expires: now.Add(cacheTTL)}
 	h.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	setAnalyticsDownload(w, r, cacheOffset)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(payload)
+}
+
+func setAnalyticsDownload(w http.ResponseWriter, r *http.Request, cacheOffset int) {
+	if cacheOffset == 100 && r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", `attachment; filename="recommendation-kpis-v2.json"`)
+	}
+}
+
+// Recommendation facts come from one SQL snapshot. HTTP response structure,
+// ratio calculation and descriptive metadata belong to the application.
+type recommendationRoomCounts struct {
+	RoomCreated                 int64 `json:"room_created"`
+	SecondUserJoined            int64 `json:"second_user_joined"`
+	BothIntentsReady            int64 `json:"both_intents_ready"`
+	BothDistinctUsersVoted      int64 `json:"both_distinct_users_voted"`
+	RoomMatched                 int64 `json:"room_matched"`
+	CompletedNoMatch            int64 `json:"completed_no_match"`
+	Incomplete                  int64 `json:"incomplete"`
+	ExpiredIncomplete           int64 `json:"expired_incomplete"`
+	Closed                      int64 `json:"closed"`
+	FirstRoundMatch             int64 `json:"first_round_match"`
+	RecoveredRound2             int64 `json:"recovered_round_2"`
+	RecoveredRound3             int64 `json:"recovered_round_3"`
+	InviteShareAttemptRooms     int64 `json:"invite_share_attempt_rooms"`
+	RecipientPreviewRooms       int64 `json:"recipient_preview_rooms"`
+	SharedRecipientPreviewRooms int64 `json:"shared_recipient_preview_rooms"`
+	MatchEventOpenClickRooms    int64 `json:"match_event_open_click_rooms"`
+	MatchEventOpenClicks        int64 `json:"match_event_open_clicks"`
+	TicketClickRooms            int64 `json:"ticket_click_rooms"`
+	TicketClicks                int64 `json:"ticket_clicks"`
+	RoomsWithTestEvents         int64 `json:"rooms_with_test_events"`
+}
+
+type recommendationRoundCounts struct {
+	GeneratedRounds         int64 `json:"generated_rounds"`
+	ZeroPoolRounds          int64 `json:"zero_pool_rounds"`
+	NonemptyRoundsGenerated int64 `json:"nonempty_rounds_generated"`
+	NonemptyRoundsExhausted int64 `json:"nonempty_rounds_exhausted"`
+}
+
+type recommendationFacts struct {
+	SnapshotAt  time.Time
+	PeriodStart time.Time
+	PeriodEnd   time.Time
+	RoomCounts  recommendationRoomCounts
+	RoundCounts recommendationRoundCounts
+}
+
+type recommendationRatio struct {
+	Numerator   int64    `json:"numerator"`
+	Denominator int64    `json:"denominator"`
+	Rate        *float64 `json:"rate"`
+}
+
+type recommendationLegacyBaseline struct {
+	Cohort string   `json:"cohort"`
+	Ratios []string `json:"ratios"`
+	Source string   `json:"source"`
+}
+
+type recommendationUnverifiedClaim struct {
+	Claim  string `json:"claim"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
+type recommendationExport struct {
+	MetricsVersion   string                          `json:"metrics_version"`
+	ReleaseVersion   string                          `json:"release_version"`
+	ReleaseRevision  string                          `json:"release_revision"`
+	SnapshotAt       time.Time                       `json:"snapshot_at"`
+	PeriodStart      time.Time                       `json:"period_start"`
+	PeriodEnd        time.Time                       `json:"period_end"`
+	Timezone         string                          `json:"timezone"`
+	RoomCounts       recommendationRoomCounts        `json:"room_counts"`
+	RoundCounts      recommendationRoundCounts       `json:"round_counts"`
+	Rates            map[string]recommendationRatio  `json:"rates"`
+	RateDefinitions  map[string]string               `json:"rate_definitions"`
+	Definitions      map[string]string               `json:"definitions"`
+	LegacyBaseline   recommendationLegacyBaseline    `json:"legacy_baseline"`
+	UnverifiedClaims []recommendationUnverifiedClaim `json:"unverified_claims"`
+}
+
+func recommendationRate(n, d int64) recommendationRatio {
+	result := recommendationRatio{Numerator: n, Denominator: d}
+	if d != 0 {
+		rate := float64(n) / float64(d)
+		result.Rate = &rate
+	}
+	return result
+}
+
+func recommendationPayload(ctx context.Context, db queryer, days int) ([]byte, error) {
+	var facts recommendationFacts
+	rooms, rounds := &facts.RoomCounts, &facts.RoundCounts
+	if err := db.QueryRow(ctx, recommendationAnalyticsQuery, days).Scan(
+		&facts.SnapshotAt, &facts.PeriodStart, &facts.PeriodEnd,
+		&rooms.RoomCreated,
+		&rooms.SecondUserJoined,
+		&rooms.BothIntentsReady,
+		&rooms.BothDistinctUsersVoted,
+		&rooms.RoomMatched,
+		&rooms.CompletedNoMatch,
+		&rooms.Incomplete,
+		&rooms.ExpiredIncomplete,
+		&rooms.Closed,
+		&rooms.FirstRoundMatch,
+		&rooms.RecoveredRound2,
+		&rooms.RecoveredRound3,
+		&rooms.InviteShareAttemptRooms,
+		&rooms.RecipientPreviewRooms,
+		&rooms.SharedRecipientPreviewRooms,
+		&rooms.MatchEventOpenClickRooms,
+		&rooms.MatchEventOpenClicks,
+		&rooms.TicketClickRooms,
+		&rooms.TicketClicks,
+		&rooms.RoomsWithTestEvents,
+		&rounds.GeneratedRounds,
+		&rounds.ZeroPoolRounds,
+		&rounds.NonemptyRoundsGenerated,
+		&rounds.NonemptyRoundsExhausted,
+	); err != nil {
+		return nil, err
+	}
+	return json.Marshal(newRecommendationExport(facts))
+}
+
+func newRecommendationExport(facts recommendationFacts) recommendationExport {
+	r, p := facts.RoomCounts, facts.RoundCounts
+	return recommendationExport{
+		MetricsVersion:  "recommendation-analytics-v2",
+		ReleaseVersion:  "recommendation-analytics-v2/000032",
+		ReleaseRevision: analyticsBuildRevision(),
+		SnapshotAt:      facts.SnapshotAt.UTC(), PeriodStart: facts.PeriodStart.UTC(), PeriodEnd: facts.PeriodEnd.UTC(), Timezone: "UTC",
+		RoomCounts: r, RoundCounts: p,
+		Rates: map[string]recommendationRatio{
+			"room_join":                     recommendationRate(r.SecondUserJoined, r.RoomCreated),
+			"room_activation":               recommendationRate(r.BothIntentsReady, r.RoomCreated),
+			"both_users_voted":              recommendationRate(r.BothDistinctUsersVoted, r.RoomCreated),
+			"created_to_match":              recommendationRate(r.RoomMatched, r.RoomCreated),
+			"activated_to_match":            recommendationRate(r.RoomMatched, r.BothIntentsReady),
+			"completed_no_match":            recommendationRate(r.CompletedNoMatch, r.RoomMatched+r.CompletedNoMatch),
+			"zero_pool_rounds":              recommendationRate(p.ZeroPoolRounds, p.GeneratedRounds),
+			"nonempty_rounds_exhausted":     recommendationRate(p.NonemptyRoundsExhausted, p.NonemptyRoundsGenerated),
+			"recipient_preview_after_share": recommendationRate(r.SharedRecipientPreviewRooms, r.InviteShareAttemptRooms),
+			"match_event_open_click":        recommendationRate(r.MatchEventOpenClickRooms, r.RoomMatched),
+			"ticket_click":                  recommendationRate(r.TicketClickRooms, r.RoomMatched),
+		},
+		RateDefinitions: map[string]string{
+			"room_join":                     "rooms: second_user_joined / room_created",
+			"room_activation":               "rooms: both_intents_ready / room_created",
+			"both_users_voted":              "rooms: both_distinct_users_voted / room_created",
+			"created_to_match":              "rooms: room_matched / room_created",
+			"activated_to_match":            "rooms: room_matched / both_intents_ready",
+			"completed_no_match":            "rooms: completed_no_match / (room_matched + completed_no_match); excludes incomplete and closed",
+			"zero_pool_rounds":              "rounds: zero_pool_rounds / generated_rounds",
+			"nonempty_rounds_exhausted":     "rounds: nonempty_rounds_exhausted / nonempty_rounds_generated",
+			"recipient_preview_after_share": "rooms: shared_recipient_preview_rooms / invite_share_attempt_rooms",
+			"match_event_open_click":        "rooms: match_event_open_click_rooms / room_matched",
+			"ticket_click":                  "rooms: ticket_click_rooms / room_matched",
+		},
+		Definitions: map[string]string{
+			"room_cohort":        "room.created_at in [period_start,period_end); progress observed at snapshot_at",
+			"round_cohort":       "latest committed pool version per room/round; generated_at in [period_start,period_end)",
+			"room_activation":    "both participants ready in one round, or trusted generated pool; zero-pool included",
+			"both_users_voted":   "two distinct confirmed room members voted; separate from intent readiness",
+			"completed_no_match": "no match, room exhausted in round 3, round 3 pool exhausted; round 1/2 exhaustion remains incomplete",
+			"incomplete":         "all other nonmatched/nonclosed rooms, including waiting and expired; no automatic UX attribution",
+			"outcome_precedence": "matched > closed > completed_no_match > incomplete; outcomes partition rooms",
+			"recovered_match":    "match in round 2/3 with an earlier persisted exhausted round; not merely any later-round match",
+			"invite_shared":      "creator share intention/attempt, never confirmed delivery; successful join is a server fact",
+			"recipient_preview":  "noncreator server preview context, or preview linked to consumed invite before matching participant join; unverified previews excluded",
+			"clicks":             "room match and same event, post-match, confirmed member at event time; tickets require server origin; not purchases",
+			"test_data":          "all rooms included; demo or test/synthetic catalog sources flagged; no reliable room intent/test segment exists",
+			"observation":        "current transaction snapshot, not historical replay; mutable state and 90-day telemetry retention limit historical reconstruction",
+		},
+		LegacyBaseline: recommendationLegacyBaseline{
+			Cohort: "legacy micro-pilot as supplied in task; small N; not recomputed using v2",
+			Ratios: []string{"9/19", "5/9", "5/19", "5/5", "2/5"},
+			Source: "individual S4 brief; original primary data unavailable in this checkout",
+		},
+		UnverifiedClaims: []recommendationUnverifiedClaim{
+			{Claim: "33.3%", Status: "excluded from confirmed results", Reason: "original formula and primary cohort unavailable"},
+			{Claim: "36", Status: "excluded from confirmed results", Reason: "original unit, formula and primary cohort unavailable"},
+			{Claim: "74.5%", Status: "excluded from confirmed results", Reason: "original formula and primary cohort unavailable"},
+		},
+	}
+}
+
+// Cohort and count semantics are unchanged from the original SQL functions.
+// The database returns typed counts; JSON and N/D are assembled by Go.
+const recommendationAnalyticsQuery = `WITH bounds AS (
+ SELECT (((now() AT TIME ZONE 'UTC')::date - ($1::int - 1))::timestamp AT TIME ZONE 'UTC') AS period_start,
+        (((now() AT TIME ZONE 'UTC')::date + 1)::timestamp AT TIME ZONE 'UTC') AS period_end
+), cohort AS (
+ SELECT * FROM analytics_recommendation_rooms WHERE created_at >= (SELECT period_start FROM bounds) AND created_at < (SELECT period_end FROM bounds)
+), round_cohort AS (
+ SELECT * FROM analytics_recommendation_rounds WHERE generated_at >= (SELECT period_start FROM bounds) AND generated_at < (SELECT period_end FROM bounds)
+), room_counts AS (
+ SELECT count(*) AS room_created,
+        count(*) FILTER (WHERE second_user_joined_at IS NOT NULL) AS second_user_joined,
+        count(*) FILTER (WHERE both_intents_ready_at IS NOT NULL) AS both_intents_ready,
+        count(*) FILTER (WHERE both_distinct_users_voted_at IS NOT NULL) AS both_distinct_users_voted,
+        count(*) FILTER (WHERE room_matched_at IS NOT NULL) AS room_matched,
+        count(*) FILTER (WHERE outcome = 'completed_no_match') AS completed_no_match,
+        count(*) FILTER (WHERE outcome = 'incomplete') AS incomplete,
+        count(*) FILTER (WHERE outcome = 'incomplete' AND expires_at <= now()) AS expired_incomplete,
+        count(*) FILTER (WHERE outcome = 'closed') AS closed,
+        count(*) FILTER (WHERE matched_round = 1) AS first_round_match,
+        count(*) FILTER (WHERE recovered_match AND matched_round = 2) AS recovered_round_2,
+        count(*) FILTER (WHERE recovered_match AND matched_round = 3) AS recovered_round_3,
+        count(*) FILTER (WHERE invite_share_attempted) AS invite_share_attempt_rooms,
+        count(*) FILTER (WHERE recipient_previewed) AS recipient_preview_rooms,
+        count(*) FILTER (WHERE invite_share_attempted AND recipient_previewed) AS shared_recipient_preview_rooms,
+        count(*) FILTER (WHERE match_event_open_clicked) AS match_event_open_click_rooms,
+        coalesce(sum(match_event_open_clicks),0)::bigint AS match_event_open_clicks,
+        count(*) FILTER (WHERE ticket_clicked) AS ticket_click_rooms,
+        coalesce(sum(ticket_clicks),0)::bigint AS ticket_clicks,
+        count(*) FILTER (WHERE contains_test_events) AS rooms_with_test_events
+ FROM cohort
+), round_counts AS (
+ SELECT count(*) AS generated_rounds,
+        count(*) FILTER (WHERE zero_pool) AS zero_pool_rounds,
+        count(*) FILTER (WHERE NOT zero_pool) AS nonempty_rounds_generated,
+        count(*) FILTER (WHERE nonempty_exhausted) AS nonempty_rounds_exhausted
+ FROM round_cohort
+)
+SELECT now(), b.period_start, b.period_end, r.*, p.*
+FROM room_counts r CROSS JOIN round_counts p CROSS JOIN bounds b`
+
+func analyticsBuildRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	revision, modified := "unknown", false
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			revision = setting.Value
+		}
+		if setting.Key == "vcs.modified" {
+			modified = setting.Value == "true"
+		}
+	}
+	if modified {
+		revision += "+dirty"
+	}
+	return revision
 }
 
 const dashboardQuery = `
@@ -343,6 +612,7 @@ WITH bounds AS (
  WHERE vote_day >= (now() AT TIME ZONE 'UTC')::date - ($1::int - 1)
 )
 SELECT jsonb_build_object(
+ 'metrics_version', 'legacy-room-funnel-v1',
  'period_days', $1,
  'generated_at', now(),
  'daily', coalesce((SELECT jsonb_agg(to_jsonb(daily)) FROM daily), '[]'::jsonb),

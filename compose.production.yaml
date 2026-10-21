@@ -65,7 +65,7 @@ services:
   event-sync:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
     command: ["/app/event-sync"]
-    environment:
+    environment: &event_sync_environment
       <<: *backend_environment
       INVITE_ENCRYPTION_KEY: ${INVITE_ENCRYPTION_KEY:?INVITE_ENCRYPTION_KEY is required}
       INVITE_ENCRYPTION_KEY_VERSION: ${INVITE_ENCRYPTION_KEY_VERSION:-1}
@@ -73,6 +73,12 @@ services:
       KUDAGO_TIMEOUT: ${KUDAGO_TIMEOUT:-30s}
       KUDAGO_LOCATION: ${KUDAGO_LOCATION:-msk}
       KUDAGO_PAGE_SIZE: ${KUDAGO_PAGE_SIZE:-100}
+      KUDAGO_MAX_REQUESTS_PER_MINUTE: ${KUDAGO_MAX_REQUESTS_PER_MINUTE:-6}
+      EVENT_SYNC_PROVIDER: ${EVENT_SYNC_PROVIDER:-}
+      EVENT_SYNC_CITY_ID: ${EVENT_SYNC_CITY_ID:-a0f625ee-2154-5a45-8afe-37adf955ec24}
+      EVENT_SYNC_CITY_PROFILES: ${EVENT_SYNC_CITY_PROFILES:-}
+      TIMEPAD_CITY_NAME: ${TIMEPAD_CITY_NAME:-Москва}
+      TIMEPAD_UPSERT_ONLY: ${TIMEPAD_UPSERT_ONLY:-true}
       EVENT_SYNC_INTERVAL: ${EVENT_SYNC_INTERVAL:-2h}
       EVENT_SYNC_RUN_ON_START: ${EVENT_SYNC_RUN_ON_START:-false}
       TIMEPAD_BASE_URL: ${TIMEPAD_BASE_URL:-https://api.timepad.ru/v1}
@@ -80,6 +86,26 @@ services:
       TIMEPAD_TIMEOUT: ${TIMEPAD_TIMEOUT:-30s}
       TIMEPAD_PAGE_SIZE: ${TIMEPAD_PAGE_SIZE:-100}
       TIMEPAD_MAX_REQUESTS_PER_MINUTE: ${TIMEPAD_MAX_REQUESTS_PER_MINUTE:-20}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  # Same automatic worker and interval; only Timepad, explicit opt-in profile.
+  event-sync-timepad-spb:
+    profiles: ["spb"]
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    command: ["/app/event-sync"]
+    environment:
+      <<: *event_sync_environment
+      EVENT_SYNC_PROVIDER: timepad
+      EVENT_SYNC_CITY_ID: bf61fbf5-8c5b-53da-96c7-3560df3f8177
+      KUDAGO_LOCATION: spb
+      TIMEPAD_CITY_NAME: Санкт-Петербург
+      TIMEPAD_UPSERT_ONLY: ${SPB_TIMEPAD_UPSERT_ONLY:-true}
     depends_on:
       postgres:
         condition: service_healthy
