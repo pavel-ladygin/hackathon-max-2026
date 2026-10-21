@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <MaxUI>
+    <MaxUI className="max-app-theme">
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           {children}

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   acknowledgeNotice: vi.fn(),
 }))
 
+vi.mock('../../features/city/useProfileCity', () => ({ useProfileCity: () => ({ cityId: 'bf61fbf5-8c5b-53da-96c7-3560df3f8177', city: { name: 'Санкт-Петербург' }, canSelect: true, selectCity: vi.fn(), isPending: false, error: null }) }))
 vi.mock('../../features/auth/useBootstrap', () => ({ useBootstrap: () => ({ data: { user: { displayName: 'Ирина' } } }) }))
 vi.mock('../../features/discovery/queries', () => ({ useHomeFeed: () => mocks.feed }))
 vi.mock('../../shared/api/client', () => ({ apiClient: {
@@ -35,6 +36,23 @@ describe('HomePage room closure actions', () => {
     mocks.closeRoom.mockResolvedValue({ id: activeRoom.id })
     mocks.acknowledgeNotice.mockReset()
     mocks.acknowledgeNotice.mockResolvedValue(undefined)
+  })
+
+  it('shows the profile city and opens the shared picker', () => {
+    renderHome()
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить город: Санкт-Петербург' }))
+    expect(screen.getByRole('dialog', { name: 'Выберите город' })).toBeVisible()
+  })
+
+  it('keeps city selection available when the feed is loading or fails', () => {
+    mocks.feed.isPending = true
+    const view = renderHome()
+    expect(screen.getByRole('button', { name: 'Изменить город: Санкт-Петербург' })).toBeEnabled()
+    mocks.feed.isPending = false
+    mocks.feed.isError = true
+    view.rerender(<QueryClientProvider client={new QueryClient()}><MemoryRouter><HomePage /></MemoryRouter></QueryClientProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить город: Санкт-Петербург' }))
+    expect(screen.getByRole('dialog', { name: 'Выберите город' })).toBeVisible()
   })
 
   it('lets the user cancel room closure without calling the API', () => {

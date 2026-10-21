@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID, cityById } from '../../shared/lib/cities'
 import { CatalogPage } from './CatalogPage'
+
+let selectedCityId = MOSCOW_CITY_ID
+const selectCity = vi.fn(async (id: string) => { selectedCityId = id })
+vi.mock('../../features/city/useProfileCity', () => ({ useProfileCity: () => ({ cityId: selectedCityId, city: cityById(selectedCityId), selectCity, canSelect: true, isPending: false, error: null }) }))
 
 const searchCalls: Array<Record<string, unknown>> = []
 const countCalls: Array<{ params: Record<string, unknown>; enabled: boolean }> = []
@@ -39,6 +44,8 @@ function renderCatalog() {
 describe('CatalogPage search', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    selectedCityId = MOSCOW_CITY_ID
+    selectCity.mockClear()
     searchCalls.length = 0
     countCalls.length = 0
     resultState = defaultResult
@@ -47,6 +54,22 @@ describe('CatalogPage search', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+
+  it('opens the shared city picker from filters and keeps city when filters are cleared', async () => {
+    const view = renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить город: Москва' }))
+    expect(screen.getByRole('dialog', { name: 'Выберите город' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть выбор города' }))
+    selectedCityId = SAINT_PETERSBURG_CITY_ID
+    view.rerender(<MemoryRouter><CatalogPage /></MemoryRouter>)
+    expect(searchCalls.at(-1)?.city_id).toBe(SAINT_PETERSBURG_CITY_ID)
+    expect(countCalls.at(-1)?.params.city_id).toBe(SAINT_PETERSBURG_CITY_ID)
+    fireEvent.click(screen.getByRole('button', { name: 'Бесплатно' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
+    expect(searchCalls.at(-1)?.city_id).toBe(SAINT_PETERSBURG_CITY_ID)
   })
 
   it('shows all API categories in the catalog filters', () => {

@@ -178,7 +178,7 @@ export function EventSubmissionPage() {
       <label>Ссылка на событие или билеты{values.price_mode !== 'free' && <em>обязательно</em>}<input type="url" inputMode="url" placeholder="https://…" maxLength={2048} {...form.register('ticket_url')} />{field('ticket_url') && <small role="alert">{field('ticket_url')}</small>}</label>
       <div className={styles.posterField}>
         <div className={styles.posterHeading}><span className={styles.fieldLabel}>Афиша</span><span>Необязательно</span></div>
-        <input ref={posterInput} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Выбрать файл афиши" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadPoster(file) }} />
+        <input ref={posterInput} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" tabIndex={-1} aria-hidden="true" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadPoster(file) }} />
         <div className={`${poster.file ? styles.posterCard : styles.dropzone} ${posterDragging ? styles.dropzoneActive : ''}`} role="group" aria-label="Зона загрузки афиши" onDragEnter={(event) => { event.preventDefault(); setPosterDragging(true) }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPosterDragging(false) }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setPosterDragging(false); const file = event.dataTransfer.files[0]; if (file) void uploadPoster(file) }}>
           {poster.file ? <>
             {poster.previewUrl ? <img className={styles.posterThumb} src={poster.previewUrl} alt="Предпросмотр выбранной афиши" /> : null}
@@ -197,10 +197,11 @@ export function EventSubmissionPage() {
               </>}
             </div>
           </> : <>
-            <svg className={styles.uploadIcon} viewBox="0 0 40 40" aria-hidden="true"><path d="M20 27V10m0 0-7 7m7-7 7 7M9 25v7h22v-7" /></svg>
+            <button type="button" className={styles.uploadIcon} aria-label="Выбрать файл афиши" onClick={() => posterInput.current?.click()}>
+              <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 27V10m0 0-7 7m7-7 7 7M9 25v7h22v-7" /></svg>
+            </button>
             <strong>{posterDragging ? 'Отпустите файл здесь' : 'Добавьте афишу'}</strong>
-            <span>{posterDragging ? 'Загрузится одно изображение' : 'Перетащите изображение сюда или выберите его на устройстве'}</span>
-            {!posterDragging ? <Button type="button" tone="secondary" onClick={() => posterInput.current?.click()}>Выбрать файл</Button> : null}
+            <span>{posterDragging ? 'Загрузится одно изображение' : 'Нажмите на значок загрузки или перетащите изображение сюда'}</span>
             <span>JPEG, PNG или WebP · до 10 МиБ</span>
           </>}
         </div>

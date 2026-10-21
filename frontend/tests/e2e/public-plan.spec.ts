@@ -140,7 +140,7 @@ test('two participants preview, join, and separately confirm their own plan-deri
     if (isMobile) await activate(creatorPage.getByRole('option', { name: 'Москва', exact: true }), true)
     else {
       await citySelect.press('ArrowDown')
-      await citySelect.press('ArrowDown')
+      await citySelect.press('ArrowUp')
       await citySelect.press('Enter')
     }
     await expect(citySelect).toContainText('Москва')

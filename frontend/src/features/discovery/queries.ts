@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { CategorySlug, EventCard, EventDetail } from '../../shared/api/types'
 
@@ -19,9 +19,9 @@ type SearchParams = {
   cursor?: string
 }
 
-export const useHomeFeed = () => useQuery({ queryKey: ['home-feed'], queryFn: () => apiClient.getHomeFeed() })
+export const useHomeFeed = (cityId?: string) => useQuery({ queryKey: ['home-feed', cityId], queryFn: () => apiClient.getHomeFeed({ city_id: cityId }) })
 export const useEventDetail = (eventId: string | undefined) => useQuery({ queryKey: ['event', eventId], queryFn: () => apiClient.getEvent(eventId!), enabled: Boolean(eventId) })
-export const useEventSearch = (params: SearchParams, enabled = true) => useInfiniteQuery({ queryKey: ['event-search', params], queryFn: ({ pageParam, signal }) => apiClient.searchEvents({ ...params, cursor: pageParam }, signal), initialPageParam: undefined as string | undefined, getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined, placeholderData: keepPreviousData, enabled })
+export const useEventSearch = (params: SearchParams, enabled = true) => useInfiniteQuery({ queryKey: ['event-search', params], queryFn: ({ pageParam, signal }) => apiClient.searchEvents({ ...params, cursor: pageParam }, signal), initialPageParam: undefined as string | undefined, getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined, placeholderData: (previousData, previousQuery) => (previousQuery?.queryKey[1] as SearchParams | undefined)?.city_id === params.city_id ? previousData : undefined, enabled })
 export const useEventSearchCount = (params: Omit<SearchParams, 'limit' | 'cursor'>, enabled = true) => useQuery({ queryKey: ['event-search-count', params], queryFn: ({ signal }) => apiClient.getSearchCount(params, signal), enabled, staleTime: 30_000, retry: false })
 export const useSavedEvents = (tab: 'saved' | 'matches') => useInfiniteQuery({ queryKey: ['saved-events', tab], queryFn: ({ pageParam }) => apiClient.getSaved({ tab, cursor: pageParam }), initialPageParam: undefined as string | undefined, getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined })
 export const useSetSavedEvent = () => {

@@ -18,7 +18,7 @@ type PublicPlanFields = {
   anyTime: boolean
 }
 
-type Draft = { version: 1; cityId: string; citySelectedExplicitly: boolean; name: string; publicPlanEnabled: boolean; plan: PublicPlanFields }
+type Draft = { version: 1; cityId: string; citySelectedExplicitly: boolean; profileCityId?: string | null; name: string; publicPlanEnabled: boolean; plan: PublicPlanFields }
 type CreateValues = { name: string; city_id: string; public_plan?: PublicPlan }
 type FieldErrors = Partial<Record<'name' | 'city' | 'dates' | 'time' | 'categories' | 'budget', string>>
 
@@ -35,21 +35,26 @@ const defaultPlanFields = (): PublicPlanFields => ({ dates: [], time_slots: [], 
 const DEFAULT_ROOM_NAME = 'Куда идём в субботу?'
 function upcomingPlanDates(today: string) { const [year, month, day] = today.split('-').map(Number); const start = new Date(Date.UTC(year, month - 1, day)); return Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setUTCDate(date.getUTCDate() + index); const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`; const label = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date); return [value, label] as [string, string] }) }
 
-function readDraft(key: string): Draft | null {
+function readDraft(key: string, currentProfileCityId: string | null): Draft | null {
   try {
     const raw = window.sessionStorage.getItem(key)
     if (!raw) return null
     const draft = JSON.parse(raw) as Partial<Draft>
     if (draft.version !== 1 || typeof draft.cityId !== 'string' || typeof draft.name !== 'string' || typeof draft.publicPlanEnabled !== 'boolean' || !draft.plan) return null
     if (!Array.isArray(draft.plan.dates) || !Array.isArray(draft.plan.time_slots) || !Array.isArray(draft.plan.category_slugs) || typeof draft.plan.budget !== 'string' || typeof draft.plan.anyTime !== 'boolean') return null
-    return { ...draft as Draft, citySelectedExplicitly: draft.citySelectedExplicitly === true }
+    const saved = draft as Draft
+    const savedProfileCityId = typeof saved.profileCityId === 'string' ? saved.profileCityId : saved.cityId
+    const profileMatches = currentProfileCityId === null
+      ? saved.profileCityId == null
+      : savedProfileCityId === currentProfileCityId
+    return { ...saved, citySelectedExplicitly: saved.citySelectedExplicitly === true && profileMatches }
   } catch {
     return null
   }
 }
 
 export function CreateRoomForm({ profileCityId, draftKey, pending, success, error, onSubmit }: CreateRoomFormProps) {
-  const [restored] = useState(() => readDraft(draftKey))
+  const [restored] = useState(() => readDraft(draftKey, profileCityId ?? null))
   const [explicitCityId, setExplicitCityId] = useState<string | null>(() => restored?.citySelectedExplicitly ? restored.cityId : null)
   const cityId = explicitCityId ?? resolveCreateCity(null, profileCityId)
   const [name, setName] = useState(() => restored?.name ?? DEFAULT_ROOM_NAME)
@@ -83,9 +88,9 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
   }, [])
 
   useEffect(() => {
-    const draft: Draft = { version: 1, cityId, citySelectedExplicitly: explicitCityId !== null, name, publicPlanEnabled, plan }
+    const draft: Draft = { version: 1, cityId, citySelectedExplicitly: explicitCityId !== null, profileCityId: profileCityId ?? null, name, publicPlanEnabled, plan }
     try { window.sessionStorage.setItem(draftKey, JSON.stringify(draft)) } catch { /* storage can be unavailable in embedded browsers */ }
-  }, [cityId, draftKey, explicitCityId, name, plan, publicPlanEnabled])
+  }, [cityId, draftKey, explicitCityId, name, plan, profileCityId, publicPlanEnabled])
 
   const changePlan = (patch: Partial<PublicPlanFields>) => {
     setPlan((current) => ({ ...current, ...patch }))

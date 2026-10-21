@@ -129,7 +129,7 @@ describe('EventModerationPage async request handling', () => {
     await resolveDeferred(pendingDetail, json(detail('A')))
 
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Event A' })).not.toBeInTheDocument())
-    expect(screen.getByText('Выберите заявку, чтобы открыть предпросмотр.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Выберите заявку' })).toBeInTheDocument()
   })
 
   it.each(['approve', 'reject'] as const)('refreshes the currently selected queue after an in-flight %s when the filter changes', async (decision) => {

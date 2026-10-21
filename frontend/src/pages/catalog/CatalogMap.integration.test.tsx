@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventCard } from '../../shared/api/types'
+import { MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID } from '../../shared/lib/cities'
 import { CatalogMap } from './CatalogMap'
 
 const { navigate, getMapEvents, setLocation, mapSize, FakeYMap, FakeYMapMarker, FakeYMapListener, listenerRef, loadMaps } = vi.hoisted(() => {
@@ -85,6 +86,22 @@ describe('CatalogMap event preview integration', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
+  })
+
+  it('centers Petersburg and starts a fresh map after changing city', async () => {
+    const view = render(<MemoryRouter><CatalogMap key={MOSCOW_CITY_ID} filters={{ city_id: MOSCOW_CITY_ID }} /></MemoryRouter>)
+    const marker = await screen.findByRole('button', { name: 'Открыть событие «Событие A»' })
+    fireEvent.click(marker)
+    expect(screen.getByRole('region', { name: 'Событие: Событие A' })).toBeInTheDocument()
+    getMapEvents.mockResolvedValue([])
+    view.rerender(<MemoryRouter><CatalogMap key={SAINT_PETERSBURG_CITY_ID} filters={{ city_id: SAINT_PETERSBURG_CITY_ID }} /></MemoryRouter>)
+    expect(screen.queryByRole('region', { name: 'Событие: Событие A' })).not.toBeInTheDocument()
+    await waitFor(() => expect(setLocation).toHaveBeenLastCalledWith({ center: [30.315868, 59.939095], zoom: 11 }))
+    await waitFor(() => expect(getMapEvents).toHaveBeenLastCalledWith(expect.objectContaining({ city_id: SAINT_PETERSBURG_CITY_ID })))
+    const request = getMapEvents.mock.calls.at(-1)?.[0]
+    expect(request.west).toBeLessThan(30.315868)
+    expect(request.east).toBeGreaterThan(30.315868)
+    expect(screen.queryByRole('button', { name: 'Открыть событие «Событие A»' })).not.toBeInTheDocument()
   })
 
   it('switches selected markers, closes without navigation, and navigates from preview actions', async () => {
@@ -341,7 +358,7 @@ describe('CatalogMap event preview integration', () => {
   it('starts from the default city center and requests map events without location filters', async () => {
     render(<MemoryRouter><CatalogMap filters={{}} /></MemoryRouter>)
 
-    await waitFor(() => expect(setLocation).toHaveBeenCalledWith({ center: [37.618423, 55.751244], zoom: 11 }))
+    await waitFor(() => expect(setLocation).toHaveBeenCalledWith({ center: [37.6173, 55.7558], zoom: 11 }))
     await waitFor(() => expect(getMapEvents).toHaveBeenCalled())
     const request = getMapEvents.mock.calls.at(-1)?.[0] as Record<string, unknown>
     expect(request).not.toHaveProperty('lat')

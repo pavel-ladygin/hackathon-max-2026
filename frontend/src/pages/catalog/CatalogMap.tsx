@@ -8,9 +8,9 @@ import { createEventMarkerElement } from './eventMarker'
 import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
 import { MapAreaCache, paddedViewportBounds } from './mapResults'
+import { cityById, MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { track } from '../../shared/analytics/client'
 
-const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
 const MAX_OVERLAP_DIAMETER = 72
 const SPIDER_RADIUS = 80
@@ -120,7 +120,8 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
   const sequence = useRef(0)
   const pendingArea = useRef<string | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const initial = MOSCOW_CENTER
+  const city = cityById(filters.city_id ?? MOSCOW_CITY_ID) ?? cityById(MOSCOW_CITY_ID)!
+  const initial = useMemo<[number, number]>(() => [city.center[1], city.center[0]], [city])
   const [camera, setCamera] = useState<YandexCamera>({ center: initial, zoom: 11 })
   const cameraRef = useRef<YandexCamera>({ center: initial, zoom: 11 })
   const [viewportSize, setViewportSize] = useState({ width: 700, height: 500 })
@@ -237,6 +238,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     }).catch(() => { if (!cancelled) setMapError(true) })
     return () => {
       cancelled = true
+      sequence.current += 1
       resizeObserver?.disconnect()
       if (idleTimer.current) clearTimeout(idleTimer.current)
       map.current?.destroy()
@@ -463,7 +465,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     <div ref={mapNode} className={styles.map} role="region" aria-label="Яндекс Карта событий" />
     {!mapReady ? <ScreenSkeleton variant="map" inline label="Загружаем карту…" /> : null}
     {areaError ? <div className={`${styles.mapMessage} ${styles.mapMessageInteractive}`}><Empty inline title="События не загрузились" description="Проверьте соединение и повторите поиск." action={<Button onClick={() => void requestArea(camera)}>Повторить</Button>} /></div> : null}
-    {noResults ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="В этой области событий не найдено" description="Переместите карту или измените фильтры." /></div> : null}
+    {noResults ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><div className={styles.emptyMapCard} role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg><h3>В этой области событий не найдено</h3><p>Переместите карту или измените фильтры.</p></div></div> : null}
     {!areaLoading && locatedEvents.length > 0 && !hasAnyCoordinates ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="Для этих событий нет координат" description="Попробуйте изменить область карты или переключиться на список." /></div> : null}
     {visibleSelectedEvent ? <MapEventPreview event={visibleSelectedEvent} onClose={() => selectEvent(null)} onDetails={() => navigate(`/events/${visibleSelectedEvent.id}`)} /> : null}
     {areaLoading ? <span className={styles.mapLoading} role="status">Загружаем события…</span> : null}
