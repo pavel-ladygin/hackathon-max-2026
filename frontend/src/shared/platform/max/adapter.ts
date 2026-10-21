@@ -1,6 +1,7 @@
 import providerPolicy from "../../api/generated/provider-policy.json";
 import type {
   InviteSharePayload,
+  InviteShareResult,
   MaxPlatformAdapter,
   MaxPlatformName,
   MaxPlatformSnapshot,
@@ -153,27 +154,29 @@ export class MaxBridgeAdapterImpl implements MaxPlatformAdapter {
     getWebApp()?.ready?.();
   }
 
-  async shareInvite(payload: InviteSharePayload): Promise<boolean> {
-    if (!safeUrl(payload.link)) return false;
+  async shareInvite(payload: InviteSharePayload): Promise<InviteShareResult> {
+    if (!safeUrl(payload.link)) return { status: "failed" };
     const params = { text: payload.text, link: payload.link };
     const webApp = getWebApp();
     try {
       if (webApp?.shareMaxContent) {
         await webApp.shareMaxContent(params);
-        return true;
+        return { status: "opened" };
       }
       if (webApp?.shareContent) {
         await webApp.shareContent(params);
-        return true;
+        return { status: "opened" };
       }
       if (typeof navigator !== "undefined" && navigator.share) {
         await navigator.share({ title: payload.text, text: payload.text, url: payload.link });
-        return true;
+        return { status: "opened" };
       }
-    } catch {
-      return false;
+    } catch (error) {
+      return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+        ? { status: "cancelled" }
+        : { status: "failed" };
     }
-    return false;
+    return { status: "unavailable" };
   }
 
   async openMaxLink(url: string): Promise<boolean> {

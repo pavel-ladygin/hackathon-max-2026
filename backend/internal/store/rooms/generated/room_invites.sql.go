@@ -47,7 +47,7 @@ func (q *Queries) ExpireRoomInvites(ctx context.Context, arg ExpireRoomInvitesPa
 }
 
 const getInvitePreviewByHash = `-- name: GetInvitePreviewByHash :one
-SELECT i.token_hash, i.expires_at, r.id AS room_id, r.name AS room_name, r.state AS room_state, r.expires_at AS room_expires_at,
+SELECT i.token_hash, i.expires_at, r.id AS room_id, r.name AS room_name, r.city_id, r.public_plan, r.state AS room_state, r.expires_at AS room_expires_at,
        u.id AS inviter_id, u.display_name AS inviter_display_name, u.avatar_url AS inviter_avatar_url,
        COALESCE((SELECT s.ready FROM room_member_round_state s
                  WHERE s.room_id = r.id AND s.user_id = u.id AND s.round_no = r.round_no), false)::boolean AS inviter_intent_ready,
@@ -69,6 +69,8 @@ type GetInvitePreviewByHashRow struct {
 	ExpiresAt          pgtype.Timestamptz
 	RoomID             uuid.UUID
 	RoomName           string
+	CityID             uuid.UUID
+	PublicPlan         []byte
 	RoomState          string
 	RoomExpiresAt      pgtype.Timestamptz
 	InviterID          uuid.UUID
@@ -87,6 +89,8 @@ func (q *Queries) GetInvitePreviewByHash(ctx context.Context, arg GetInvitePrevi
 		&i.ExpiresAt,
 		&i.RoomID,
 		&i.RoomName,
+		&i.CityID,
+		&i.PublicPlan,
 		&i.RoomState,
 		&i.RoomExpiresAt,
 		&i.InviterID,

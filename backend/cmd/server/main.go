@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/adminauth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/analytics"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/auth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/behavior"
@@ -21,6 +22,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventresources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsubmissions"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
@@ -174,7 +176,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	go roomService.RunExpiryCleanup(ctx, time.Minute, func(err error) {
 		logger.Error("room expiry cleanup failed", "error", err)
 	})
-	return httpapi.NewRouter(
+	return adminauth.NewMiddleware(cfg.InternalAdminProxySecret)(httpapi.NewRouter(
 		readiness{db: db},
 		logger,
 		authService.RegisterRoutes,
@@ -187,6 +189,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
 		analyticsHandler.RegisterRoutes,
 		eventSourcesHandler.RegisterRoutes,
+		func(r chi.Router) { eventsubmissions.NewHandler(db).RegisterRoutes(r, authService.Middleware) },
 		eventresources.NewHandler(db).RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
@@ -194,7 +197,7 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 				roomService.RegisterRoutes(protected)
 			})
 		},
-	), nil
+	)), nil
 }
 
 type readiness struct{ db *store.Pool }

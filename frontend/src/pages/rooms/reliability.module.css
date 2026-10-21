@@ -1,0 +1,7 @@
+/* Recovery and retry actions scroll with their explanation in short WebViews. */
+.actions {
+  position: static;
+  margin: 28px 0 0;
+  padding: 16px 0 calc(20px + env(safe-area-inset-bottom));
+  background: transparent;
+}

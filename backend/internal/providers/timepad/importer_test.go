@@ -214,8 +214,10 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 	}))
 	defer server.Close()
 
+	client := testClient(t, server)
+	client.now = func() time.Time { return time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC) }
 	store := &memoryEventStore{seen: make(map[string]struct{})}
-	stats, err := testClient(t, server).Import(context.Background(), uuid.New(), store, nil)
+	stats, err := client.Import(context.Background(), uuid.New(), store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,6 +335,7 @@ func TestImportCancellationStopsPaginationWait(t *testing.T) {
 	defer server.Close()
 
 	client := testClient(t, server)
+	client.now = func() time.Time { return time.Date(2026, 10, 1, 7, 0, 0, 0, time.UTC) }
 	ctx, cancel := context.WithCancel(context.Background())
 	client.wait = func(waitCtx context.Context) error {
 		cancel()

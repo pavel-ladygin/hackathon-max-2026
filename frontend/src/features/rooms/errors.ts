@@ -14,6 +14,7 @@ const ROOM_ERROR_MESSAGES: Record<string, string> = {
 
 export function roomErrorCode(error: unknown) { return error instanceof ApiError ? error.code : null }
 export function roomErrorMessage(error: unknown, fallback = 'Что-то пошло не так. Попробуйте ещё раз.') {
+  if (error instanceof ApiError && error.status === 0 || error instanceof TypeError) return 'Нет соединения с сервисом. Проверьте сеть и повторите после подключения.'
   const code = roomErrorCode(error)
   return (code && ROOM_ERROR_MESSAGES[code]) || (error instanceof ApiError && error.message) || fallback
 }

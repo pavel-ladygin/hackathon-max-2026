@@ -42,6 +42,14 @@ func (s *Service) Create(ctx context.Context, principal contracts.Principal, key
 	if err != nil {
 		return response, err
 	}
+	var publicPlan []byte
+	plan, planErr := request.PublicPlan.Get()
+	if planErr == nil {
+		publicPlan, err = json.Marshal(plan)
+		if err != nil {
+			return response, err
+		}
+	}
 
 	for attempt := 0; attempt < 2; attempt++ {
 		err = s.WithTx(ctx, func(repo *Repository) error {
@@ -85,6 +93,13 @@ func (s *Service) Create(ctx context.Context, principal contracts.Principal, key
 			if !exists {
 				return ErrValidation
 			}
+			var planTimezone string
+			if planErr == nil {
+				planTimezone, err = repo.Queries.GetCityTimezone(ctx, request.CityId)
+				if err != nil {
+					return err
+				}
+			}
 
 			discovered, err := repo.Queries.GetActiveMembership(ctx, principal.UserID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -113,6 +128,11 @@ func (s *Service) Create(ctx context.Context, principal contracts.Principal, key
 				return err
 			}
 			clock = now.Time
+			if planErr == nil {
+				if err := validatePublicPlanDates(plan, planTimezone, clock); err != nil {
+					return err
+				}
+			}
 			if hasActiveMembership {
 				old := lockedOld
 				if old.ExpiresAt.Time.After(clock) && (old.State == string(RoomStateCollectingIntents) || old.State == string(RoomStateRanking) || old.State == string(RoomStateVoting)) {
@@ -137,7 +157,7 @@ func (s *Service) Create(ctx context.Context, principal contracts.Principal, key
 			}
 
 			expires := clock.Add(createTTL)
-			room, err := repo.Queries.InsertRoom(ctx, roomsql.InsertRoomParams{ID: uuid.New(), CreatorUserID: principal.UserID, CityID: request.CityId, Name: name, State: string(RoomStateCollectingIntents), RoundNo: 1, ActivePoolVersion: 0, ExpiresAt: pgTimestamp(expires)})
+			room, err := repo.Queries.InsertRoom(ctx, roomsql.InsertRoomParams{ID: uuid.New(), CreatorUserID: principal.UserID, CityID: request.CityId, Name: name, State: string(RoomStateCollectingIntents), RoundNo: 1, ActivePoolVersion: 0, ExpiresAt: pgTimestamp(expires), PublicPlan: publicPlan})
 			if err != nil {
 				return mapCreateDBError(err)
 			}
@@ -188,10 +208,19 @@ func normalizeCreate(request api.CreateRoomRequest, key string) (string, string,
 	if !utf8.ValidString(name) || strings.ContainsRune(name, '\x00') || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 80 || !utf8.ValidString(key) || strings.ContainsRune(key, '\x00') || utf8.RuneCountInString(key) < 8 || utf8.RuneCountInString(key) > 128 || request.CityId == uuid.Nil {
 		return "", "", ErrValidation
 	}
+	var publicPlan *api.PublicPlan
+	if plan, err := request.PublicPlan.Get(); err == nil {
+		if err := validatePublicPlan(plan); err != nil {
+			return "", "", err
+		}
+		canonical := canonicalPublicPlan(plan)
+		publicPlan = &canonical
+	}
 	payload, err := json.Marshal(struct {
-		Name   string    `json:"name"`
-		CityID uuid.UUID `json:"city_id"`
-	}{Name: name, CityID: request.CityId})
+		Name       string          `json:"name"`
+		CityID     uuid.UUID       `json:"city_id"`
+		PublicPlan *api.PublicPlan `json:"public_plan,omitempty"`
+	}{Name: name, CityID: request.CityId, PublicPlan: publicPlan})
 	if err != nil {
 		return "", "", err
 	}

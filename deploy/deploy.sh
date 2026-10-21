@@ -13,6 +13,9 @@ test "$#" -eq 1 || { echo "usage: $0 <40-character-commit-sha>" >&2; exit 2; }
 release_sha=$1
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit SHA" >&2; exit 2; }
 test -s /etc/nginx/auth/worknet-analytics.htpasswd || { echo "missing or empty /etc/nginx/auth/worknet-analytics.htpasswd" >&2; exit 1; }
+test -s /etc/nginx/auth/worknet-admin-proxy.conf || { echo "missing or empty /etc/nginx/auth/worknet-admin-proxy.conf; configure X-Internal-Admin-Secret and X-Internal-Admin-User headers" >&2; exit 1; }
+grep -Eq '^[[:space:]]*proxy_set_header[[:space:]]+X-Internal-Admin-Secret[[:space:]]+' /etc/nginx/auth/worknet-admin-proxy.conf || { echo "worknet-admin-proxy.conf must overwrite X-Internal-Admin-Secret" >&2; exit 1; }
+grep -Eq '^[[:space:]]*proxy_set_header[[:space:]]+X-Internal-Admin-User[[:space:]]+\$remote_user;[[:space:]]*$' /etc/nginx/auth/worknet-admin-proxy.conf || { echo "worknet-admin-proxy.conf must set X-Internal-Admin-User from \$remote_user" >&2; exit 1; }
 
 internal_auth_is_enforced() {
   local path status
@@ -39,6 +42,7 @@ internal_auth_is_enforced || {
 
 cd "$APP_DIR"
 test -f "$ENV_FILE" || { echo "missing $APP_DIR/$ENV_FILE" >&2; exit 1; }
+grep -Eq '^INTERNAL_ADMIN_PROXY_SECRET=.+$' "$ENV_FILE" || { echo "missing INTERNAL_ADMIN_PROXY_SECRET in $APP_DIR/$ENV_FILE; it must match the secret in /etc/nginx/auth/worknet-admin-proxy.conf" >&2; exit 1; }
 
 exec 9>"$APP_DIR/.deploy.lock"
 flock -n 9 || { echo "another deployment is running" >&2; exit 1; }

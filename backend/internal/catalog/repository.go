@@ -144,7 +144,7 @@ func (r *Repository) loadCity(ctx context.Context, dbtx store.DBTX, cityID uuid.
 	}
 	for _, image := range images {
 		if event := byEvent[image.EventID]; event != nil {
-			if strings.HasPrefix(event.Source, "generic:") {
+			if strings.HasPrefix(event.Source, "generic:") || event.Source == "user" {
 				image.Url = "/api/v1/event-images/" + image.ID.String() + "/content"
 			}
 			event.Images = append(event.Images, image)

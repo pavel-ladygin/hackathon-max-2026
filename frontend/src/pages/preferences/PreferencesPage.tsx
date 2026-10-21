@@ -57,6 +57,10 @@ export function PreferencesPage() {
   const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>
     <h1 className={styles.title}>Настройте афишу</h1><p className={styles.subtitle}>Эти параметры влияют на персональные рекомендации. Условия отдельной встречи задаются приватно в комнате.</p>
+    <section className={notificationStyles.submissionLinks} aria-label="Предложенные мероприятия">
+      <div><span><strong>Предложить мероприятие</strong><small>Добавьте событие в афишу после проверки.</small></span><Button tone="secondary" onClick={() => navigate('/events/suggest')}>Предложить</Button></div>
+      <div><span><strong>Мои заявки</strong><small>Статусы и решения модерации.</small></span><Button tone="ghost" onClick={() => navigate('/my/event-submissions')}>Открыть</Button></div>
+    </section>
     <section className={notificationStyles.card} aria-busy={saveNotifications.isPending}>
       <label className={notificationStyles.option} htmlFor="preferences-daily-notifications">
         <span className={notificationStyles.icon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>

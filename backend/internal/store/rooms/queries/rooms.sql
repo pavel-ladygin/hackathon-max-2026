@@ -1,6 +1,6 @@
 -- name: InsertRoom :one
-INSERT INTO rooms (id, creator_user_id, city_id, name, state, round_no, active_pool_version, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO rooms (id, creator_user_id, city_id, name, state, round_no, active_pool_version, expires_at, public_plan)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.narg('public_plan')::jsonb)
 RETURNING *;
 
 -- name: LockRoom :one

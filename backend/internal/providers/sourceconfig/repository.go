@@ -131,11 +131,11 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (Source, error) {
 	if id == uuid.Nil {
 		return Source{}, ErrNotFound
 	}
-	return scanSource(r.db.QueryRow(ctx, sourceSelect+` WHERE id=$1`, id))
+	return scanSource(r.db.QueryRow(ctx, sourceSelect+` WHERE source_kind='generic' AND id=$1`, id))
 }
 
 func (r *Repository) List(ctx context.Context) ([]Source, error) {
-	rows, err := r.db.Query(ctx, sourceSelect+` ORDER BY name, id`)
+	rows, err := r.db.Query(ctx, sourceSelect+` WHERE source_kind='generic' ORDER BY name, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list event sources: %w", err)
 	}
@@ -280,7 +280,7 @@ func scanSource(row rowScanner) (Source, error) {
 }
 
 func validateInput(input Input, create bool) error {
-	if strings.TrimSpace(input.SourceKey) == "" || strings.TrimSpace(input.SourceKey) == "demo" || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.EndpointURL) == "" {
+	if strings.TrimSpace(input.SourceKey) == "" || !strings.HasPrefix(strings.TrimSpace(input.SourceKey), "generic:") || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.EndpointURL) == "" {
 		return errors.New("event source identity, name, and endpoint are required")
 	}
 	switch input.AuthType {

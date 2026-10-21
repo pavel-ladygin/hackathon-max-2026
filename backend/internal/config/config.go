@@ -23,6 +23,7 @@ type Config struct {
 	DatabaseURL                 string
 	LogLevel                    slog.Level
 	MAXBotToken                 string
+	InternalAdminProxySecret    string
 	MAXInitDataMaxAge           time.Duration
 	TrustedProxyCIDRs           []net.IPNet
 	InviteEncryptionKey         []byte
@@ -50,6 +51,7 @@ func Load() (Config, error) {
 		HTTPAddr:                    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		DatabaseURL:                 strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		MAXBotToken:                 strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
+		InternalAdminProxySecret:    strings.TrimSpace(os.Getenv("INTERNAL_ADMIN_PROXY_SECRET")),
 		MAXInitDataMaxAge:           time.Hour,
 		InviteEncryptionKeyVersion:  1,
 		InviteURLTemplate:           strings.TrimSpace(os.Getenv("INVITE_URL_TEMPLATE")),
