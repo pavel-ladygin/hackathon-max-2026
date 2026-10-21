@@ -1,7 +1,13 @@
 package recommendations
 
-// diversify preserves the complete score/HMAC order unless an earlier unseen
-// primary category can be selected without exceeding the presentation caps.
+// categoryDiscoveryMaxScoreDrop bounds category discovery in normalized score
+// units. Presentation caps still apply across the eligible pool; the reference
+// is the best remaining candidate satisfying the same caps, not the last pick.
+// This threshold limits a presentation heuristic, not a measured user utility.
+const categoryDiscoveryMaxScoreDrop = .05
+
+// diversify preserves score/HMAC order except for capped presentation and
+// category discovery inside a relevance band.
 func diversify(ranked []rankedEvent) []rankedEvent {
 	limit := len(ranked)
 	if limit > poolTarget {
@@ -62,13 +68,23 @@ func hasUnseenPrimary(ranked []rankedEvent, used []bool, selected map[string]boo
 }
 
 func chooseDiverse(ranked []rankedEvent, used []bool, selected []rankedEvent, categories map[string]bool, wantNew, categoryCapped, venueCapped bool) int {
+	best := -1
 	for i, candidate := range ranked {
-		if used[i] || (wantNew && (candidate.primary == "" || categories[candidate.primary])) {
+		if used[i] || !respectsCaps(candidate, selected, categoryCapped, venueCapped) {
 			continue
 		}
-		if respectsCaps(candidate, selected, categoryCapped, venueCapped) {
-			return i
+		if best < 0 {
+			best = i
 		}
+		if wantNew {
+			if candidate.groupScore < ranked[best].groupScore-categoryDiscoveryMaxScoreDrop {
+				return -1 // Input is sorted; later scores cannot reenter the band.
+			}
+			if candidate.primary == "" || categories[candidate.primary] {
+				continue
+			}
+		}
+		return i
 	}
 	return -1
 }

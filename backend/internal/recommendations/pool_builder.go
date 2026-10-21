@@ -21,13 +21,16 @@ import (
 )
 
 const (
-	rankerVersion = "scoring-diversity-v6-behavioral"
+	rankerVersion = "scoring-diversity-v7-relevance-band"
 	poolTarget    = 20
 	poolMax       = 24
 	metroLimitM   = 1200.0
 	// distanceEpsM only absorbs floating-point noise at an inclusive boundary;
 	// distances are never rounded before comparison.
 	distanceEpsM = 1e-6
+	// Require at least five observations per category before applying affinity.
+	// One or two votes are insufficient evidence, including negative votes.
+	behaviorMinObservations = 5
 )
 
 // Catalog provides the coherent, read-only city snapshot used to build a pool.
@@ -329,15 +332,31 @@ func (b *PoolBuilder) loadBehavior(ctx context.Context, userIDs ...uuid.UUID) (m
 		Dislikes int64  `json:"dislikes"`
 	}
 	for _, userID := range unique {
-		counts := countsByUser[userID]
-		sort.Slice(counts, func(i, j int) bool {
-			return normalizeCategorySlug(counts[i].CategorySlug) < normalizeCategorySlug(counts[j].CategorySlug)
-		})
+		// Normalize and merge aliases without sorting or mutating loader slices.
+		// Affinity must not depend on the order of equivalent category records.
+		counts := make(map[string]digestCount)
+		for _, count := range countsByUser[userID] {
+			category := normalizeCategorySlug(count.CategorySlug)
+			if category == "" || count.Likes < 0 || count.Dislikes < 0 || (count.Likes == 0 && count.Dislikes == 0) {
+				continue
+			}
+			merged := counts[category]
+			// Invalid/overflowing aggregates cannot be useful ranking evidence.
+			if count.Likes > math.MaxInt64-count.Dislikes || merged.Likes > math.MaxInt64-merged.Dislikes-(count.Likes+count.Dislikes) {
+				return nil, errors.New("behavioral category counts overflow")
+			}
+			counts[category] = digestCount{category, merged.Likes + count.Likes, merged.Dislikes + count.Dislikes}
+		}
+		keys := make([]string, 0, len(counts))
+		for category := range counts {
+			keys = append(keys, category)
+		}
+		sort.Strings(keys)
 		categories := make(map[string]float64, len(counts))
 		digestCounts := make([]digestCount, 0, len(counts))
-		for _, count := range counts {
-			category := normalizeCategorySlug(count.CategorySlug)
-			if category == "" || count.Likes < 0 || count.Dislikes < 0 || count.Likes+count.Dislikes == 0 {
+		for _, category := range keys {
+			count := counts[category]
+			if count.Likes+count.Dislikes < behaviorMinObservations {
 				continue
 			}
 			// Four virtual neutral observations smooth cold and sparse history;

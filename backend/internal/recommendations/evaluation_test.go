@@ -131,7 +131,7 @@ func evaluationSHA(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func loadEvaluation(t *testing.T) (evaluationDataset, string) {
+func loadEvaluation(t testing.TB) (evaluationDataset, string) {
 	t.Helper()
 	data, err := os.ReadFile(evaluationDir + "scenarios.json")
 	if err != nil {
@@ -177,7 +177,7 @@ func loadEvaluation(t *testing.T) (evaluationDataset, string) {
 
 // The input digest includes the materialized catalog, profiles, history, IDs,
 // key and clock, so fixture-adapter changes cannot silently invalidate replay.
-func runEvaluation(t *testing.T, dataset evaluationDataset, c evaluationCase) evaluationOutput {
+func newEvaluationBuilder(t testing.TB, dataset evaluationDataset, c evaluationCase) (*PoolBuilder, contracts.BuildInput, map[uuid.UUID]int, string) {
 	t.Helper()
 	city := evaluationID("city", 1)
 	snapshot := catalog.Snapshot{City: platform.City{ID: city, Timezone: dataset.Timezone}}
@@ -253,6 +253,14 @@ func runEvaluation(t *testing.T, dataset evaluationDataset, c evaluationCase) ev
 		t.Fatal(err)
 	}
 	builder.behavior = behavior // Test-only clock + history injection, no production API change.
+	return builder, input, aliases, evaluationSHA(materialized)
+}
+
+func runEvaluation(t testing.TB, dataset evaluationDataset, c evaluationCase) evaluationOutput {
+	t.Helper()
+	builder, input, aliases, inputSHA := newEvaluationBuilder(t, dataset, c)
+	loader := builder.catalog.(*evaluationCatalog)
+	behavior := builder.behavior.(evaluationBehavior)
 	before, _ := json.Marshal(struct {
 		Catalog  catalog.Snapshot
 		Behavior evaluationBehavior
@@ -277,7 +285,7 @@ func runEvaluation(t *testing.T, dataset evaluationDataset, c evaluationCase) ev
 	if err != nil || !reflect.DeepEqual(result, reversed) {
 		t.Fatalf("%s: catalog order changed result: %v", c.Name, err)
 	}
-	output := evaluationOutput{Name: c.Name, InputSHA256: evaluationSHA(materialized), RankerVersion: result.RankerVersion,
+	output := evaluationOutput{Name: c.Name, InputSHA256: inputSHA, RankerVersion: result.RankerVersion,
 		Fingerprint: result.InputFingerprint, IsSmall: result.IsSmall, Rows: []evaluationRow{}}
 	for _, candidate := range result.Candidates {
 		alias, known := aliases[candidate.EventID]
@@ -480,6 +488,19 @@ func TestOfflineEvaluation(t *testing.T) {
 		if old.RankerVersion != live.RankerVersion && old.Fingerprint == live.Fingerprint {
 			t.Fatalf("%s: changed ranker version must change fingerprint", c.Name)
 		}
+		// These frozen, machine-authored expectations only guard the specified
+		// synthetic behavior. They do not establish independent human quality.
+		for _, k := range []int{5, 10} {
+			oldMetrics, liveMetrics := measureEvaluation(c, old, k), measureEvaluation(c, live, k)
+			for name, pair := range map[string][2]*float64{
+				"mean fit":    {oldMetrics.FitMean, liveMetrics.FitMean},
+				"minimum fit": {oldMetrics.FitMin, liveMetrics.FitMin},
+			} {
+				if pair[0] != nil && pair[1] != nil && *pair[1]+1e-9 < *pair[0] {
+					t.Errorf("%s: synthetic %s@%d regressed: %.3f -> %.3f", c.Name, name, k, *pair[0], *pair[1])
+				}
+			}
+		}
 	}
 	report := renderEvaluation(dataset, datasetSHA, baseline, current)
 	if *evaluationReport != "" {
@@ -488,6 +509,54 @@ func TestOfflineEvaluation(t *testing.T) {
 		}
 	} else {
 		fmt.Print(report)
+	}
+}
+
+// v1 quality is replayed from the frozen pre-v2 outputs, not timed as though
+// replay were a live v1 build. ns/op and allocations describe current Build.
+func BenchmarkRankingTopK(b *testing.B) {
+	dataset, datasetSHA := loadEvaluation(b)
+	data, err := os.ReadFile(evaluationDir + "baseline_v1.json")
+	if err != nil {
+		b.Fatal(err)
+	}
+	var baseline evaluationBaseline
+	if err := json.Unmarshal(data, &baseline); err != nil {
+		b.Fatal(err)
+	}
+	if baseline.SourceSHA != evaluationBaselineSHA || baseline.DatasetSHA256 != datasetSHA || len(baseline.Cases) != len(dataset.Cases) {
+		b.Fatal("baseline provenance mismatch")
+	}
+	for i, c := range dataset.Cases {
+		b.Run(c.Name, func(b *testing.B) {
+			builder, input, aliases, inputSHA := newEvaluationBuilder(b, dataset, c)
+			old := baseline.Cases[i]
+			if old.Name != c.Name || old.InputSHA256 != inputSHA || old.RankerVersion != evaluationV1 {
+				b.Fatal("benchmark inputs differ from baseline")
+			}
+			var result contracts.BuildResult
+			b.ReportAllocs()
+			for b.Loop() {
+				result, err = builder.Build(context.Background(), input)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+			live := evaluationOutput{}
+			for _, candidate := range result.Candidates {
+				live.Rows = append(live.Rows, evaluationRow{aliases[candidate.EventID], float64(candidate.Score.GroupScore)})
+			}
+			for _, k := range []int{5, 10} {
+				for version, output := range map[string]evaluationOutput{"v1": old, "v2": live} {
+					metrics := measureEvaluation(c, output, k)
+					for name, value := range map[string]*float64{"fit": metrics.FitMean, "score": metrics.Score, "recall": metrics.RelevantRecall} {
+						if value != nil {
+							b.ReportMetric(*value, fmt.Sprintf("%s-%s@%d", version, name, k))
+						}
+					}
+				}
+			}
+		})
 	}
 }
 
