@@ -253,3 +253,44 @@ func TestTop24KeepsRelevantEventsWhenCapsAllow(t *testing.T) {
 		t.Fatal("top24 lost relevant eligible events")
 	}
 }
+
+func TestFixedScenariosUseSameRankingAcrossCitySnapshots(t *testing.T) {
+	dataset, _ := loadEvaluation(t)
+	for _, c := range dataset.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			first, input, _, _ := newEvaluationBuilder(t, dataset, c)
+			original, err := first.Build(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, otherInput, _, _ := newEvaluationBuilder(t, dataset, c)
+			otherCity := evaluationID("another-synthetic-city", 2)
+			otherInput.CityID = otherCity
+			loader := second.catalog.(*evaluationCatalog)
+			loader.snapshot.City.ID = otherCity
+			for i := range loader.snapshot.Venues {
+				loader.snapshot.Venues[i].CityID = otherCity
+			}
+			for i := range loader.snapshot.MetroStations {
+				loader.snapshot.MetroStations[i].CityID = otherCity
+			}
+			for id, profile := range second.profiles.(evaluationProfiles) {
+				profile.CityID = otherCity
+				second.profiles.(evaluationProfiles)[id] = profile
+			}
+			other, err := second.Build(context.Background(), otherInput)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if original.InputFingerprint == other.InputFingerprint {
+				t.Fatal("different city inputs share a fingerprint")
+			}
+			// Both snapshots have the same local clock and catalog attributes.
+			// City identity scopes profiles/fingerprints but is not a ranking signal.
+			original.InputFingerprint, other.InputFingerprint = "", ""
+			if !reflect.DeepEqual(original, other) {
+				t.Fatal("city identity changed ranking or candidate diagnostics")
+			}
+		})
+	}
+}

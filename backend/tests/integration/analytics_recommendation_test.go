@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http/httptest"
 	"os"
@@ -373,5 +374,58 @@ func TestRecommendationAnalyticsMigrationIsAdditiveAndReversible(t *testing.T) {
 	}
 	if before != after {
 		t.Fatal("migration rewrote a legacy view")
+	}
+}
+
+func TestRecommendationAnalyticsUTCCreationWindowBoundaries(t *testing.T) {
+	for _, days := range []int{7, 30, 90} {
+		t.Run(fmt.Sprint(days), func(t *testing.T) {
+			db := openRecommendationAnalyticsDB(t)
+			f := newRoomFixture(t, db)
+			ctx := context.Background()
+			tx, err := db.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			f.db = tx
+			var now time.Time
+			if err := tx.QueryRow(ctx, "SELECT now()").Scan(&now); err != nil {
+				t.Fatal(err)
+			}
+			utc := now.UTC()
+			midnight := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+			start, end := midnight.AddDate(0, 0, -days+1), midnight.AddDate(0, 0, 1)
+			for i, created := range []time.Time{start, start.Add(-time.Microsecond), end, now.Add(time.Hour)} {
+				room := f.room
+				if i > 0 {
+					room = f.insertRoom(t, f.newUser(t))
+				}
+				if _, err := tx.Exec(ctx, "UPDATE rooms SET created_at=$2 WHERE id=$1", room, created); err != nil {
+					t.Fatal(err)
+				}
+			}
+			response := httptest.NewRecorder()
+			analytics.NewHandler(tx).GetRecommendationAnalytics(response, httptest.NewRequest("GET", fmt.Sprintf("/api/v1/internal/analytics/recommendations?days=%d", days), nil))
+			if response.Code != 200 {
+				t.Fatalf("export failed: %s", response.Body.String())
+			}
+			var result struct {
+				PeriodStart time.Time      `json:"period_start"`
+				PeriodEnd   time.Time      `json:"period_end"`
+				Snapshot    time.Time      `json:"snapshot_at"`
+				Rooms       map[string]int `json:"room_counts"`
+				Timezone    string         `json:"timezone"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if !result.PeriodStart.Equal(start) || !result.PeriodEnd.Equal(end) || !result.Snapshot.Equal(now) || result.Timezone != "UTC" {
+				t.Fatal("report window does not match the requested UTC calendar period")
+			}
+			if result.Rooms["room_created"] != 1 || result.Rooms["incomplete"] != 1 {
+				t.Fatalf("creation cohort includes a boundary/future room: %+v", result.Rooms)
+			}
+		})
 	}
 }

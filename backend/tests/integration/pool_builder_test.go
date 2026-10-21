@@ -156,8 +156,11 @@ func TestPoolBuilderSeededCatalog(t *testing.T) {
 		if event.Status != "published" || !event.TicketAvailable || !event.PriceFromMinor.Valid || event.PriceFromMinor.Int32 > 250000 {
 			t.Fatalf("ineligible seeded event %s returned", candidate.EventID)
 		}
-		if candidate.Score.GroupScore < 0 || candidate.Score.GroupScore > 1 || len(candidate.FeatureSnapshot) != 6 || len(candidate.Explanation) > 3 {
+		if candidate.Score.GroupScore < 0 || candidate.Score.GroupScore > 1 || len(candidate.FeatureSnapshot) != 7 || len(candidate.Explanation) > 3 {
 			t.Fatalf("invalid ranking snapshot for %s: %+v", candidate.EventID, candidate)
+		}
+		if candidate.FeatureSnapshot["price_known"] != 1 {
+			t.Fatalf("seeded event %s must have a known price: %+v", candidate.EventID, candidate.FeatureSnapshot)
 		}
 		for _, reason := range candidate.Explanation {
 			if !allowedReasons[reason.Code] || reason.Text == "" || strings.Contains(reason.Text, "250000") {
