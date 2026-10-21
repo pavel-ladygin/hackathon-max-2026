@@ -68,14 +68,15 @@ async function stubCatalogBackend(page: Page) {
   }))
 
   let searchCount = 0
-  await page.route('**/api/v1/events/search**', async (route) => {
+  await page.route('**/api/v1/events/search/count**', (route) => route.fulfill({ json: { total: 1 } }))
+  await page.route(/\/api\/v1\/events\/search(?:\?.*)?$/, async (route) => {
     searchCount += 1
     // Hold the first changed-filter response long enough to observe the page geometry.
     if (searchCount > 1) await new Promise((resolve) => setTimeout(resolve, 900))
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ items: [{ ...event }], applied_filters: {}, total_estimate: 1, next_cursor: null }),
+      body: JSON.stringify({ items: [{ ...event }], applied_filters: {}, total_estimate: null, next_cursor: null }),
     })
   })
 }
