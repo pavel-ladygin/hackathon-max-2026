@@ -85,7 +85,7 @@ test('home city picker searches aliases, disables future cities, saves the full 
   await homeCity.click()
   const dialog = page.getByRole('dialog', { name: 'Выберите город' })
   await expect(dialog).toBeVisible()
-  await dialog.screenshot({ path: `/private/tmp/city-picker-${test.info().project.name}.png`, animations: 'disabled' })
+  await dialog.screenshot({ path: test.info().outputPath('city-picker.png'), animations: 'disabled' })
 
   const search = page.getByRole('searchbox', { name: 'Найти город' })
   await search.fill('СПб')

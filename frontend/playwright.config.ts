@@ -14,6 +14,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1',
+    env: { VITE_YANDEX_MAPS_API_KEY: 'e2e-test-key' },
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: true,
   },
