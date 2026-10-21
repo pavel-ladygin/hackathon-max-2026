@@ -15,6 +15,7 @@
 .form fieldset { min-width: 0; margin: 0; border: 0; padding: 0; }
 .form legend { margin-bottom: 9px; color: var(--color-ink); font-size: 13px; font-weight: 750; }
 .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.priceChips { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
 .choices label { display: flex; min-height: 48px; align-items: center; gap: 7px; border: 1px solid var(--color-border); border-radius: 12px; padding: 9px; background: #fff; font-size: 11px; line-height: 1.3; }
 .choices input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: var(--color-ink); }
 .alert { margin: 0; border: 1px solid #efceca; border-radius: 12px; padding: 12px 14px; background: #fff7f6; color: #8f3d37; font-size: 12px; line-height: 1.5; }
@@ -49,4 +50,43 @@
 .submission .rejection { border-radius: 9px; padding: 10px; background: #fff7f6; color: #8f3d37; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 14px 0; }
 .pager span { color: var(--color-muted); font-size: 12px; }
-@media (max-width: 520px) { .two { grid-template-columns: 1fr; } .choices { grid-template-columns: 1fr; } .choices label { min-height: 42px; } }
+.dateTimeField { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(100px,1fr); min-width: 0; align-content: start; align-items: start; gap: 9px; }
+.dateTimeField label { display: grid; min-width: 0; gap: 7px; color: var(--color-ink); font-size: 13px; font-weight: 750; }
+.dateTimeField input { width: 100%; min-height: 48px; border: 1px solid var(--color-border); border-radius: 12px; padding: 11px 13px; background: var(--color-paper); color: var(--color-ink); font: inherit; font-size: 16px; font-weight: 500; }
+.dateTimeField input:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.dateTimeField label span { color: var(--color-muted); font-size: 11px; font-weight: 500; }
+.dateTimeField small,.moneyField small { color: #b42318; font-size: 12px; font-weight: 500; }
+.dateTimeField > small,.dateTimeField > p { grid-column: 1/-1; }
+.moneyField { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.moneyRange { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.fieldLabel { color: var(--color-ink); font-size: 13px; font-weight: 750; }
+.posterField { display: grid; gap: 8px; }
+.posterHeading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.posterHeading > span:last-child { color: var(--color-muted); font-size: 11px; }
+.fileInput { position: absolute; width: 1px !important; height: 1px !important; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.dropzone { display: grid; min-height: 240px; justify-items: center; align-content: center; gap: 14px; border: 1px dashed var(--color-border); border-radius: 16px; padding: 22px; background: var(--color-paper); text-align: center; transition: border-color 140ms ease, background-color 140ms ease; }
+.dropzone > button { width: auto; font-size: 12px; }
+.dropzoneActive { outline: 2px dashed var(--color-ink); outline-offset: -2px; background: var(--color-soft); }
+.dropzone strong { font-size: 13px; }
+.dropzone > span:not(.uploadIcon) { color: var(--color-muted); font-size: 11px; font-weight: 500; }
+.dropzoneError { border-color: #b42318; background: #fff7f6; }
+.uploadIcon { display: block; width: 44px; height: 44px; border-radius: 14px; padding: 8px; background: var(--color-soft); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.posterCard { overflow: hidden; min-width: 0; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-paper); }
+.posterThumb { display: block; width: 100%; height: 180px; object-fit: cover; }
+.posterCardBody { display: grid; min-width: 0; gap: 14px; padding: 13px; }
+.posterFileInfo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.posterFileInfo > div { display: grid; gap: 4px; min-width: 0; }
+.posterFileInfo strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.posterFileInfo span { color: var(--color-muted); font-size: 11px; }
+.posterRemove { display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-paper); color: var(--color-ink); font-size: 24px; }
+.posterRemove:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.posterReady { display: flex; gap: 6px; color: #52785c; font-size: 12px; font-weight: 650; }
+.progressLabel { display: flex; justify-content: space-between; color: var(--color-muted); font-size: 12px; }
+.progressTrack { width: 100%; height: 5px; overflow: hidden; border-radius: 99px; background: var(--color-soft); }
+.progressTrack span { display: block; height: 100%; border-radius: inherit; background: var(--color-ink); transition: width 150ms linear; }
+.posterActions { display: flex; align-items: stretch; gap: 8px; }
+.posterCardBody button:not(.posterRemove) { font-size: 12px; padding-inline: 10px; }
+.posterActions > button { flex: 1 1 0; min-width: 0; }
+.uploadError { border: 1px solid #efceca; border-radius: 10px; padding: 12px; background: #fff7f6; color: #b42318; font-size: 12px; line-height: 1.5; }
+.imagePlaceholder img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 20px; }
+@media (max-width: 520px) { .two { grid-template-columns: 1fr; } .choices { grid-template-columns: 1fr; } .choices label { min-height: 42px; } .priceChips { grid-template-columns: repeat(3,minmax(0,1fr)); } }
