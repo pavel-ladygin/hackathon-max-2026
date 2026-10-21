@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/event-submissions/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload an event poster for the authenticated user */
+        post: operations["uploadEventSubmissionImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/event-submissions/options": {
         parameters: {
             query?: never;
@@ -788,7 +805,13 @@ export interface components {
             price_to_minor?: number | null;
             category_slug: components["schemas"]["CategorySlug"];
             ticket_url?: string | null;
+            /** @description Legacy external poster URL. Do not provide together with image_id. */
             image_url?: string | null;
+            /**
+             * Format: uuid
+             * @description ID returned by the authenticated image upload endpoint.
+             */
+            image_id?: string | null;
             /** @enum {string|null} */
             age_rating?: "0+" | "6+" | "12+" | "16+" | "18+" | "unknown" | null;
         } & (unknown & unknown);
@@ -833,6 +856,10 @@ export interface components {
                 venue_name: string;
             }[];
             resource_domains: components["schemas"]["EventSourceAllowedDomain"][];
+        };
+        EventSubmissionImageUpload: {
+            /** Format: uuid */
+            image_id: string;
         };
         EventSubmissionCreated: {
             /** Format: uuid */
@@ -1648,6 +1675,53 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    uploadEventSubmissionImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Image uploaded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubmissionImageUpload"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description Image exceeds the upload size limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported or invalid image */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getEventSubmissionOptions: {

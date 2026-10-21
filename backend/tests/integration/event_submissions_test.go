@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/adminauth"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventresources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsubmissions"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventuploads"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/resourcedomains"
 )
 
@@ -183,6 +186,140 @@ func TestSubmissionImageRequiresAndRechecksDomainApproval(t *testing.T) {
 	if result.Code != http.StatusForbidden {
 		t.Fatalf("revoked in-flight image status=%d body=%s", result.Code, result.Body.String())
 	}
+}
+
+func TestUploadedPosterClaimApprovalAndPublishedServing(t *testing.T) {
+	if os.Getenv("TEST_DATABASE_URL") == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	db := openTestDB(t)
+	ctx := context.Background()
+	cityID, authorID, otherID, submissionID, eventID := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.Nil
+	for _, user := range []struct {
+		id   uuid.UUID
+		name string
+	}{{authorID, "Poster author"}, {otherID, "Other author"}} {
+		if _, err := db.Exec(ctx, `INSERT INTO users(id,max_user_id,display_name) VALUES($1,$2,$3)`, user.id, time.Now().UnixNano(), user.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO cities(id,name,timezone,center_lat,center_lng) VALUES($1,$2,'Europe/Moscow',55.75,37.61)`, cityID, "Uploaded poster test "+cityID.String()); err != nil {
+		t.Fatal(err)
+	}
+	objects := &memoryObjectStore{items: map[string]memoryObject{}}
+	uploads := eventuploads.NewService(db, objects)
+	upload, err := uploads.Store(ctx, authorID, []byte("valid-test-poster"), "image/png", 2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(context.Background(), `DELETE FROM events WHERE id=$1`, eventID)
+		_, _ = db.Exec(context.Background(), `DELETE FROM event_submissions WHERE id=$1`, submissionID)
+		_, _ = db.Exec(context.Background(), `DELETE FROM users WHERE id IN ($1,$2)`, authorID, otherID)
+		_, _ = db.Exec(context.Background(), `DELETE FROM venues WHERE city_id=$1 AND NOT EXISTS (SELECT 1 FROM events WHERE events.venue_id=venues.id)`, cityID)
+		_, _ = db.Exec(context.Background(), `DELETE FROM cities WHERE id=$1`, cityID)
+	})
+
+	currentUser := authorID
+	userAuth := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(contracts.WithPrincipal(r.Context(), contracts.Principal{UserID: currentUser})))
+		})
+	}
+	router := chi.NewRouter()
+	moderation := eventsubmissions.NewHandlerWithUploads(db, func(context.Context, string) ([]byte, string, error) {
+		return nil, "", http.ErrNotSupported
+	}, uploads)
+	moderation.RegisterRoutes(router, userAuth)
+	eventresources.NewHandlerWithUploads(db, func(context.Context, string) ([]byte, string, error) {
+		return nil, "", http.ErrNotSupported
+	}, uploads).RegisterRoutes(router)
+	handler := adminauth.NewMiddleware("integration-secret")(router)
+
+	start := time.Now().In(time.FixedZone("MSK", 3*60*60)).Add(48 * time.Hour).Truncate(time.Minute).Format("2006-01-02T15:04")
+	body, _ := json.Marshal(map[string]any{"title": "Uploaded poster event", "description": "Community event", "city_id": cityID, "venue_name": "Poster Hall", "venue_address": "1 Example street", "starts_at_local": start, "price_mode": "free", "category_slug": "concerts", "image_id": upload.ID})
+	key := "uploaded-poster-" + uuid.NewString()
+	currentUser = otherID
+	unauthorizedOwner := eventSubmissionRequest(t, handler, http.MethodPost, "/api/v1/event-submissions", body, map[string]string{"Idempotency-Key": key})
+	if unauthorizedOwner.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("foreign upload status=%d body=%s", unauthorizedOwner.Code, unauthorizedOwner.Body.String())
+	}
+	currentUser = authorID
+	created := eventSubmissionRequest(t, handler, http.MethodPost, "/api/v1/event-submissions", body, map[string]string{"Idempotency-Key": key})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("submit uploaded poster status=%d body=%s", created.Code, created.Body.String())
+	}
+	var result struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &result); err != nil || result.ID == uuid.Nil {
+		t.Fatalf("submission response=%s err=%v", created.Body.String(), err)
+	}
+	submissionID = result.ID
+	var claimed *uuid.UUID
+	if err := db.QueryRow(ctx, `SELECT submission_id FROM event_image_uploads WHERE id=$1`, upload.ID).Scan(&claimed); err != nil || claimed == nil || *claimed != submissionID {
+		t.Fatalf("claimed submission=%v err=%v", claimed, err)
+	}
+	reuse := eventSubmissionRequest(t, handler, http.MethodPost, "/api/v1/event-submissions", body, map[string]string{"Idempotency-Key": key + "-reuse"})
+	if reuse.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("reused upload status=%d body=%s", reuse.Code, reuse.Body.String())
+	}
+	adminHeaders := map[string]string{"X-Internal-Admin-Secret": "integration-secret", "X-Internal-Admin-User": "moderator", "X-Admin-Request": "1", "Origin": "https://test.local", "Host": "test.local"}
+	approved := eventSubmissionRequest(t, handler, http.MethodPost, "/api/v1/internal/event-submissions/"+submissionID.String()+"/approve", []byte(`{}`), adminHeaders)
+	if approved.Code != http.StatusOK {
+		t.Fatalf("approve uploaded poster status=%d body=%s", approved.Code, approved.Body.String())
+	}
+	var approval struct {
+		EventID uuid.UUID `json:"event_id"`
+	}
+	if err := json.Unmarshal(approved.Body.Bytes(), &approval); err != nil || approval.EventID == uuid.Nil {
+		t.Fatalf("approval response=%s err=%v", approved.Body.String(), err)
+	}
+	eventID = approval.EventID
+	var imageWidth, imageHeight int
+	if err := db.QueryRow(ctx, `SELECT width,height FROM event_images WHERE id=$1 AND event_id=$2`, upload.ID, eventID).Scan(&imageWidth, &imageHeight); err != nil || imageWidth != 2 || imageHeight != 3 {
+		t.Fatalf("published image dimensions=%dx%d err=%v", imageWidth, imageHeight, err)
+	}
+	moderatorImage := eventSubmissionRequest(t, handler, http.MethodGet, "/api/v1/internal/event-submissions/"+submissionID.String()+"/image", nil, adminHeaders)
+	if moderatorImage.Code != http.StatusOK || moderatorImage.Body.String() != "valid-test-poster" {
+		t.Fatalf("moderator poster status=%d body=%q", moderatorImage.Code, moderatorImage.Body.String())
+	}
+	publicImage := eventSubmissionRequest(t, handler, http.MethodGet, "/api/v1/event-images/"+upload.ID.String()+"/content", nil, nil)
+	if publicImage.Code != http.StatusOK || publicImage.Body.String() != "valid-test-poster" || publicImage.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("published poster status=%d headers=%v body=%q", publicImage.Code, publicImage.Header(), publicImage.Body.String())
+	}
+}
+
+type memoryObject struct {
+	body        []byte
+	contentType string
+}
+type memoryObjectStore struct {
+	mu    sync.Mutex
+	items map[string]memoryObject
+}
+
+func (s *memoryObjectStore) Available() bool { return s != nil }
+func (s *memoryObjectStore) Put(_ context.Context, key string, body []byte, contentType string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items[key] = memoryObject{body: append([]byte(nil), body...), contentType: contentType}
+	return nil
+}
+func (s *memoryObjectStore) Get(_ context.Context, key string) ([]byte, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[key]
+	if !ok {
+		return nil, "", os.ErrNotExist
+	}
+	return append([]byte(nil), item.body...), item.contentType, nil
+}
+func (s *memoryObjectStore) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.items, key)
+	return nil
 }
 
 func eventSubmissionRequest(t *testing.T, handler http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {

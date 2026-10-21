@@ -23,8 +23,11 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventresources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsources"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsubmissions"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventuploads"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/objectstorage"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/generic"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
@@ -96,6 +99,18 @@ func run() error {
 }
 
 func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *slog.Logger) (http.Handler, error) {
+	var objects objectstorage.Store
+	if cfg.RegS3Bucket != "" {
+		configured, err := objectstorage.New(cfg.RegS3Endpoint, cfg.RegS3Region, cfg.RegS3Bucket, cfg.RegS3AccessKeyID, cfg.RegS3SecretAccessKey)
+		if err != nil {
+			return nil, err
+		}
+		objects = configured
+	}
+	uploadService := eventuploads.NewService(db, objects)
+	if uploadService.Available() {
+		go runEventUploadCleanup(ctx, uploadService, logger)
+	}
 	if len(cfg.InviteEncryptionKey) == 0 {
 		return nil, fmt.Errorf("INVITE_ENCRYPTION_KEY is required")
 	}
@@ -189,8 +204,11 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 		func(r chi.Router) { ticketHandler.RegisterRoutes(r, authService.Middleware) },
 		analyticsHandler.RegisterRoutes,
 		eventSourcesHandler.RegisterRoutes,
-		func(r chi.Router) { eventsubmissions.NewHandler(db).RegisterRoutes(r, authService.Middleware) },
-		eventresources.NewHandler(db).RegisterRoutes,
+		func(r chi.Router) {
+			eventsubmissions.NewHandlerWithUploads(db, generic.FetchImage, uploadService).RegisterRoutes(r, authService.Middleware)
+			eventuploads.NewHandler(db, objects).RegisterRoutes(r, authService.Middleware)
+		},
+		eventresources.NewHandlerWithUploads(db, generic.FetchImage, uploadService).RegisterRoutes,
 		func(r chi.Router) {
 			r.Group(func(protected chi.Router) {
 				protected.Use(authService.Middleware)
@@ -198,6 +216,25 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 			})
 		},
 	)), nil
+}
+
+func runEventUploadCleanup(ctx context.Context, uploads *eventuploads.Service, logger *slog.Logger) {
+	cleanup := func() {
+		if _, err := uploads.CleanupUnattached(ctx, 100); err != nil && ctx.Err() == nil {
+			logger.Error("event image upload cleanup failed", "error", err)
+		}
+	}
+	cleanup()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cleanup()
+		}
+	}
 }
 
 type readiness struct{ db *store.Pool }

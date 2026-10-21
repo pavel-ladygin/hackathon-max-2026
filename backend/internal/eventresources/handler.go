@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventuploads"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/generic"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/resourcedomains"
@@ -22,6 +23,7 @@ type Handler struct {
 	db      *store.Pool
 	domains *resourcedomains.Repository
 	fetch   ImageFetcher
+	uploads *eventuploads.Service
 	slots   chan struct{}
 }
 
@@ -30,11 +32,15 @@ func NewHandler(db *store.Pool) *Handler { return NewHandlerWithFetcher(db, gene
 // NewHandlerWithFetcher permits deterministic upstream fixtures; production
 // always uses NewHandler and the Generic connector's secure transport.
 func NewHandlerWithFetcher(db *store.Pool, fetch ImageFetcher) *Handler {
+	return NewHandlerWithUploads(db, fetch, nil)
+}
+
+func NewHandlerWithUploads(db *store.Pool, fetch ImageFetcher, uploads *eventuploads.Service) *Handler {
 	domains, err := resourcedomains.NewRepository(db)
 	if err != nil || fetch == nil {
 		panic("resource handler dependencies are required")
 	}
-	return &Handler{db: db, domains: domains, fetch: fetch, slots: make(chan struct{}, 16)}
+	return &Handler{db: db, domains: domains, fetch: fetch, uploads: uploads, slots: make(chan struct{}, 16)}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -78,9 +84,37 @@ func (h *Handler) image(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), generic.HTTPTimeout)
 	defer cancel()
+	var uploadID uuid.UUID
+	err := h.db.QueryRow(ctx, `SELECT u.id FROM event_images i JOIN events e ON e.id=i.event_id JOIN event_image_uploads u ON u.id=i.id JOIN event_submissions s ON s.id=u.submission_id AND s.event_id=e.id WHERE i.id=$1 AND e.source='user' AND e.status='published' AND s.status='approved' AND e.provider_active AND NOT e.is_demo AND e.starts_at>now()`, id).Scan(&uploadID)
+	if err == nil {
+		if h.uploads == nil {
+			resourceError(w, r, http.StatusServiceUnavailable)
+			return
+		}
+		select {
+		case h.slots <- struct{}{}:
+			defer func() { <-h.slots }()
+		default:
+			resourceError(w, r, http.StatusServiceUnavailable)
+			return
+		}
+		body, contentType, err := h.uploads.Fetch(ctx, uploadID)
+		if err != nil {
+			resourceError(w, r, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		resourceError(w, r, http.StatusServiceUnavailable)
+		return
+	}
 	var raw string
 	var sourceID uuid.UUID
-	err := h.db.QueryRow(ctx, `SELECT i.url,s.id FROM event_images i JOIN events e ON e.id=i.event_id JOIN event_sources s ON s.source_key=e.source WHERE i.id=$1 AND (s.source_key LIKE 'generic:%' OR s.source_key='user') AND e.provider_active AND NOT e.is_demo AND e.starts_at>now()`, id).Scan(&raw, &sourceID)
+	err = h.db.QueryRow(ctx, `SELECT i.url,s.id FROM event_images i JOIN events e ON e.id=i.event_id JOIN event_sources s ON s.source_key=e.source WHERE i.id=$1 AND (s.source_key LIKE 'generic:%' OR s.source_key='user') AND e.provider_active AND NOT e.is_demo AND e.starts_at>now()`, id).Scan(&raw, &sourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		resourceError(w, r, http.StatusNotFound)
 		return

@@ -51,15 +51,19 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 		}
 	})
 
-	t.Run("M02/M04 upgrade from 30 applies only 31 and preserves related data", func(t *testing.T) {
-		db, pool := newMulticityMigrationDatabase(t, fixture, false)
-		upTo(t, db, 30)
-		before := seedVersion30References(t, db)
-		assertCurrent(t, pool, false)
-		upAll(t, db)
-		assertOnlyVersionAppliedAfter30(t, db)
-		assertVersion30References(t, db, before)
-		assertCurrent(t, pool, true)
+	t.Run("M02/M04 upgrade from 30 applies city and image migrations and preserves related data", func(t *testing.T) {
+		for _, locale := range []struct {
+			name    string
+			cLocale bool
+		}{
+			{name: "ICU", cLocale: false},
+			{name: "C locale", cLocale: true},
+		} {
+			t.Run(locale.name, func(t *testing.T) {
+				db, pool := newMulticityMigrationDatabase(t, fixture, locale.cLocale)
+				assertUpgradeFrom30Through32(t, db, pool)
+			})
+		}
 	})
 
 	t.Run("M03 repeated Up is idempotent", func(t *testing.T) {
@@ -192,13 +196,30 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 		assertVersion30References(t, db, before)
 	})
 
-	t.Run("M10 CheckCurrent boundary rejects 30 and accepts 31", func(t *testing.T) {
+	t.Run("M10 CheckCurrent boundary rejects 30 and 31 and accepts 32", func(t *testing.T) {
 		db, pool := newMulticityMigrationDatabase(t, fixture, false)
 		upTo(t, db, 30)
+		assertCurrent(t, pool, false)
+		upTo(t, db, 31)
 		assertCurrent(t, pool, false)
 		upAll(t, db)
 		assertCurrent(t, pool, true)
 	})
+}
+
+func assertUpgradeFrom30Through32(t *testing.T, db *sql.DB, pool *pgxpool.Pool) {
+	t.Helper()
+	upTo(t, db, 30)
+	before := seedVersion30References(t, db)
+	assertCurrent(t, pool, false)
+	upTo(t, db, 31)
+	assertImageUploadsTable(t, db, false)
+	assertCurrent(t, pool, false)
+	upAll(t, db)
+	assertVersionsAppliedAfter30(t, db, []int{31, 32})
+	assertImageUploadsTable(t, db, true)
+	assertVersion30References(t, db, before)
+	assertCurrent(t, pool, true)
 }
 
 func newMulticityMigrationDatabase(t *testing.T, fixture *pgx.ConnConfig, cLocale bool) (*sql.DB, *pgxpool.Pool) {
@@ -319,11 +340,11 @@ func assertCurrent(t *testing.T, pool *pgxpool.Pool, want bool) {
 		t.Fatalf("CheckCurrent rejected complete database: %v", err)
 	}
 	if !want && err == nil {
-		t.Fatal("CheckCurrent accepted database missing migration 31")
+		t.Fatal("CheckCurrent accepted an incomplete database migration set")
 	}
 }
 
-func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
+func assertVersionsAppliedAfter30(t *testing.T, db *sql.DB, want []int) {
 	t.Helper()
 	rows, err := db.Query(`SELECT version_id FROM goose_db_version WHERE id > (SELECT max(id) FROM goose_db_version WHERE version_id=30 AND is_applied) AND is_applied ORDER BY id`)
 	if err != nil {
@@ -341,8 +362,24 @@ func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(versions) != 1 || versions[0] != 31 {
-		t.Fatalf("versions applied after 30 = %v, want [31]", versions)
+	if len(versions) != len(want) {
+		t.Fatalf("versions applied after 30 = %v, want %v", versions, want)
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Fatalf("versions applied after 30 = %v, want %v", versions, want)
+		}
+	}
+}
+
+func assertImageUploadsTable(t *testing.T, db *sql.DB, want bool) {
+	t.Helper()
+	var exists bool
+	if err := db.QueryRow(`SELECT to_regclass('public.event_image_uploads') IS NOT NULL`).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if exists != want {
+		t.Fatalf("event_image_uploads exists = %v, want %v", exists, want)
 	}
 }
 
