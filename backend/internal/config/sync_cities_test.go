@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+func TestSaintPetersburgSyncProfile(t *testing.T) {
+	profiles, err := ParseSyncCityProfiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := profiles[uuid.MustParse("bf61fbf5-8c5b-53da-96c7-3560df3f8177")]
+	if profile.Name != "Санкт-Петербург" || profile.Timezone != "Europe/Moscow" || profile.KudaGoLocation != "spb" || profile.TimepadCityName != "Санкт-Петербург" {
+		t.Fatalf("profile=%+v", profile)
+	}
+}
+
 func TestSyncCityProfileValidation(t *testing.T) {
 	third := uuid.New()
 	raw := `[{"city_id":"` + third.String() + `","name":"Екатеринбург","timezone":"Asia/Yekaterinburg","kudago_location":"ekb","timepad_city_name":"Екатеринбург"}]`

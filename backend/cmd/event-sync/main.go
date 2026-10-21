@@ -67,16 +67,18 @@ func run() error {
 		return errors.New("event sync requires current migrations; run cmd/migrate first")
 	}
 	var sourceRepository *sourceconfig.Repository
-	secretCodec, err := sourceconfig.NewSecretCodec(cfg.InviteEncryptionKey, cfg.InviteEncryptionKeyVersion)
-	if err != nil {
-		logger.Warn("generic event sources disabled", "reason", "provider secret encryption key is not configured")
-	} else {
-		sourceRepository, err = sourceconfig.NewRepository(db, secretCodec)
+	if cfg.EventSyncProvider == "" {
+		secretCodec, err := sourceconfig.NewSecretCodec(cfg.InviteEncryptionKey, cfg.InviteEncryptionKeyVersion)
 		if err != nil {
-			return err
-		}
-		if err := sourceRepository.CheckSecrets(ctx); err != nil {
-			return err
+			logger.Warn("generic event sources disabled", "reason", "provider secret encryption key is not configured")
+		} else {
+			sourceRepository, err = sourceconfig.NewRepository(db, secretCodec)
+			if err != nil {
+				return err
+			}
+			if err := sourceRepository.CheckSecrets(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -89,17 +91,6 @@ func run() error {
 		return err
 	}
 
-	kudaGoClient, err := kudago.NewClient(kudago.Options{
-		BaseURL:  cfg.KudaGoBaseURL,
-		Timeout:  cfg.KudaGoTimeout,
-		Location: cfg.KudaGoLocation,
-		PageSize: cfg.KudaGoPageSize,
-		CityID:   cityID,
-		Timezone: cityTimezone,
-	})
-	if err != nil {
-		return err
-	}
 	lockProvider := func(provider string) func(context.Context) (func() error, bool, error) {
 		return func(lockCtx context.Context) (func() error, bool, error) {
 			lock, acquired, err := providers.TryAcquireProviderSyncLock(lockCtx, db, provider)
@@ -111,27 +102,48 @@ func run() error {
 	}
 	// Preserve the existing provider-wide Timepad lock/rate-limit coordination.
 	// It conservatively serializes cities; run audit/reconciliation is city-scoped.
-	syncProviders := []syncProvider{{name: "kudago", priority: kudaGoPriority, importer: kudaGoClient, acquireLock: lockProvider("kudago")}}
-	timepadCity := cfg.TimepadCityName
-	if cityID.String() == catalogseed.MoscowCityID && timepadCity == "" {
-		timepadCity = "Москва"
-	}
-	if cfg.TimepadToken == "" || timepadCity == "" {
-		logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "token or explicit provider city is not configured")
-	} else {
-		timepadClient, err := timepad.NewClient(timepad.Options{
-			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
-			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
-			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
-			CityID:               cityID, CityName: timepadCity, Timezone: cityTimezone,
+	syncProviders := []syncProvider{}
+	if includesProvider(cfg.EventSyncProvider, "kudago") {
+		kudaGoClient, err := kudago.NewClient(kudago.Options{
+			BaseURL:              cfg.KudaGoBaseURL,
+			Timeout:              cfg.KudaGoTimeout,
+			Location:             cfg.KudaGoLocation,
+			PageSize:             cfg.KudaGoPageSize,
+			CityID:               cityID,
+			Timezone:             cityTimezone,
+			MaxRequestsPerMinute: cfg.KudaGoMaxRequestsPerMinute,
 		})
 		if err != nil {
 			return err
 		}
-		syncProviders = append(syncProviders, syncProvider{
-			name: "timepad", priority: timepadPriority, importer: timepadClient,
-			acquireLock: lockProvider("timepad"),
-		})
+		syncProviders = append(syncProviders, syncProvider{name: "kudago", priority: kudaGoPriority, importer: kudaGoClient, acquireLock: lockProvider("kudago")})
+	}
+	if includesProvider(cfg.EventSyncProvider, "timepad") {
+		timepadCity := cfg.TimepadCityName
+		if cityID.String() == catalogseed.MoscowCityID && timepadCity == "" {
+			timepadCity = "Москва"
+		}
+		if cfg.TimepadToken == "" || timepadCity == "" {
+			if cfg.EventSyncProvider == "timepad" {
+				return errors.New("Timepad-only worker requires TIMEPAD_TOKEN and TIMEPAD_CITY_NAME")
+			}
+			logger.Warn("event sync provider disabled", "provider", "timepad", "reason", "token or explicit provider city is not configured")
+		} else {
+			timepadClient, err := timepad.NewClient(timepad.Options{
+				BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
+				Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
+				MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
+				UpsertOnly:           cfg.TimepadUpsertOnly,
+				CityID:               cityID, CityName: timepadCity, Timezone: cityTimezone,
+			})
+			if err != nil {
+				return err
+			}
+			syncProviders = append(syncProviders, syncProvider{
+				name: "timepad", priority: timepadPriority, importer: timepadClient,
+				acquireLock: lockProvider("timepad"),
+			})
+		}
 	}
 
 	repository := providers.NewRepository(db)
@@ -142,7 +154,7 @@ func run() error {
 			return err
 		}
 	}
-	logger.Info("event sync starting", "providers", len(syncProviders), "city_id", cityID, "city", cityName, "timezone", cityTimezone, "interval", cfg.EventSyncInterval, "run_on_start", cfg.EventSyncRunOnStart)
+	logger.Info("event sync starting", "providers", len(syncProviders), "provider_selection", cfg.EventSyncProvider, "timepad_upsert_only", cfg.TimepadUpsertOnly, "city_id", cityID, "city", cityName, "timezone", cityTimezone, "interval", cfg.EventSyncInterval, "run_on_start", cfg.EventSyncRunOnStart)
 	runSyncLoop(ctx, cfg.EventSyncInterval, cfg.EventSyncRunOnStart, func() bool {
 		cycleProviders := append([]syncProvider(nil), syncProviders...)
 		if sourceRepository != nil {
@@ -274,3 +286,6 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 	logger.Info("event sync provider finished", attributes...)
 	return nil
 }
+
+// Empty selection preserves the existing worker with both built-in providers.
+func includesProvider(selection, name string) bool { return selection == "" || selection == name }

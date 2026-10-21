@@ -37,6 +37,9 @@ type Config struct {
 	KudaGoTimeout               time.Duration
 	KudaGoLocation              string
 	KudaGoPageSize              int
+	KudaGoMaxRequestsPerMinute  int
+	EventSyncProvider           string
+	TimepadUpsertOnly           bool
 	EventSyncInterval           time.Duration
 	EventSyncRunOnStart         bool
 	TimepadBaseURL              string
@@ -66,6 +69,9 @@ func Load() (Config, error) {
 		KudaGoTimeout:               30 * time.Second,
 		KudaGoLocation:              "msk",
 		KudaGoPageSize:              100,
+		KudaGoMaxRequestsPerMinute:  6,
+		EventSyncProvider:           strings.TrimSpace(os.Getenv("EVENT_SYNC_PROVIDER")),
+		TimepadUpsertOnly:           true,
 		EventSyncInterval:           2 * time.Hour,
 		EventSyncRunOnStart:         false,
 		TimepadBaseURL:              "https://api.timepad.ru/v1",
@@ -74,6 +80,22 @@ func Load() (Config, error) {
 		TimepadPageSize:             100,
 		TimepadMaxRequestsPerMinute: 20,
 		EventSyncCityID:             uuid.MustParse(catalogseed.MoscowCityID),
+	}
+	if cfg.EventSyncProvider != "" && cfg.EventSyncProvider != "timepad" {
+		return Config{}, fmt.Errorf("EVENT_SYNC_PROVIDER must be empty or timepad")
+	}
+	if value := strings.TrimSpace(os.Getenv("KUDAGO_MAX_REQUESTS_PER_MINUTE")); value != "" {
+		rate, err := strconv.Atoi(value)
+		if err != nil || rate < 1 || rate > 60 {
+			return Config{}, fmt.Errorf("KUDAGO_MAX_REQUESTS_PER_MINUTE is invalid")
+		}
+		cfg.KudaGoMaxRequestsPerMinute = rate
+	}
+	if value, supplied := os.LookupEnv("TIMEPAD_UPSERT_ONLY"); supplied {
+		if value != "true" && value != "false" {
+			return Config{}, fmt.Errorf("TIMEPAD_UPSERT_ONLY must be true or false")
+		}
+		cfg.TimepadUpsertOnly = value == "true"
 	}
 	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {

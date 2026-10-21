@@ -59,7 +59,7 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 	startsAtMin := c.now().UTC()
 	startsAtMax := startsAtMin.Add(importHorizon)
 	runID, err := store.BeginSyncRun(ctx, providers.SyncRunStart{
-		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: maxPages > 0,
+		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: c.upsertOnly || maxPages > 0,
 	})
 	if err != nil {
 		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)

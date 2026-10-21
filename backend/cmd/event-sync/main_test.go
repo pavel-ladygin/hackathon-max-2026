@@ -14,6 +14,12 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
+func TestTimepadOnlySelectionPreservesDefaultProviders(t *testing.T) {
+	if !includesProvider("", "kudago") || !includesProvider("", "timepad") || includesProvider("timepad", "kudago") || !includesProvider("timepad", "timepad") {
+		t.Fatal("invalid provider selection")
+	}
+}
+
 func TestSyncOneSkipsBusyTimepadLock(t *testing.T) {
 	importer := &stubImporter{}
 	var logs bytes.Buffer

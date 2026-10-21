@@ -132,6 +132,7 @@ func newImporter(providerName string, cfg config.Config, maxPages int) (eventImp
 		return kudago.NewClient(kudago.Options{
 			BaseURL: cfg.KudaGoBaseURL, Timeout: cfg.KudaGoTimeout,
 			Location: cfg.KudaGoLocation, PageSize: cfg.KudaGoPageSize,
+			MaxRequestsPerMinute: cfg.KudaGoMaxRequestsPerMinute,
 		})
 	case "timepad":
 		if cfg.TimepadToken == "" {
@@ -141,6 +142,7 @@ func newImporter(providerName string, cfg config.Config, maxPages int) (eventImp
 			BaseURL: cfg.TimepadBaseURL, Token: cfg.TimepadToken,
 			Timeout: cfg.TimepadTimeout, PageSize: cfg.TimepadPageSize,
 			MaxRequestsPerMinute: cfg.TimepadMaxRequestsPerMinute,
+			UpsertOnly:           cfg.TimepadUpsertOnly,
 		})
 		if err != nil {
 			return nil, err
