@@ -22,6 +22,16 @@
   background: transparent;
 }
 
+.mapMessage > div {
+  width: min(100%, 340px);
+  min-height: 0;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+  box-shadow: 0 8px 24px rgb(39 29 21 / 16%);
+}
+
 .mapMessagePassive {
   pointer-events: none;
 }
@@ -53,7 +63,7 @@
   box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
   color: white;
   font: inherit;
-  font-weight: 800;
+  font-weight: var(--font-weight-bold);
   cursor: pointer;
   transform: translate(-50%, -50%);
 }
@@ -73,10 +83,10 @@
   box-shadow: 0 2px 8px rgb(39 29 21 / 18%);
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   touch-action: manipulation;
 }
-.expandedClose { width: 44px; height: 44px; border-width: 1px; border-radius: 50%; font-size: 26px; line-height: 1; }
+.expandedClose { width: 44px; height: 44px; border-width: 1px; border-radius: 50%; font-size: 1.625rem; line-height: 1; }
 .expandedNext { min-width: 70px; height: 44px; padding: 0 12px; border-radius: 999px; }
 .expandedClose:focus-visible, .expandedNext:focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; }
 
@@ -95,7 +105,7 @@
   box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
   cursor: pointer;
   font: inherit;
-  font-size: 24px;
+  font-size: 1.5rem;
   transform: translate(-50%, -50%);
 }
 .overlapClose:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
@@ -167,7 +177,7 @@
   outline-offset: 3px;
 }
 .previewMeta, .previewPrice { margin: 3px 0; color: var(--color-muted); font-size: .875rem; line-height: 1.3; }
-.previewPrice { margin-bottom: 10px; color: var(--color-ink); font-weight: 700; }
+.previewPrice { margin-bottom: 10px; color: var(--color-ink); font-weight: var(--font-weight-bold); }
 .previewClose {
   position: absolute;
   top: 8px;
@@ -181,7 +191,7 @@
   background: var(--color-paper, #fffaf5);
   color: var(--color-ink);
   font: inherit;
-  font-size: 24px;
+  font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -243,8 +253,8 @@
   place-items: center;
   border-radius: var(--radius-sm);
   color: var(--color-muted, #6b625c);
-  font-size: 9px;
-  font-weight: 700;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-bold);
   line-height: 1.1;
   text-align: center;
 }
@@ -276,7 +286,7 @@
   box-shadow: 0 5px 15px rgb(39 29 21 / 16%);
   color: var(--color-ink, #171716);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1.25;
   opacity: 0;
   pointer-events: none;
@@ -337,8 +347,8 @@
   background: transparent;
   color: var(--color-muted);
   font: inherit;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
   touch-action: manipulation;
 }
 
@@ -362,3 +372,8 @@
   .markerImage { transition: none; }
   .markerImagePlaceholder[data-state='loading'] { animation: none; }
 }
+
+.emptyMapCard { display: grid; justify-items: center; text-align: center; }
+.emptyMapCard svg { width: 24px; height: 24px; margin-bottom: 12px; color: var(--color-muted); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mapMessage h3 { margin: 0; font-size: var(--font-size-section); line-height: var(--line-height-heading); }
+.mapMessage p { margin: 8px 0 0; font-size: var(--font-size-body-small); line-height: var(--line-height-body); }

@@ -58,8 +58,8 @@ export function PreferencesPage() {
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>
     <h1 className={styles.title}>Настройте афишу</h1><p className={styles.subtitle}>Эти параметры влияют на персональные рекомендации. Условия отдельной встречи задаются приватно в комнате.</p>
     <section className={notificationStyles.submissionLinks} aria-label="Предложенные мероприятия">
-      <div><span><strong>Предложить мероприятие</strong><small>Добавьте событие в афишу после проверки.</small></span><Button tone="secondary" onClick={() => navigate('/events/suggest')}>Предложить</Button></div>
-      <div><span><strong>Мои заявки</strong><small>Статусы и решения модерации.</small></span><Button tone="ghost" onClick={() => navigate('/my/event-submissions')}>Открыть</Button></div>
+      <div><span><strong>Предложить мероприятие</strong><small>Добавьте событие в афишу после проверки.</small></span><Button className={notificationStyles.submissionAction} tone="secondary" onClick={() => navigate('/events/suggest')}>Предложить</Button></div>
+      <div><span><strong>Мои заявки</strong><small>Статусы и решения модерации.</small></span><Button className={notificationStyles.submissionAction} tone="secondary" onClick={() => navigate('/my/event-submissions')}>Открыть</Button></div>
     </section>
     <section className={notificationStyles.card} aria-busy={saveNotifications.isPending}>
       <label className={notificationStyles.option} htmlFor="preferences-daily-notifications">

@@ -463,7 +463,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     <div ref={mapNode} className={styles.map} role="region" aria-label="Яндекс Карта событий" />
     {!mapReady ? <ScreenSkeleton variant="map" inline label="Загружаем карту…" /> : null}
     {areaError ? <div className={`${styles.mapMessage} ${styles.mapMessageInteractive}`}><Empty inline title="События не загрузились" description="Проверьте соединение и повторите поиск." action={<Button onClick={() => void requestArea(camera)}>Повторить</Button>} /></div> : null}
-    {noResults ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="В этой области событий не найдено" description="Переместите карту или измените фильтры." /></div> : null}
+    {noResults ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><div className={styles.emptyMapCard} role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg><h3>В этой области событий не найдено</h3><p>Переместите карту или измените фильтры.</p></div></div> : null}
     {!areaLoading && locatedEvents.length > 0 && !hasAnyCoordinates ? <div className={`${styles.mapMessage} ${styles.mapMessagePassive}`}><Empty inline title="Для этих событий нет координат" description="Попробуйте изменить область карты или переключиться на список." /></div> : null}
     {visibleSelectedEvent ? <MapEventPreview event={visibleSelectedEvent} onClose={() => selectEvent(null)} onDetails={() => navigate(`/events/${visibleSelectedEvent.id}`)} /> : null}
     {areaLoading ? <span className={styles.mapLoading} role="status">Загружаем события…</span> : null}

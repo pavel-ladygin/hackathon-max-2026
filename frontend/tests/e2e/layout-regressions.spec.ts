@@ -1,9 +1,11 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
 
 const viewports = [
   { name: '320px', width: 320, height: 720 },
+  { name: '375px', width: 375, height: 812 },
   { name: '390px', width: 390, height: 844 },
   { name: '430px', width: 430, height: 932 },
+  { name: 'landscape', width: 844, height: 390 },
 ] as const
 
 const user = {
@@ -91,6 +93,48 @@ async function stubRoomBackend(page: Page) {
   await page.route(`**/api/v1/rooms/${room.id}/intent/me`, async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...room, my_intent: null }) }))
 }
 
+async function stubPreferencesBackend(page: Page) {
+  await page.route('**/api/v1/auth/max/bootstrap', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ access_token: 'layout-preferences-token', token_type: 'Bearer', expires_in: 3600, user, onboarding_state: 'complete', preferences, invite_context: null }),
+  }))
+}
+
+async function assertPreferenceActions(page: Page, viewportWidth: number, testInfo: TestInfo) {
+  await stubPreferencesBackend(page)
+  await page.goto('/preferences')
+  const section = page.getByRole('region', { name: 'Предложенные мероприятия' })
+  await expect(section).toBeVisible()
+  const actions = section.getByRole('button', { name: /^(Предложить|Открыть)$/ })
+  await expect(actions).toHaveCount(2)
+
+  const metrics = await actions.evaluateAll((buttons) => buttons.map((button) => {
+    const rect = button.getBoundingClientRect()
+    const style = getComputedStyle(button)
+    return { width: rect.width, height: rect.height, fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight, background: style.backgroundColor }
+  }))
+  expect(metrics[0].width).toBe(metrics[1].width)
+  expect(metrics[0].height).toBe(metrics[1].height)
+  expect(metrics[0].fontFamily).toBe(metrics[1].fontFamily)
+  expect(metrics[0].fontSize).toBe(metrics[1].fontSize)
+  expect(metrics[0].fontWeight).toBe(metrics[1].fontWeight)
+  expect(metrics[0].background).toBe(metrics[1].background)
+  expect(metrics[0].height).toBe(48)
+  expect(metrics[0].width).toBe(viewportWidth < 360 ? 104 : 116)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewportWidth)
+
+  for (const name of ['Обычно удобно', 'Время']) {
+    const gap = await page.getByRole('group', { name, exact: true }).evaluate((fieldset) => {
+      const legend = fieldset.querySelector('legend')!
+      return legend.nextElementSibling!.getBoundingClientRect().top - legend.getBoundingClientRect().bottom
+    })
+    expect(gap).toBeCloseTo(13, 0)
+  }
+
+  await page.screenshot({ path: testInfo.outputPath(`preferences-actions-${viewportWidth}px.png`), fullPage: true })
+}
+
 for (const viewport of viewports) {
   test.describe(`layout regressions at ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } })
@@ -150,6 +194,17 @@ for (const viewport of viewports) {
       await page.goto(`/rooms/${room.id}/intent`)
       await expect(page.getByRole('heading', { name: 'Мои предпочтения' })).toBeVisible()
 
+      const choiceFields = page.locator('form fieldset').filter({ has: page.locator('[class*="choiceOptions"]') })
+      await expect(choiceFields.first()).toBeVisible()
+      const gaps = await choiceFields.evaluateAll((fields) => fields.map((field) => {
+        const legend = field.querySelector('legend')
+        const options = field.querySelector('[class*="choiceOptions"]')
+        if (!legend || !options) return Number.NaN
+        return options.getBoundingClientRect().top - legend.getBoundingClientRect().bottom
+      }))
+      expect(gaps.length).toBeGreaterThan(0)
+      for (const gap of gaps) expect(gap).toBeCloseTo(13, 0)
+
       const form = page.locator('form').first()
       const boxes = await form.locator('fieldset, label, .footer').evaluateAll((nodes) => nodes
         .map((node) => node.getBoundingClientRect())
@@ -167,6 +222,32 @@ for (const viewport of viewports) {
       expect(saveBox!.x).toBeGreaterThanOrEqual(0)
       expect(saveBox!.x + saveBox!.width).toBeLessThanOrEqual(viewport.width + 1)
       expect(saveBox!.y + saveBox!.height).toBeLessThanOrEqual(viewport.height + 1)
+    })
+
+    test('preference actions use a consistent button style without viewport overflow', async ({ page }, testInfo) => {
+      await assertPreferenceActions(page, viewport.width, testInfo)
+    })
+
+    test('preference action labels remain separated at 200% theme text size', async ({ page }, testInfo) => {
+      await stubPreferencesBackend(page)
+      await page.goto('/preferences')
+      const theme = page.locator('.max-app-theme')
+      await expect(theme).toBeVisible()
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+      const section = page.getByRole('region', { name: 'Предложенные мероприятия' })
+      const actions = section.getByRole('button', { name: /^(Предложить|Открыть)$/ })
+      await expect(actions.first()).toBeVisible()
+      await expect(actions).toHaveCount(2)
+      const rows = await section.locator(':scope > div').evaluateAll((elements) => elements.map((row) => {
+        const text = row.querySelector('span')?.getBoundingClientRect()
+        const button = row.querySelector('button')?.getBoundingClientRect()
+        if (!text || !button) return false
+        return (text.right <= button.left + 1 || text.bottom <= button.top - 8) && text.bottom > row.getBoundingClientRect().top
+      }))
+      expect(rows.length).toBe(2)
+      expect(rows.every(Boolean)).toBe(true)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      await page.screenshot({ path: testInfo.outputPath(`preferences-actions-${viewport.width}px-200-percent.png`), fullPage: true })
     })
   })
 }

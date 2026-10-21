@@ -14,6 +14,8 @@ function renderForm() {
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/events/suggest']}><EventSubmissionPage /></MemoryRouter></QueryClientProvider>)
 }
 
+function getPosterInput() { return document.querySelector<HTMLInputElement>('input[type="file"][accept="image/jpeg,image/png,image/webp"]')! }
+
 function futureDate(days = 10) { const date = new Date(); date.setDate(date.getDate() + days); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function dateLabel(value: string) { const [year, month, day] = value.split('-').map(Number); return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(year, month - 1, day)) }
 async function chooseDate(label: string, date: string) {
@@ -65,8 +67,14 @@ describe('EventSubmissionPage', () => {
   it('uploads a selected poster, previews it and submits its image id', async () => {
     renderForm()
     const start = await fillRequiredForm()
+    const input = getPosterInput()
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+    expect(screen.queryByRole('button', { name: /^Выбрать файл$/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать файл афиши' }))
+    expect(click).toHaveBeenCalledOnce()
+    click.mockRestore()
     const file = new File(['image bytes'], 'poster.png', { type: 'image/png' })
-    fireEvent.change(screen.getByLabelText('Выбрать файл афиши'), { target: { files: [file] } })
+    fireEvent.change(input, { target: { files: [file] } })
     await waitFor(() => expect(mocks.upload).toHaveBeenCalledWith(file, expect.objectContaining({ signal: expect.any(AbortSignal) })))
     fireEvent.click(screen.getByRole('button', { name: 'Проверить перед отправкой' }))
     expect(await screen.findByRole('heading', { name: 'Проверьте детали' })).toBeInTheDocument()
@@ -80,7 +88,7 @@ describe('EventSubmissionPage', () => {
     mocks.create.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({ id: 'submission-1', status: 'pending', created_at: '2099-01-01T00:00:00Z' })
     renderForm()
     await fillRequiredForm()
-    fireEvent.change(screen.getByLabelText('Выбрать файл афиши'), { target: { files: [new File(['image bytes'], 'poster.png', { type: 'image/png' })] } })
+    fireEvent.change(getPosterInput(), { target: { files: [new File(['image bytes'], 'poster.png', { type: 'image/png' })] } })
     await screen.findByText('Афиша загружена')
     fireEvent.click(screen.getByRole('button', { name: 'Проверить перед отправкой' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Отправить на модерацию' }))
@@ -102,7 +110,7 @@ describe('EventSubmissionPage', () => {
     renderForm()
     await fillRequiredForm()
     const file = new File(['image bytes'], 'poster.png', { type: 'image/png' })
-    fireEvent.change(screen.getByLabelText('Выбрать файл афиши'), { target: { files: [file] } })
+    fireEvent.change(getPosterInput(), { target: { files: [file] } })
     expect(await screen.findByText('Не удалось загрузить афишу. Попробуйте ещё раз.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Удалить файл' }))
     fireEvent.click(screen.getByRole('button', { name: 'Проверить перед отправкой' }))
@@ -117,7 +125,7 @@ describe('EventSubmissionPage', () => {
     mocks.upload.mockResolvedValueOnce({ image_id: 'expired-image' }).mockResolvedValueOnce({ image_id: 'fresh-image' })
     renderForm()
     await fillRequiredForm()
-    fireEvent.change(screen.getByLabelText('Выбрать файл афиши'), { target: { files: [new File(['image bytes'], 'poster.png', { type: 'image/png' })] } })
+    fireEvent.change(getPosterInput(), { target: { files: [new File(['image bytes'], 'poster.png', { type: 'image/png' })] } })
     await screen.findByText('Афиша загружена')
     fireEvent.click(screen.getByRole('button', { name: 'Проверить перед отправкой' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Отправить на модерацию' }))
