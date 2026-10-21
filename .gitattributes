@@ -1,0 +1,2 @@
+# Frozen evaluation provenance hashes the raw fixture bytes on every platform.
+/backend/internal/recommendations/testdata/evaluation/*.json text eol=lf
