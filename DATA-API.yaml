@@ -278,3 +278,57 @@ checks:
       content_type: application/json
       required_fields: [external_url]
     notes: external_url содержит проверенную внешнюю HTTPS-ссылку для встроенных источников либо внутренний путь /api/v1/events/{eventId}/ticket для настраиваемых источников. Переход не подтверждает покупку.
+
+  - id: submit-user-event
+    purpose: Подать мероприятие на модерацию обычным авторизованным пользователем
+    method: POST
+    path: /event-submissions
+    role: user_a_max_account
+    parameters:
+      headers:
+        Authorization: "Bearer <access_token пользователя A>"
+        Idempotency-Key: "<новый UUID; сохранить для повторного запроса>"
+        Content-Type: application/json
+      body:
+        title: Проверка пользовательского события
+        description: Мероприятие для проверки модерации
+        city_id: a0f625ee-2154-5a45-8afe-37adf955ec24
+        venue_name: Тестовая площадка
+        venue_address: Москва, тестовый адрес
+        starts_at_local: "<будущая дата YYYY-MM-DDTHH:mm по времени города>"
+        price_mode: free
+        category_slug: concerts
+    expected_status: [201]
+    response:
+      content_type: application/json
+      required_fields: [id, status, created_at]
+    notes: Pending отсутствует в афише и подборках. Повтор с тем же ключом возвращает заявку, другой payload с тем же ключом даёт 409.
+
+  - id: own-user-event-submissions
+    purpose: Проверить только свои заявки и решения модератора
+    method: GET
+    path: /me/event-submissions
+    role: user_a_max_account
+    parameters:
+      headers: {Authorization: "Bearer <access_token пользователя A>"}
+      query: {limit: 20, offset: 0}
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [items, total]
+    notes: Пользователь B не должен видеть заявку пользователя A. После одобрения event_id ведёт в общий каталог; бесплатное событие без ссылки не включается в совместные подборки.
+
+  - id: moderate-user-event
+    purpose: Опубликовать проверенную заявку администратором
+    method: POST
+    path: /internal/event-submissions/{id}/approve
+    role: internal_administrator
+    parameters:
+      headers: {Origin: "https://worknet.team", X-Admin-Request: "1"}
+      path: {id: "<id заявки>"}
+      body: {}
+    expected_status: [200]
+    response:
+      content_type: application/json
+      required_fields: [id, status, event_id]
+    notes: Использовать Nginx Basic Auth; backend дополнительно проверяет доверенное proxy-подтверждение. Домены афиши и внешней ссылки нужно разрешить отдельно до одобрения. Повтор и конкурентное одобрение возвращают тот же event_id. Прямой запрос к backend без proxy-подтверждения запрещён.

@@ -80,7 +80,7 @@ func (h *Handler) image(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	var raw string
 	var sourceID uuid.UUID
-	err := h.db.QueryRow(ctx, `SELECT i.url,s.id FROM event_images i JOIN events e ON e.id=i.event_id JOIN event_sources s ON s.source_key=e.source WHERE i.id=$1 AND s.source_key LIKE 'generic:%' AND e.provider_active AND NOT e.is_demo AND e.starts_at>now()`, id).Scan(&raw, &sourceID)
+	err := h.db.QueryRow(ctx, `SELECT i.url,s.id FROM event_images i JOIN events e ON e.id=i.event_id JOIN event_sources s ON s.source_key=e.source WHERE i.id=$1 AND (s.source_key LIKE 'generic:%' OR s.source_key='user') AND e.provider_active AND NOT e.is_demo AND e.starts_at>now()`, id).Scan(&raw, &sourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		resourceError(w, r, http.StatusNotFound)
 		return
@@ -131,7 +131,7 @@ func (h *Handler) ticket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	var raw string
 	var sourceID uuid.UUID
-	err := h.db.QueryRow(ctx, `SELECT e.ticket_url,s.id FROM events e JOIN event_sources s ON s.source_key=e.source WHERE e.id=$1 AND s.source_key LIKE 'generic:%' AND e.provider_active AND NOT e.is_demo AND e.status='published' AND e.starts_at>now() AND e.ticket_available AND e.ticket_url IS NOT NULL`, id).Scan(&raw, &sourceID)
+	err := h.db.QueryRow(ctx, `SELECT e.ticket_url,s.id FROM events e JOIN event_sources s ON s.source_key=e.source WHERE e.id=$1 AND (s.source_key LIKE 'generic:%' OR s.source_key='user') AND e.provider_active AND NOT e.is_demo AND e.status='published' AND e.starts_at>now() AND e.ticket_available AND e.ticket_url IS NOT NULL`, id).Scan(&raw, &sourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		resourceError(w, r, http.StatusNotFound)
 		return

@@ -40,6 +40,12 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 	if store == nil {
 		return ImportStats{}, errors.New("provider event store is required")
 	}
+	if cityID == uuid.Nil {
+		return ImportStats{}, errors.New("import city is required")
+	}
+	if c.cityID != uuid.Nil && cityID != c.cityID {
+		return ImportStats{}, errors.New("timepad import city does not match configured city")
+	}
 	posterStore := &importPosterStore{
 		client: c, store: store, reportError: reportError,
 		postersByCanonicalID: make(map[int64][]providers.NormalizedImage),
@@ -87,12 +93,12 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Values))
 		for _, event := range page.Values {
-			if !isMoscowCity(event.Location.City) {
+			if !c.matchesCity(event.Location.City) {
 				ingestion.AddRejection(providers.RejectionCity, 1)
 				continue
 			}
 			ingestion.AddMatched(1)
-			normalized, rejection := normalizeEventWithReason(event)
+			normalized, rejection := normalizeEventWithMetadata(event, c.effectiveCityName(), c.effectiveTimezone())
 			if rejection != "" {
 				ingestion.AddRejection(rejection, 1)
 				continue
@@ -206,5 +212,27 @@ func needsRedirectPosterLookup(event providers.NormalizedEvent) bool {
 }
 
 func isMoscowCity(city string) bool {
-	return strings.EqualFold(strings.TrimSpace(city), moscowCity)
+	return matchesCity(city, moscowCity)
+}
+
+func (c *Client) effectiveCityName() string {
+	if c == nil || strings.TrimSpace(c.cityName) == "" {
+		return moscowCity
+	}
+	return c.cityName
+}
+
+func (c *Client) effectiveTimezone() string {
+	if c == nil || strings.TrimSpace(c.timezone) == "" {
+		return moscowZone
+	}
+	return c.timezone
+}
+
+func (c *Client) matchesCity(city string) bool {
+	return matchesCity(city, c.effectiveCityName())
+}
+
+func matchesCity(city, configuredCity string) bool {
+	return strings.EqualFold(strings.TrimSpace(city), strings.TrimSpace(configuredCity))
 }

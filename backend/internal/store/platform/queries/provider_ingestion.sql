@@ -89,6 +89,7 @@ WITH current_run AS (
     WHERE run.reconcile_missing
       AND e.venue_id = v.id
       AND e.source = run.provider
+      AND e.source <> 'user'
       AND v.city_id = run.city_id
       AND e.is_demo = false
       AND e.provider_active = true

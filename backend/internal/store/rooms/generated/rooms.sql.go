@@ -195,7 +195,7 @@ func (q *Queries) GetCreateIdempotency(ctx context.Context, arg GetCreateIdempot
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at, public_plan
 FROM rooms
 WHERE id = $1
 `
@@ -217,6 +217,7 @@ func (q *Queries) GetRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.ExpiresAt,
 		&i.ClosedBy,
 		&i.ClosedAt,
+		&i.PublicPlan,
 	)
 	return i, err
 }
@@ -271,9 +272,9 @@ func (q *Queries) InsertCreateIdempotency(ctx context.Context, arg InsertCreateI
 }
 
 const insertRoom = `-- name: InsertRoom :one
-INSERT INTO rooms (id, creator_user_id, city_id, name, state, round_no, active_pool_version, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
+INSERT INTO rooms (id, creator_user_id, city_id, name, state, round_no, active_pool_version, expires_at, public_plan)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at, public_plan
 `
 
 type InsertRoomParams struct {
@@ -285,6 +286,7 @@ type InsertRoomParams struct {
 	RoundNo           int16
 	ActivePoolVersion int32
 	ExpiresAt         pgtype.Timestamptz
+	PublicPlan        []byte
 }
 
 func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, error) {
@@ -297,6 +299,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		arg.RoundNo,
 		arg.ActivePoolVersion,
 		arg.ExpiresAt,
+		arg.PublicPlan,
 	)
 	var i Room
 	err := row.Scan(
@@ -313,6 +316,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		&i.ExpiresAt,
 		&i.ClosedBy,
 		&i.ClosedAt,
+		&i.PublicPlan,
 	)
 	return i, err
 }
@@ -334,7 +338,7 @@ func (q *Queries) InsertRoomCloseNotice(ctx context.Context, arg InsertRoomClose
 }
 
 const lockExpiredRoomsForCleanup = `-- name: LockExpiredRoomsForCleanup :many
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at, public_plan
 FROM rooms
 WHERE expires_at <= $1
   AND EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = rooms.id AND m.is_active = true)
@@ -371,6 +375,7 @@ func (q *Queries) LockExpiredRoomsForCleanup(ctx context.Context, arg LockExpire
 			&i.ExpiresAt,
 			&i.ClosedBy,
 			&i.ClosedAt,
+			&i.PublicPlan,
 		); err != nil {
 			return nil, err
 		}
@@ -383,7 +388,7 @@ func (q *Queries) LockExpiredRoomsForCleanup(ctx context.Context, arg LockExpire
 }
 
 const lockRoom = `-- name: LockRoom :one
-SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
+SELECT id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at, public_plan
 FROM rooms
 WHERE id = $1
 FOR UPDATE
@@ -406,6 +411,7 @@ func (q *Queries) LockRoom(ctx context.Context, id uuid.UUID) (Room, error) {
 		&i.ExpiresAt,
 		&i.ClosedBy,
 		&i.ClosedAt,
+		&i.PublicPlan,
 	)
 	return i, err
 }
@@ -463,7 +469,7 @@ const restartExhaustedRoomRound = `-- name: RestartExhaustedRoomRound :one
 UPDATE rooms
 SET state = 'collecting_intents', round_no = round_no + 1, version = version + 1
 WHERE id = $1 AND state = 'exhausted' AND round_no < 3
-RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at
+RETURNING id, creator_user_id, city_id, name, state, round_no, active_pool_version, matched_event_id, version, created_at, expires_at, closed_by, closed_at, public_plan
 `
 
 // The caller holds the room row lock.  Keep active_pool_version as history;
@@ -485,6 +491,7 @@ func (q *Queries) RestartExhaustedRoomRound(ctx context.Context, id uuid.UUID) (
 		&i.ExpiresAt,
 		&i.ClosedBy,
 		&i.ClosedAt,
+		&i.PublicPlan,
 	)
 	return i, err
 }

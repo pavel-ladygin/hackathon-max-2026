@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/sourceconfig"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store"
 	platform "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/store/platform/generated"
 )
@@ -57,6 +58,32 @@ func (r *Repository) UpsertWithResult(ctx context.Context, cityID uuid.UUID, eve
 	venueID := providerStableID("venue", strings.TrimSpace(event.Source)+"\x00"+venueIdentity)
 
 	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		// Keep historical provider IDs unchanged. Serialize shared identities
+		// before checking their ownership, including first-insert races.
+		for _, key := range []string{"catalog-event:" + candidateEventID.String(), "catalog-venue:" + venueID.String()} {
+			if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", key); err != nil {
+				return errors.New("provider identity lock unavailable")
+			}
+		}
+		var otherCity bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(SELECT 1 FROM venues WHERE id=$1 AND city_id<>$2)
+			   OR EXISTS(SELECT 1 FROM events e JOIN venues v ON v.id=e.venue_id
+			             WHERE e.source=$3 AND e.external_id=$4 AND v.city_id<>$2)`,
+			venueID, cityID, event.Source, event.ExternalID).Scan(&otherCity); err != nil {
+			return errors.New("provider city ownership check failed")
+		}
+		if otherCity {
+			return errors.New("provider identity belongs to another city")
+		}
+		if event.ProviderLastSeenRunID != nil {
+			var matchingRun bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM provider_sync_runs
+				WHERE id=$1 AND provider=$2 AND city_id=$3 AND state='running' FOR SHARE)`,
+				*event.ProviderLastSeenRunID, event.Source, cityID).Scan(&matchingRun); err != nil || !matchingRun {
+				return errors.New("provider sync run does not match event scope")
+			}
+		}
 		queries := platform.New(tx)
 		venueType := strings.TrimSpace(event.Venue.VenueType)
 		if venueType == "" {
@@ -128,7 +155,7 @@ func (r *Repository) BeginSyncRun(ctx context.Context, start SyncRunStart) (uuid
 	}
 	provider := strings.TrimSpace(start.Provider)
 	switch {
-	case provider == "" || provider == "demo":
+	case provider == "" || provider == "demo" || provider == "user":
 		return uuid.Nil, errors.New("sync run provider is invalid")
 	case start.CityID == uuid.Nil:
 		return uuid.Nil, errors.New("sync run city is required")
@@ -203,7 +230,7 @@ func (r *Repository) FinishSyncRun(ctx context.Context, finish SyncRunFinish) (r
 			return fmt.Errorf("complete provider sync run: %w", err)
 		}
 		if finish.State == SyncRunSucceeded || finish.Stats.Inserted+finish.Stats.Updated > 0 {
-			if _, err := tx.Exec(ctx, `UPDATE event_sources SET mapping_locked=true WHERE source_key=$1`, run.Provider); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE event_sources SET mapping_locked=true WHERE source_kind='generic' AND btrim(source_key,$2)=$1`, run.Provider, sourceconfig.SourceKeyWhitespace); err != nil {
 				return fmt.Errorf("lock source identity mapping: %w", err)
 			}
 		}
@@ -251,7 +278,7 @@ func validatePersistenceInput(cityID uuid.UUID, event NormalizedEvent) error {
 	switch {
 	case cityID == uuid.Nil:
 		return errors.New("provider event city is required")
-	case source == "" || source == "demo" || event.IsDemo:
+	case source == "" || source == "demo" || source == "user" || event.IsDemo:
 		return errors.New("provider event source is invalid")
 	case strings.TrimSpace(event.ExternalID) == "":
 		return errors.New("provider event external ID is required")

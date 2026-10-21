@@ -134,11 +134,11 @@ func TestValidatePaginationRejectsConflictingParameterNames(t *testing.T) {
 func TestFetchRecordsUsesOverallTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, err := fetchRecords(ctx, HTTPConfig{}, PaginationConfig{}, 1, 1, time.Nanosecond, false, func(context.Context, HTTPConfig) (any, error) {
-		time.Sleep(time.Millisecond)
-		return []any{}, nil
+	_, err := fetchRecords(ctx, HTTPConfig{}, PaginationConfig{}, 1, 1, 100*time.Millisecond, false, func(ctx context.Context, _ HTTPConfig) (any, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	})
-	if err == nil {
-		t.Fatal("expected timeout error")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline exceeded", err)
 	}
 }

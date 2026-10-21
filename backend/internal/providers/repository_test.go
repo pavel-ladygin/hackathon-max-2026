@@ -37,6 +37,7 @@ func TestRepositoryRejectsInvalidInputBeforeDatabase(t *testing.T) {
 	}{
 		"missing city":        {uuid.Nil, func(*NormalizedEvent) {}},
 		"demo source":         {cityID, func(event *NormalizedEvent) { event.Source = "demo" }},
+		"user source":         {cityID, func(event *NormalizedEvent) { event.Source = "user" }},
 		"demo flag":           {cityID, func(event *NormalizedEvent) { event.IsDemo = true }},
 		"missing external ID": {cityID, func(event *NormalizedEvent) { event.ExternalID = "" }},
 		"missing title":       {cityID, func(event *NormalizedEvent) { event.Title = "" }},

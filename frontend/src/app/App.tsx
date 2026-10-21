@@ -15,6 +15,8 @@ const OnboardingPage = lazy(() => import('../pages/onboarding/OnboardingPage').t
 const CatalogPage = lazy(() => import('../pages/catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })))
 const SavedPage = lazy(() => import('../pages/saved/SavedPage').then((m) => ({ default: m.SavedPage })))
 const PreferencesPage = lazy(() => import('../pages/preferences/PreferencesPage').then((m) => ({ default: m.PreferencesPage })))
+const EventSubmissionPage = lazy(() => import('../pages/submissions/EventSubmissionPages').then((m) => ({ default: m.EventSubmissionPage })))
+const MyEventSubmissionsPage = lazy(() => import('../pages/submissions/EventSubmissionPages').then((m) => ({ default: m.MyEventSubmissionsPage })))
 const RoomUnavailablePage = lazy(() => import('../pages/rooms/RoomUnavailablePage').then((m) => ({ default: m.RoomUnavailablePage })))
 const NewRoomPage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.NewRoomPage })))
 const InvitePage = lazy(() => import('../pages/rooms/RoomPages').then((m) => ({ default: m.InvitePage })))
@@ -82,6 +84,8 @@ function AppRoutes() {
       <Route path="/events/:eventId" element={<EventPage onLeaveSharedEvent={() => setSharedEventDismissed(true)} />} />
       <Route path="/saved" element={<SavedPage />} />
       <Route path="/preferences" element={<PreferencesPage />} />
+      <Route path="/events/suggest" element={<EventSubmissionPage />} />
+      <Route path="/my/event-submissions" element={<MyEventSubmissionsPage />} />
       <Route path="/rooms/new" element={<NewRoomPage />} />
       <Route path="/rooms/:roomId/invite" element={<InvitePage />} />
       <Route path="/rooms/:roomId/:roomScreen" element={<RoomFlowPage />} />

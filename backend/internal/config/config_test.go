@@ -17,6 +17,7 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "INFO")
 	t.Setenv("MAX_INIT_DATA_MAX_AGE", "")
 	t.Setenv("MAX_BOT_TOKEN", "")
+	t.Setenv("INTERNAL_ADMIN_PROXY_SECRET", "")
 	t.Setenv("INVITE_ENCRYPTION_KEY", "")
 	t.Setenv("INVITE_ENCRYPTION_KEY_VERSION", "")
 	t.Setenv("INVITE_URL_TEMPLATE", "")
@@ -208,6 +209,18 @@ func TestLoadParsesTrustedProxyCIDRs(t *testing.T) {
 	}
 	if len(cfg.TrustedProxyCIDRs) != 2 || !cfg.TrustedProxyCIDRs[0].Contains(net.ParseIP("127.0.0.1")) || !cfg.TrustedProxyCIDRs[1].Contains(net.ParseIP("2001:db8::1")) {
 		t.Fatalf("unexpected trusted proxy CIDRs: %#v", cfg.TrustedProxyCIDRs)
+	}
+}
+
+func TestLoadReadsOptionalInternalAdminProxySecret(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("INTERNAL_ADMIN_PROXY_SECRET", "  test-proxy-secret  ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InternalAdminProxySecret != "test-proxy-secret" {
+		t.Fatalf("InternalAdminProxySecret = %q, want trimmed secret", cfg.InternalAdminProxySecret)
 	}
 }
 

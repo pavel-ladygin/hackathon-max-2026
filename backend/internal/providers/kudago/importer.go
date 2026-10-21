@@ -26,6 +26,9 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 	if cityID == uuid.Nil {
 		return ImportStats{}, errors.New("import city is required")
 	}
+	if c.cityID != uuid.Nil && cityID != c.cityID {
+		return ImportStats{}, errors.New("kudago import city does not match configured city")
+	}
 	if store == nil {
 		return ImportStats{}, errors.New("provider event store is required")
 	}
@@ -64,9 +67,15 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 		}
 		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Results))
-		ingestion.AddMatched(len(page.Results))
+		cityMismatch := false
 		for _, event := range page.Results {
-			occurrences := normalizeEvent(event, actualSince, actualUntil)
+			if !c.matchesLocation(event.Location.Slug) {
+				ingestion.AddRejection(providers.RejectionCity, 1)
+				cityMismatch = true
+				continue
+			}
+			ingestion.AddMatched(1)
+			occurrences := normalizeEventForTimezone(event, actualSince, actualUntil, c.effectiveTimezone())
 			if len(occurrences) == 0 {
 				ingestion.AddSkipped(1)
 				continue
@@ -77,6 +86,9 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 					return ingestion.Stats(), err
 				}
 			}
+		}
+		if cityMismatch {
+			return ingestion.Stats(), errors.New("kudago response contains events from an unexpected city")
 		}
 
 		next := strings.TrimSpace(page.Next)
@@ -89,4 +101,19 @@ func (c *Client) Import(ctx context.Context, cityID uuid.UUID, store providers.S
 		seenCursors[next] = struct{}{}
 		cursor = next
 	}
+}
+
+func (c *Client) effectiveTimezone() string {
+	if c == nil || strings.TrimSpace(c.timezone) == "" {
+		return moscowZone
+	}
+	return c.timezone
+}
+
+func (c *Client) matchesLocation(slug string) bool {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return c.cityID == uuid.Nil || strings.EqualFold(c.location, "msk")
+	}
+	return strings.EqualFold(slug, c.location)
 }

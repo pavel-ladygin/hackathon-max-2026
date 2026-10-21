@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -35,6 +37,9 @@ type Options struct {
 	Timeout              time.Duration
 	PageSize             int
 	MaxRequestsPerMinute int
+	CityID               uuid.UUID
+	CityName             string
+	Timezone             string
 }
 
 type requestLimiter interface{ Wait(context.Context) error }
@@ -77,6 +82,9 @@ type Client struct {
 	token      string
 	httpClient *http.Client
 	pageSize   int
+	cityID     uuid.UUID
+	cityName   string
+	timezone   string
 	limiter    requestLimiter
 	now        func() time.Time
 	// wait is retained for importer pacing hooks; actual HTTP attempts use limiter.
@@ -103,12 +111,34 @@ func NewClient(options Options) (*Client, error) {
 	if options.MaxRequestsPerMinute <= 0 {
 		return nil, errors.New("timepad max requests per minute must be positive")
 	}
+	cityName := strings.TrimSpace(options.CityName)
+	timezone := strings.TrimSpace(options.Timezone)
+	if cityName == "" {
+		cityName = moscowCity
+	}
+	if timezone == "" {
+		timezone = moscowZone
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return nil, errors.New("timepad timezone is invalid")
+	}
+	if options.CityID != uuid.Nil {
+		if strings.TrimSpace(options.CityName) == "" {
+			return nil, errors.New("timepad city name is required for configured city")
+		}
+		if strings.TrimSpace(options.Timezone) == "" {
+			return nil, errors.New("timepad timezone is required for configured city")
+		}
+	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/"
 	return &Client{
 		baseURL:    baseURL,
 		token:      token,
 		httpClient: &http.Client{Timeout: options.Timeout},
 		pageSize:   options.PageSize,
+		cityID:     options.CityID,
+		cityName:   cityName,
+		timezone:   timezone,
 		limiter:    newIntervalLimiter(options.MaxRequestsPerMinute),
 		now:        time.Now,
 		wait:       func(context.Context) error { return nil },

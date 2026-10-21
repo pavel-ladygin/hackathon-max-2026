@@ -113,14 +113,30 @@ func (r *Repository) Create(ctx context.Context, input Input) (Source, error) {
 		return Source{}, err
 	}
 	transforms := []byte(`{}`)
-	_, err = r.db.Exec(ctx, `INSERT INTO event_sources (
-		id, source_key, name, enabled, endpoint_url, auth_type, auth_name, auth_secret_ciphertext,
-		key_version, query_config, response_path, mapping_config, transform_config, pagination_config,
-		default_category, default_timezone, default_currency, default_status, price_unit)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19)`,
-		id, input.SourceKey, input.Name, input.Enabled, input.EndpointURL, input.AuthType, input.AuthName,
-		ciphertext, r.codec.version, query, input.ResponsePath, mapping, transforms, pagination,
-		input.Defaults.Category, input.Defaults.Timezone, input.Defaults.Currency, input.Defaults.Status, input.PriceUnit)
+	err = r.db.InTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		if err := lockCanonicalIdentity(ctx, tx, input.SourceKey); err != nil {
+			return err
+		}
+		exists, err := hasCanonicalIdentity(ctx, tx, input.SourceKey)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrCanonicalIdentityConflict
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO event_sources (
+			id, source_key, name, enabled, endpoint_url, auth_type, auth_name, auth_secret_ciphertext,
+			key_version, query_config, response_path, mapping_config, transform_config, pagination_config,
+			default_category, default_timezone, default_currency, default_status, price_unit)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19)`,
+			id, input.SourceKey, input.Name, input.Enabled, input.EndpointURL, input.AuthType, input.AuthName,
+			ciphertext, r.codec.version, query, input.ResponsePath, mapping, transforms, pagination,
+			input.Defaults.Category, input.Defaults.Timezone, input.Defaults.Currency, input.Defaults.Status, input.PriceUnit)
+		if err != nil {
+			return fmt.Errorf("insert event source: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return Source{}, fmt.Errorf("create event source: %w", err)
 	}
@@ -131,11 +147,11 @@ func (r *Repository) Get(ctx context.Context, id uuid.UUID) (Source, error) {
 	if id == uuid.Nil {
 		return Source{}, ErrNotFound
 	}
-	return scanSource(r.db.QueryRow(ctx, sourceSelect+` WHERE id=$1`, id))
+	return scanSource(r.db.QueryRow(ctx, sourceSelect+` WHERE source_kind='generic' AND id=$1`, id))
 }
 
 func (r *Repository) List(ctx context.Context) ([]Source, error) {
-	rows, err := r.db.Query(ctx, sourceSelect+` ORDER BY name, id`)
+	rows, err := r.db.Query(ctx, sourceSelect+` WHERE source_kind='generic' ORDER BY name, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list event sources: %w", err)
 	}
@@ -280,7 +296,7 @@ func scanSource(row rowScanner) (Source, error) {
 }
 
 func validateInput(input Input, create bool) error {
-	if strings.TrimSpace(input.SourceKey) == "" || strings.TrimSpace(input.SourceKey) == "demo" || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.EndpointURL) == "" {
+	if strings.TrimSpace(input.SourceKey) == "" || !strings.HasPrefix(strings.TrimSpace(input.SourceKey), "generic:") || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.EndpointURL) == "" {
 		return errors.New("event source identity, name, and endpoint are required")
 	}
 	switch input.AuthType {

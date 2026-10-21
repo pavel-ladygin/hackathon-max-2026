@@ -85,6 +85,25 @@ class OpenAPIContractTest(unittest.TestCase):
         validator.validate(intent)
         self.assertFalse(validator.is_valid({**intent, "unexpected": True}))
 
+    def test_event_submission_rejects_client_owned_identity_and_state(self):
+        validator = Draft202012Validator(
+            {"$ref": BASE_URI + "#/components/schemas/EventSubmissionInput"},
+            registry=self.registry, format_checker=FormatChecker(),
+        )
+        payload = {
+            "title": "Встреча", "description": "Описание",
+            "city_id": "a0f625ee-2154-5a45-8afe-37adf955ec24",
+            "venue_name": "Площадка", "venue_address": "Адрес",
+            "starts_at_local": "2027-01-02T18:00", "price_mode": "free",
+            "category_slug": "concerts",
+        }
+        validator.validate(payload)
+        for field in ("user_id", "author_id", "status", "event_id", "source", "timezone"):
+            with self.subTest(field=field):
+                self.assertFalse(validator.is_valid({**payload, field: "untrusted"}))
+        self.assertFalse(validator.is_valid({**payload, "category_slug": "invented"}))
+        self.assertFalse(validator.is_valid({**payload, "price_from_minor": -1}))
+
 
 if __name__ == "__main__":
     unittest.main()

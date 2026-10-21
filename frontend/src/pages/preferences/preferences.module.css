@@ -6,6 +6,13 @@
   background: var(--color-paper);
 }
 
+.submissionLinks { display: grid; gap: 2px; margin: 22px 0 28px; border: 1px solid var(--color-border); border-radius: 16px; padding: 4px 16px; background: var(--color-paper); }
+.submissionLinks > div { display: flex; min-height: 74px; align-items: center; justify-content: space-between; gap: 12px; }
+.submissionLinks > div + div { border-top: 1px solid #eeeae5; }
+.submissionLinks span { display: grid; gap: 4px; }
+.submissionLinks strong { color: var(--color-ink); font-size: 13px; }
+.submissionLinks small { color: var(--color-muted); font-size: 11px; line-height: 1.4; }
+
 .option {
   position: relative;
   display: grid;

@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../features/rooms/queries', () => ({
   useRoom: () => ({ data: mocks.room ?? {
-    id: 'room-1', name: 'Test room', state: 'voting', round_no: 1, version: 1,
+    id: 'room-1', name: 'Test room', city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', state: 'voting', round_no: 1, version: 1,
     participants: [], myIntent: null,
     pool: { version: 1, round_no: 1, state: 'ready', total: 2, voted_by_me: 0, my_pool_finished: false, room_exhausted: false, retry_after_seconds: null, exhaustion_reasons: [] },
     match: null, invite: null, allowed_actions: ['vote'],
@@ -42,7 +42,7 @@ function renderRoom() {
 
 function recoveryRoom() {
   return {
-    id: 'room-recovery', name: 'Test room', state: 'exhausted', round_no: 1, version: 1,
+    id: 'room-recovery', name: 'Test room', city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', state: 'exhausted', round_no: 1, version: 1,
     participants: [], myIntent: {
       dates: ['2099-09-27'], day_types: [], time_slots: ['evening'],
       category_slugs: ['concerts', 'standup'], budget_max_minor: 200_000,
@@ -82,7 +82,7 @@ describe('room vote card transition', () => {
   })
 
   it('shows all eleven API categories in room intent and recovery choices', () => {
-    mocks.room = { id: 'room-1', name: 'Test room', state: 'collecting_intents', round_no: 1, version: 1, participants: [], myIntent: null, pool: null, match: null, invite: null, allowed_actions: ['edit_intent'] }
+    mocks.room = { id: 'room-1', name: 'Test room', city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', state: 'collecting_intents', round_no: 1, version: 1, participants: [], myIntent: null, pool: null, match: null, invite: null, allowed_actions: ['edit_intent'] }
     renderRoom()
     const categories = ['Концерты', 'Кино', 'Театр', 'Стендап', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']
     for (const label of categories) expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
@@ -90,6 +90,7 @@ describe('room vote card transition', () => {
 
   it('requires choosing and reviewing a concrete category before saving it', async () => {
     mocks.room = recoveryRoom()
+    mocks.room.pool.total = 3
     renderRecoveryRoom()
 
     fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
@@ -105,7 +106,7 @@ describe('room vote card transition', () => {
     expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и обновить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       category_slugs: ['concerts', 'standup', 'cinema'],
@@ -128,7 +129,7 @@ describe('room vote card transition', () => {
     expect(screen.getByText('Лимит стоимости увеличится до 2 500 ₽.')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и обновить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       budget_max_minor: 250_000,
@@ -153,7 +154,7 @@ describe('room vote card transition', () => {
     expect(screen.getByRole('heading', { name: 'Проверьте изменение' })).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить и обновить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       dates: expect.arrayContaining([selectedDate]),

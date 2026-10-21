@@ -89,6 +89,9 @@ func Normalize(config Config, record map[string]any) (providers.NormalizedEvent,
 	if v, e := optionalTime(record, "ends_at", config.Fields.EndsAt, loc); e != nil {
 		return providers.NormalizedEvent{}, e
 	} else if v != nil {
+		if !v.After(event.StartsAt) {
+			return providers.NormalizedEvent{}, errors.New("ends_at must be after starts_at")
+		}
 		event.EndsAt = v
 	}
 	if event.Venue.Address, err = optionalString(record, "venue.address", config.Fields.VenueAddress); err != nil {
@@ -116,6 +119,9 @@ func Normalize(config Config, record map[string]any) (providers.NormalizedEvent,
 	}
 	if event.PriceToMinor, err = optionalPrice(record, "price_to", config.PriceTo, config.PriceUnit); err != nil {
 		return providers.NormalizedEvent{}, err
+	}
+	if event.PriceFromMinor != nil && event.PriceToMinor != nil && *event.PriceToMinor < *event.PriceFromMinor {
+		return providers.NormalizedEvent{}, errors.New("price_to must not be below price_from")
 	}
 	if image, e := optionalString(record, "image", config.Fields.Image); e != nil {
 		return providers.NormalizedEvent{}, e

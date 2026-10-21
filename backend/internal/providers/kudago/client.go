@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -26,12 +28,16 @@ type Options struct {
 	Timeout  time.Duration
 	Location string
 	PageSize int
+	CityID   uuid.UUID
+	Timezone string
 }
 
 type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	location   string
+	cityID     uuid.UUID
+	timezone   string
 	pageSize   int
 	now        func() time.Time
 }
@@ -56,6 +62,16 @@ func NewClient(options Options) (*Client, error) {
 	if options.PageSize < 1 || options.PageSize > 100 {
 		return nil, errors.New("kudago page size must be between 1 and 100")
 	}
+	timezone := strings.TrimSpace(options.Timezone)
+	if timezone == "" {
+		timezone = moscowZone
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return nil, errors.New("kudago timezone is invalid")
+	}
+	if options.CityID != uuid.Nil && strings.TrimSpace(options.Timezone) == "" {
+		return nil, errors.New("kudago timezone is required for configured city")
+	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/"
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSHandshakeTimeout = options.Timeout
@@ -63,6 +79,8 @@ func NewClient(options Options) (*Client, error) {
 		baseURL:    baseURL,
 		httpClient: &http.Client{Transport: transport, Timeout: options.Timeout},
 		location:   strings.TrimSpace(options.Location),
+		cityID:     options.CityID,
+		timezone:   timezone,
 		pageSize:   options.PageSize,
 		now:        time.Now,
 	}, nil

@@ -23,7 +23,8 @@ func createSnapshot(room roomsql.Room, participants []roomsql.GetPublicParticipa
 	invite := api.RoomInvite{Url: material.URL, MaxDeepLink: material.MaxDeepLink, ExpiresAt: material.ExpiresAt}
 	return api.RoomSnapshot{
 		Id: room.ID, Name: room.Name, CityId: room.CityID, State: api.RoomState(room.State),
-		RoundNo: int(room.RoundNo), Version: int(room.Version), CreatedAt: room.CreatedAt.Time,
+		PublicPlan: storedPublicPlan(room.PublicPlan),
+		RoundNo:    int(room.RoundNo), Version: int(room.Version), CreatedAt: room.CreatedAt.Time,
 		ExpiresAt: room.ExpiresAt.Time, Participants: items,
 		Invite:   nullable.NewNullableWithValue(invite),
 		MyIntent: nullable.NewNullNullable[api.MyIntent](), Pool: nullable.NewNullNullable[api.PoolSummary](),

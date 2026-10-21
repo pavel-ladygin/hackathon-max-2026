@@ -18,8 +18,28 @@ func TestExpectedVersionsIncludesFoundation(t *testing.T) {
 	if len(versions) < len(want) || !slices.Equal(versions[:len(want)], want) {
 		t.Fatalf("foundation versions = %v, want prefix %v", versions, want)
 	}
-	if versions[len(versions)-1] != 24 {
-		t.Fatalf("latest migration version = %d, want 24", versions[len(versions)-1])
+	for _, required := range []int64{25, 30, 31} {
+		if !slices.Contains(versions, required) {
+			t.Fatalf("required migration %d is missing: %v", required, versions)
+		}
+	}
+}
+
+func TestEventSubmissionsMigrationContainsTransactionalWorkflowAndSafeDown(t *testing.T) {
+	data, err := Files.ReadFile("000030_event_submissions.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(data)
+	for _, required := range []string{
+		"-- +goose Up", "CREATE TABLE event_submissions", "UNIQUE (author_id, idempotency_key)",
+		"CREATE INDEX event_submissions_queue_idx", "CREATE TRIGGER event_submissions_transition_guard",
+		"'11111111-1111-5111-8111-111111111130'", "'user'", "'system'", "-- +goose Down",
+		"cannot roll back user event submissions while published user events exist",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Errorf("migration is missing %q", required)
+		}
 	}
 }
 
