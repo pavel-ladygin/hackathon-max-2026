@@ -6,6 +6,8 @@ import type { CategorySlug } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
 import { BottomNav, Button, Chip, ChipGroup, Empty, EventCard, FavoriteButton, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
+import { useProfileCity } from '../../features/city/useProfileCity'
+import { CityPicker } from '../../shared/ui/CityPicker'
 import { DatePicker } from '../../shared/ui/date-picker'
 import styles from '../pages.module.css'
 import catalogStyles from './catalogMap.module.css'
@@ -17,6 +19,9 @@ const CatalogMap = lazy(() => import('./CatalogMap').then((module) => ({ default
 
 export function CatalogPage() {
   const navigate = useNavigate()
+  const profileCity = useProfileCity()
+  const cityId = profileCity.cityId
+  const [cityPickerOpen, setCityPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebouncedValue(query)
   const [selected, setSelected] = useState<CategorySlug[]>([])
@@ -29,8 +34,8 @@ export function CatalogPage() {
   const trackedSearch = useRef('')
   const reduceMotion = useReducedMotion()
   const normalizedQuery = debouncedQuery.trim()
-  const params = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, limit: 24 }), [dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
-  const mapFilters = useMemo(() => ({ q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined }), [dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
+  const params = useMemo(() => ({ city_id: cityId ?? undefined, q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, limit: 24 }), [cityId, dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
+  const mapFilters = useMemo(() => ({ city_id: cityId ?? undefined, q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined }), [cityId, dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
   const results = useEventSearch(params, view === 'list')
   const searchCount = useEventSearchCount(mapFilters, view === 'list' && Boolean(results.data?.pages[0]) && !results.isPlaceholderData)
   const save = useSetSavedEvent()
@@ -74,6 +79,7 @@ export function CatalogPage() {
   return <PageShell withBottomNav>
     <TopBar title="Афиша" onBack={() => navigate('/')} />
     <PageContent>
+      {cityPickerOpen ? <CityPicker cityId={cityId} onSelect={profileCity.selectCity} pending={profileCity.isPending} error={profileCity.error} onClose={() => setCityPickerOpen(false)} /> : null}
       <label className={styles.searchLabel} htmlFor="catalog-search">Найти событие</label>
       <div className={styles.searchField}>
         <input id="catalog-search" className={styles.searchInput} type="search" name="catalog-search" autoComplete="off" maxLength={120} value={query} onChange={(event) => { trackedSearch.current = ''; setQuery(event.target.value) }} placeholder="Название, место или жанр" />
@@ -91,6 +97,7 @@ export function CatalogPage() {
       </div>
       <AnimatePresence initial={false}>
         {advancedFiltersOpen ? <motion.section id="catalog-advanced-filters" className={styles.advancedFilters} aria-label="Все фильтры" initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} transition={{ duration: reduceMotion ? 0 : .22, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
+          <div className={styles.fieldLabel}><span>Город</span><Button tone="secondary" aria-haspopup="dialog" aria-label={`Изменить город: ${profileCity.city?.name ?? 'Выберите город'}`} disabled={!profileCity.canSelect} onClick={() => setCityPickerOpen(true)}>{profileCity.city?.name ?? 'Выберите город'}</Button></div>
           <ChipGroup label="Категории" className={styles.catalogChips}>{CATEGORY_OPTIONS.map((category) => <Chip key={category.slug} selected={selected.includes(category.slug)} onClick={() => setSelected((current) => current.includes(category.slug) ? current.filter((item) => item !== category.slug) : [...current, category.slug])}>{category.label}</Chip>)}</ChipGroup>
           <div className={styles.filterRow}>
             <DatePicker id="catalog-date-from" label="С" value={dateFrom} max={dateTo || undefined} onChange={(value) => setDateFrom(value ?? '')} />
@@ -110,7 +117,7 @@ export function CatalogPage() {
       </div>
       <div className={styles.catalogResults}>{view === 'map' ? <>
         <div className={styles.sectionHead}><h2>События на карте</h2></div>
-        <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap filters={mapFilters} /></Suspense>
+        <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap key={cityId} filters={mapFilters} /></Suspense>
       </> : results.isPending ? <ScreenSkeleton variant="cards" inline label="Загружаем события…" /> : results.isError ? <Empty inline title="Поиск недоступен" description="Проверьте соединение и попробуйте ещё раз." action={<Button onClick={() => void results.refetch()}>Повторить</Button>} /> : events.length === 0 ? <Empty inline title="Ничего не нашли" description="Попробуйте убрать фильтр или изменить запрос." /> : <>
         <div className={styles.sectionHead}><h2>События</h2>{shownTotal !== null ? <span className={styles.eyebrow}>{shownTotal} найдено</span> : null}</div>
         <AnimatePresence mode="wait" initial={false}>

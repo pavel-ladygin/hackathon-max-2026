@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CreateRoomForm } from './CreateRoomForm'
-import { budgetToMinor, KAZAN_CITY_ID, MOSCOW_CITY_ID } from './public-plan'
+import { budgetToMinor, KAZAN_CITY_ID, MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID } from './public-plan'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -18,19 +18,36 @@ const baseProps = (onSubmit = vi.fn()) => ({
 })
 
 describe('CreateRoomForm', () => {
-  it('uses an explicit saved city before profile and Moscow fallback, and leaves the proposal unpublished by default', async () => {
+  it('discards a legacy draft city when the profile city differs and leaves the proposal unpublished by default', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     window.sessionStorage.setItem('user:one:create-room', JSON.stringify({ version: 1, cityId: KAZAN_CITY_ID, citySelectedExplicitly: true, name: 'Черновик', publicPlanEnabled: false, plan: { dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false } }))
     render(<CreateRoomForm {...baseProps(onSubmit)} profileCityId={MOSCOW_CITY_ID} />)
 
-    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Казань — город готовится')
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Москва')
     expect(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ })).not.toBeChecked()
 
     await user.click(screen.getByRole('combobox', { name: /Город комнаты/ }))
     await user.click(screen.getByRole('option', { name: 'Москва' }))
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledWith({ name: 'Черновик', city_id: MOSCOW_CITY_ID })
+  })
+
+  it('offers ready Saint Petersburg as a room city', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<CreateRoomForm {...baseProps(onSubmit)} profileCityId={MOSCOW_CITY_ID} />)
+    await user.click(screen.getByRole('combobox', { name: /Город комнаты/ }))
+    await user.click(screen.getByRole('option', { name: 'Санкт-Петербург' }))
+    await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Куда идём в субботу?', city_id: SAINT_PETERSBURG_CITY_ID })
+  })
+
+  it('keeps a room draft while following a changed profile city', () => {
+    window.sessionStorage.setItem('user:one:create-room', JSON.stringify({ version: 1, cityId: SAINT_PETERSBURG_CITY_ID, citySelectedExplicitly: true, profileCityId: MOSCOW_CITY_ID, name: 'Черновик Петербург', publicPlanEnabled: false, plan: { dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false } }))
+    render(<CreateRoomForm {...baseProps()} profileCityId={KAZAN_CITY_ID} />)
+    expect(screen.getByRole('combobox', { name: /Город комнаты/ })).toHaveTextContent('Казань — город готовится')
+    expect(screen.getByLabelText('Название комнаты')).toHaveValue('Черновик Петербург')
   })
 
   it('uses profile city and keeps unknown profile selection gated instead of silently substituting Moscow', () => {

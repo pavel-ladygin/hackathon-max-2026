@@ -8,9 +8,9 @@ import { createEventMarkerElement } from './eventMarker'
 import { MapEventPreview } from './MapEventPreview'
 import { loadYandexMaps, markerSizeForZoom, type YandexCamera, type YandexMap, type YandexMapUpdateEvent, type YandexMapsApi } from './yandexMaps'
 import { MapAreaCache, paddedViewportBounds } from './mapResults'
+import { cityById, MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { track } from '../../shared/analytics/client'
 
-const MOSCOW_CENTER: [number, number] = [37.618423, 55.751244]
 const MAP_IDLE_MS = 320
 const MAX_OVERLAP_DIAMETER = 72
 const SPIDER_RADIUS = 80
@@ -120,7 +120,8 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
   const sequence = useRef(0)
   const pendingArea = useRef<string | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const initial = MOSCOW_CENTER
+  const city = cityById(filters.city_id ?? MOSCOW_CITY_ID) ?? cityById(MOSCOW_CITY_ID)!
+  const initial = useMemo<[number, number]>(() => [city.center[1], city.center[0]], [city])
   const [camera, setCamera] = useState<YandexCamera>({ center: initial, zoom: 11 })
   const cameraRef = useRef<YandexCamera>({ center: initial, zoom: 11 })
   const [viewportSize, setViewportSize] = useState({ width: 700, height: 500 })
@@ -237,6 +238,7 @@ export function CatalogMap({ filters }: { filters: MapFilters }) {
     }).catch(() => { if (!cancelled) setMapError(true) })
     return () => {
       cancelled = true
+      sequence.current += 1
       resizeObserver?.disconnect()
       if (idleTimer.current) clearTimeout(idleTimer.current)
       map.current?.destroy()

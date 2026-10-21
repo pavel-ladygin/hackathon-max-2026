@@ -24,3 +24,6 @@
   .cancelEnd:hover:not(:disabled) { background: var(--color-hover); box-shadow: var(--shadow-control-soft); }
 }
 @media (max-width: 600px) { .roomActions { width: min(155px, 42vw); } }
+
+.cityButton { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; padding: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 22px; font-weight: 700; text-align: left; cursor: pointer; }
+.cityButton:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 6px; }

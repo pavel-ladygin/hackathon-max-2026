@@ -13,7 +13,7 @@ import { Button, Chip, ChipGroup, ErrorState, FieldError, PageContent, PageShell
 import styles from '../pages.module.css'
 import notificationStyles from './preferences.module.css'
 
-const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
+import { MOSCOW_CITY_ID } from '../../shared/lib/cities'
 const schema = z.object({
   budget: z.coerce.number().min(0).max(1_000_000),
   days: z.array(z.enum(['weekday', 'weekend'])),

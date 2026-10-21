@@ -1,14 +1,10 @@
 import { z } from 'zod'
 import { CATEGORY_REGISTRY } from '../../shared/api/categories'
 import type { PublicPlan, RoomSnapshot } from '../../shared/api/types'
+import { CITIES, KAZAN_CITY_ID, MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID, cityById } from '../../shared/lib/cities'
 
-export const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
-export const KAZAN_CITY_ID = '3d3c83de-691b-510e-85e5-79685c4012ee'
-
-export const ROOM_CITIES = [
-  { id: MOSCOW_CITY_ID, name: 'Москва', timezone: 'Europe/Moscow', ready: true },
-  { id: KAZAN_CITY_ID, name: 'Казань', timezone: 'Europe/Moscow', ready: false },
-] as const
+export { KAZAN_CITY_ID, MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID }
+export const ROOM_CITIES = CITIES
 
 export const TIME_SLOT_OPTIONS = [
   { value: 'morning', label: 'Утро' },
@@ -102,7 +98,7 @@ export function publicPlanPreset(
 }
 
 export function roomCity(id?: string | null) {
-  return ROOM_CITIES.find((city) => city.id === id)
+  return cityById(id)
 }
 
 export function budgetToMinor(value: string): number | null {
