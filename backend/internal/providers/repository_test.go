@@ -55,6 +55,19 @@ func TestRepositoryRejectsInvalidInputBeforeDatabase(t *testing.T) {
 	}
 }
 
+func TestKudaGoAuditCodesRemainPayloadFree(t *testing.T) {
+	for _, code := range []string{"kudago_http_403", "kudago_http_429", "kudago_timeout", "kudago_transport_error"} {
+		if got := safeSyncErrorText(code); got != code {
+			t.Fatalf("code=%q got=%q", code, got)
+		}
+	}
+	for _, unsafe := range []string{"kudago_http_403?token=private", "kudago_http_999", "<html>403 nginx</html>"} {
+		if got := safeSyncErrorText(unsafe); got != "provider sync failed" {
+			t.Fatalf("unsafe code accepted: %q", got)
+		}
+	}
+}
+
 func TestRepositoryRequiresDatabase(t *testing.T) {
 	_, err := NewRepository(nil).Upsert(context.Background(), uuid.New(), validPersistenceEvent())
 	if err == nil {

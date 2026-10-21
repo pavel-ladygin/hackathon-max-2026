@@ -32,6 +32,7 @@ const (
 var timepadMoscowLocation = time.FixedZone("Europe/Moscow", 3*60*60)
 
 type Options struct {
+	UpsertOnly           bool
 	BaseURL              string
 	Token                string
 	Timeout              time.Duration
@@ -78,6 +79,7 @@ func (l *intervalLimiter) Wait(ctx context.Context) error {
 }
 
 type Client struct {
+	upsertOnly bool
 	baseURL    *url.URL
 	token      string
 	httpClient *http.Client
@@ -132,6 +134,7 @@ func NewClient(options Options) (*Client, error) {
 	}
 	baseURL.Path = strings.TrimRight(baseURL.Path, "/") + "/"
 	return &Client{
+		upsertOnly: options.UpsertOnly,
 		baseURL:    baseURL,
 		token:      token,
 		httpClient: &http.Client{Timeout: options.Timeout},
@@ -161,6 +164,7 @@ func (c *Client) fetchPage(ctx context.Context, skip int, startsAtMin, startsAtM
 	query.Set("starts_at_min", startsAtMin.In(timepadMoscowLocation).Format(time.RFC3339))
 	query.Set("starts_at_max", startsAtMax.In(timepadMoscowLocation).Format(time.RFC3339))
 	query.Set("fields", requestedFields)
+	query.Set("cities", c.effectiveCityName())
 	requestURL.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)

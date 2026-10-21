@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers"
 )
 
 func testClient(t *testing.T, server *httptest.Server, timeout time.Duration) *Client {
@@ -99,7 +101,7 @@ func TestClientTimeoutAndContextCancellation(t *testing.T) {
 
 	t.Run("client timeout", func(t *testing.T) {
 		_, err := testClient(t, server, 20*time.Millisecond).fetchPage(context.Background(), fetchOptions{})
-		if err == nil || !strings.Contains(err.Error(), "perform kudago request") {
+		if err == nil || providers.SyncErrorCode(err) != "kudago_timeout" || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -115,13 +117,15 @@ func TestClientTimeoutAndContextCancellation(t *testing.T) {
 }
 
 func TestClientHTTPError(t *testing.T) {
+	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "provider unavailable", http.StatusInternalServerError)
+		requests++
+		http.Error(w, "provider unavailable", http.StatusForbidden)
 	}))
 	defer server.Close()
 
 	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
-	if err == nil || !strings.Contains(err.Error(), "status 500") || !strings.Contains(err.Error(), "provider unavailable") {
+	if err == nil || providers.SyncErrorCode(err) != "kudago_http_403" || strings.Contains(err.Error(), "provider unavailable") || requests != 1 {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -134,11 +138,73 @@ func TestClientBoundsHTTPErrorBody(t *testing.T) {
 	defer server.Close()
 
 	_, err := testClient(t, server, time.Second).fetchPage(context.Background(), fetchOptions{})
-	if err == nil || !strings.Contains(err.Error(), "[truncated]") || strings.Contains(err.Error(), "secret-tail") {
-		t.Fatalf("unexpected bounded error: %v", err)
+	if err == nil || providers.SyncErrorCode(err) != "kudago_http_502" || strings.Contains(err.Error(), "secret-tail") {
+		t.Fatalf("unexpected safe error: %v", err)
 	}
-	if len(err.Error()) > maxErrorBodyBytes+100 {
-		t.Fatalf("error is not bounded: %d bytes", len(err.Error()))
+}
+
+func TestClientPacesPagesAndCancellation(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		fmt.Fprint(w, `{"count":0,"results":[]}`)
+	}))
+	defer server.Close()
+	client := testClient(t, server, time.Second)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	client.wallNow = func() time.Time { return now }
+	var waits []time.Duration
+	client.wait = func(ctx context.Context, delay time.Duration) error {
+		waits = append(waits, delay)
+		if delay > 0 {
+			now = now.Add(delay)
+		}
+		return ctx.Err()
+	}
+	if _, err := client.fetchPage(context.Background(), fetchOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.fetchPage(context.Background(), fetchOptions{Cursor: server.URL + "/public-api/v1.4/events/?page=2"}); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || len(waits) != 2 || waits[0] != 0 || waits[1] != 10*time.Second {
+		t.Fatalf("requests=%d waits=%v", requests, waits)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.fetchPage(ctx, fetchOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("canceled request reached server")
+	}
+}
+
+func TestClientRetryAfterCooldown(t *testing.T) {
+	for _, retryAfter := range []string{"30", time.Date(2026, 10, 21, 12, 0, 30, 0, time.UTC).Format(http.TimeFormat), "invalid", "999999999999999999999"} {
+		t.Run(retryAfter, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				w.Header().Set("Retry-After", retryAfter)
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			defer server.Close()
+			client := testClient(t, server, time.Second)
+			now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+			client.wallNow = func() time.Time { return now }
+			waits := 0
+			client.wait = func(ctx context.Context, delay time.Duration) error { waits++; return ctx.Err() }
+			if _, err := client.fetchPage(context.Background(), fetchOptions{}); providers.SyncErrorCode(err) != "kudago_http_429" {
+				t.Fatalf("first error=%v", err)
+			}
+			if _, err := client.fetchPage(context.Background(), fetchOptions{}); providers.SyncErrorCode(err) != "kudago_http_429" {
+				t.Fatalf("second error=%v", err)
+			}
+			if requests != 1 || waits != 1 {
+				t.Fatalf("requests=%d waits=%d", requests, waits)
+			}
+		})
 	}
 }
 

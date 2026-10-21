@@ -20,10 +20,16 @@ func testClient(t *testing.T, server *httptest.Server) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mockClient := *server.Client()
+	transport := mockClient.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	mockClient.Transport = mockNetworkOnly{next: transport}
 	return &Client{
 		baseURL:    baseURL,
 		token:      "test-token",
-		httpClient: server.Client(),
+		httpClient: &mockClient,
 		pageSize:   2,
 		limiter:    limiterFunc(func(context.Context) error { return nil }),
 		now:        time.Now,
@@ -33,7 +39,7 @@ func testClient(t *testing.T, server *httptest.Server) *Client {
 	}
 }
 
-func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
+func TestClientFormsRequestWithCitiesFilter(t *testing.T) {
 	startsAtMin := time.Date(2026, 9, 29, 16, 44, 37, 0, time.UTC)
 	startsAtMax := startsAtMin.Add(90 * 24 * time.Hour)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -55,8 +61,8 @@ func TestClientFormsRequestWithoutCitiesFilter(t *testing.T) {
 		if !includesPosterImage {
 			t.Errorf("fields = %q, want poster_image requested", query.Get("fields"))
 		}
-		if _, exists := query["cities"]; exists {
-			t.Errorf("cities must be omitted, got %q", query.Get("cities"))
+		if got := query.Get("cities"); got != "Москва" {
+			t.Errorf("cities=%q, want Москва", got)
 		}
 		for key, want := range map[string]string{
 			"limit":         "2",
