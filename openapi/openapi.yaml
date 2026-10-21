@@ -74,6 +74,47 @@ paths:
           type: string
           minLength: 1
           maxLength: 200
+  /event-submissions/images:
+    post:
+      tags:
+      - EventSubmissions
+      operationId: uploadEventSubmissionImage
+      summary: Upload an event poster for the authenticated user
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSubmissionImageUpload'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '413':
+          description: Image exceeds the upload size limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Unsupported or invalid image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /event-submissions/options:
     get:
       tags:
@@ -1816,6 +1857,13 @@ components:
           - 'null'
           maxLength: 2048
           pattern: ^https://
+          description: Legacy external poster URL. Do not provide together with image_id.
+        image_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: ID returned by the authenticated image upload endpoint.
         age_rating:
           type:
           - string
@@ -1971,6 +2019,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventSourceAllowedDomain'
+    EventSubmissionImageUpload:
+      type: object
+      additionalProperties: false
+      required:
+      - image_id
+      properties:
+        image_id:
+          type: string
+          format: uuid
     EventSubmissionCreated:
       type: object
       required:

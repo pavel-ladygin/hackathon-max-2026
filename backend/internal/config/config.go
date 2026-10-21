@@ -47,6 +47,11 @@ type Config struct {
 	TimepadTimeout              time.Duration
 	TimepadPageSize             int
 	TimepadMaxRequestsPerMinute int
+	RegS3Endpoint               string
+	RegS3Region                 string
+	RegS3Bucket                 string
+	RegS3AccessKeyID            string
+	RegS3SecretAccessKey        string
 	EventSyncCityID             uuid.UUID
 	KudaGoLocationExplicit      bool
 	TimepadCityName             string
@@ -79,6 +84,11 @@ func Load() (Config, error) {
 		TimepadTimeout:              30 * time.Second,
 		TimepadPageSize:             100,
 		TimepadMaxRequestsPerMinute: 20,
+		RegS3Endpoint:               "https://s3.regru.cloud",
+		RegS3Region:                 "us-east-1",
+		RegS3Bucket:                 strings.TrimSpace(os.Getenv("REG_S3_BUCKET")),
+		RegS3AccessKeyID:            strings.TrimSpace(os.Getenv("REG_S3_ACCESS_KEY_ID")),
+		RegS3SecretAccessKey:        strings.TrimSpace(os.Getenv("REG_S3_SECRET_ACCESS_KEY")),
 		EventSyncCityID:             uuid.MustParse(catalogseed.MoscowCityID),
 	}
 	if cfg.EventSyncProvider != "" && cfg.EventSyncProvider != "timepad" {
@@ -96,6 +106,30 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("TIMEPAD_UPSERT_ONLY must be true or false")
 		}
 		cfg.TimepadUpsertOnly = value == "true"
+	}
+	if value := strings.TrimSpace(os.Getenv("REG_S3_ENDPOINT")); value != "" {
+		cfg.RegS3Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("REG_S3_REGION")); value != "" {
+		cfg.RegS3Region = value
+	}
+	s3Set := 0
+	for _, value := range []string{cfg.RegS3Bucket, cfg.RegS3AccessKeyID, cfg.RegS3SecretAccessKey} {
+		if value != "" {
+			s3Set++
+		}
+	}
+	if s3Set != 0 && s3Set != 3 {
+		return Config{}, fmt.Errorf("REG_S3_BUCKET, REG_S3_ACCESS_KEY_ID, and REG_S3_SECRET_ACCESS_KEY must be configured together")
+	}
+	if s3Set == 3 {
+		parsedEndpoint, endpointErr := url.Parse(cfg.RegS3Endpoint)
+		if !validProviderBaseURL(cfg.RegS3Endpoint) || endpointErr != nil || parsedEndpoint.Scheme != "https" {
+			return Config{}, fmt.Errorf("REG_S3_ENDPOINT is invalid")
+		}
+	}
+	if cfg.RegS3Region == "" || strings.ContainsAny(cfg.RegS3Region, "/\\ \t\r\n") {
+		return Config{}, fmt.Errorf("REG_S3_REGION is invalid")
 	}
 	cfg.TicketProviderAllowlist = append(providerpolicy.Defaults().Tickets, splitList(os.Getenv("TICKET_PROVIDER_ALLOWLIST"))...)
 	if value := strings.TrimSpace(os.Getenv("KUDAGO_BASE_URL")); value != "" {

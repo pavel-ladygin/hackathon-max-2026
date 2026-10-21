@@ -53,14 +53,18 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 	})
 
 	t.Run("M02/M04 upgrade from 30 applies pending migrations and preserves related data", func(t *testing.T) {
-		db, pool := newMulticityMigrationDatabase(t, fixture, false)
-		upTo(t, db, 30)
-		before := seedVersion30References(t, db)
-		assertCurrent(t, pool, false)
-		upAll(t, db)
-		assertOnlyVersionAppliedAfter30(t, db)
-		assertVersion30References(t, db, before)
-		assertCurrent(t, pool, true)
+		for _, locale := range []struct {
+			name    string
+			cLocale bool
+		}{
+			{name: "ICU", cLocale: false},
+			{name: "C locale", cLocale: true},
+		} {
+			t.Run(locale.name, func(t *testing.T) {
+				db, pool := newMulticityMigrationDatabase(t, fixture, locale.cLocale)
+				assertUpgradeFrom30ThroughCurrent(t, db, pool)
+			})
+		}
 	})
 
 	t.Run("M03 repeated Up is idempotent", func(t *testing.T) {
@@ -193,13 +197,40 @@ func TestMulticityMigrationUpgradeMatrix(t *testing.T) {
 		assertVersion30References(t, db, before)
 	})
 
-	t.Run("M10 CheckCurrent boundary rejects 30 and accepts current", func(t *testing.T) {
+	t.Run("M10 CheckCurrent boundary rejects 30 and 31 and accepts current", func(t *testing.T) {
 		db, pool := newMulticityMigrationDatabase(t, fixture, false)
 		upTo(t, db, 30)
+		assertCurrent(t, pool, false)
+		upTo(t, db, 31)
 		assertCurrent(t, pool, false)
 		upAll(t, db)
 		assertCurrent(t, pool, true)
 	})
+}
+
+func assertUpgradeFrom30ThroughCurrent(t *testing.T, db *sql.DB, pool *pgxpool.Pool) {
+	t.Helper()
+	upTo(t, db, 30)
+	before := seedVersion30References(t, db)
+	assertCurrent(t, pool, false)
+	upTo(t, db, 31)
+	assertImageUploadsTable(t, db, false)
+	assertCurrent(t, pool, false)
+	upAll(t, db)
+	assertVersionsAppliedAfter30(t, db)
+	assertImageUploadsTable(t, db, true)
+	for _, view := range []string{"analytics_recommendation_rounds", "analytics_recommendation_room_events", "analytics_recommendation_rooms"} {
+		var exists bool
+		if err := db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+view).Scan(&exists); err != nil || !exists {
+			t.Fatalf("recommendation view %s missing after upgrade: %v", view, err)
+		}
+	}
+	var spbCount int
+	if err := db.QueryRow(`SELECT count(*) FROM cities WHERE id='bf61fbf5-8c5b-53da-96c7-3560df3f8177' AND name='Санкт-Петербург' AND timezone='Europe/Moscow'`).Scan(&spbCount); err != nil || spbCount != 1 {
+		t.Fatalf("SPB metadata missing after upgrade: count=%d err=%v", spbCount, err)
+	}
+	assertVersion30References(t, db, before)
+	assertCurrent(t, pool, true)
 }
 
 func newMulticityMigrationDatabase(t *testing.T, fixture *pgx.ConnConfig, cLocale bool) (*sql.DB, *pgxpool.Pool) {
@@ -320,11 +351,11 @@ func assertCurrent(t *testing.T, pool *pgxpool.Pool, want bool) {
 		t.Fatalf("CheckCurrent rejected complete database: %v", err)
 	}
 	if !want && err == nil {
-		t.Fatal("CheckCurrent accepted database missing required migrations")
+		t.Fatal("CheckCurrent accepted an incomplete database migration set")
 	}
 }
 
-func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
+func assertVersionsAppliedAfter30(t *testing.T, db *sql.DB) {
 	t.Helper()
 	rows, err := db.Query(`SELECT version_id FROM goose_db_version WHERE id > (SELECT max(id) FROM goose_db_version WHERE version_id=30 AND is_applied) AND is_applied ORDER BY id`)
 	if err != nil {
@@ -357,7 +388,18 @@ func assertOnlyVersionAppliedAfter30(t *testing.T, db *sql.DB) {
 	}
 }
 
-type version30References struct{ user, event, room uuid.UUID }
+func assertImageUploadsTable(t *testing.T, db *sql.DB, want bool) {
+	t.Helper()
+	var exists bool
+	if err := db.QueryRow(`SELECT to_regclass('public.event_image_uploads') IS NOT NULL`).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if exists != want {
+		t.Fatalf("event_image_uploads exists = %v, want %v", exists, want)
+	}
+}
+
+type version30References struct{ user, event, room, pendingSubmission uuid.UUID }
 
 func seedVersion30References(t *testing.T, db *sql.DB) version30References {
 	t.Helper()
@@ -392,13 +434,54 @@ func seedVersion30References(t *testing.T, db *sql.DB) version30References {
 	if _, err := db.Exec(`INSERT INTO saved_events(user_id,event_id) VALUES($1,$2)`, user, event); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO event_submissions(id,author_id,city_id,starts_at,timezone,payload,status,idempotency_key,request_hash) VALUES($1,$2,$3,now(),'Europe/Moscow','{}','pending','pending',decode(repeat('00',32),'hex'))`, uuid.New(), user, city); err != nil {
+	pendingSubmission := uuid.New()
+	if _, err := db.Exec(`INSERT INTO event_submissions(id,author_id,city_id,starts_at,timezone,payload,status,idempotency_key,request_hash) VALUES($1,$2,$3,now(),'Europe/Moscow','{}','pending','pending',decode(repeat('00',32),'hex'))`, pendingSubmission, user, city); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO event_submissions(id,author_id,city_id,starts_at,timezone,payload,status,idempotency_key,request_hash,decided_at,decided_by,event_id) VALUES($1,$2,$3,now(),'Europe/Moscow','{}','approved','approved',decode(repeat('01',32),'hex'),now(),'fixture',$4)`, uuid.New(), user, city, event); err != nil {
 		t.Fatal(err)
 	}
-	return version30References{user: user, event: event, room: room}
+	return version30References{user: user, event: event, room: room, pendingSubmission: pendingSubmission}
+}
+
+type version32ImageUpload struct {
+	id           uuid.UUID
+	owner        uuid.UUID
+	submissionID uuid.UUID
+	objectKey    string
+}
+
+func seedVersion32ImageUpload(t *testing.T, db *sql.DB, refs version30References) version32ImageUpload {
+	t.Helper()
+	upload := version32ImageUpload{
+		id:           uuid.New(),
+		owner:        refs.user,
+		submissionID: refs.pendingSubmission,
+		objectKey:    "event-submission-fixture/" + uuid.NewString() + ".webp",
+	}
+	if _, err := db.Exec(`INSERT INTO event_image_uploads
+		(id,owner_id,object_key,content_type,byte_size,width,height,submission_id)
+		VALUES($1,$2,$3,'image/webp',1024,640,480,$4)`,
+		upload.id, upload.owner, upload.objectKey, upload.submissionID); err != nil {
+		t.Fatal(err)
+	}
+	return upload
+}
+
+func assertVersion32Upload(t *testing.T, db *sql.DB, want version32ImageUpload) {
+	t.Helper()
+	var id, owner, submission uuid.UUID
+	var objectKey, contentType string
+	var byteSize int64
+	var width, height int
+	err := db.QueryRow(`SELECT id,owner_id,object_key,content_type,byte_size,width,height,submission_id
+		FROM event_image_uploads WHERE id=$1`, want.id).Scan(
+		&id, &owner, &objectKey, &contentType, &byteSize, &width, &height, &submission)
+	if err != nil || id != want.id || owner != want.owner || submission != want.submissionID ||
+		objectKey != want.objectKey || contentType != "image/webp" || byteSize != 1024 || width != 640 || height != 480 {
+		t.Fatalf("version 32 upload changed: id=%s owner=%s submission=%s key=%q type=%q size=%d dimensions=%dx%d err=%v",
+			id, owner, submission, objectKey, contentType, byteSize, width, height, err)
+	}
 }
 
 func assertVersion30References(t *testing.T, db *sql.DB, refs version30References) {

@@ -7,6 +7,7 @@ import { CreateRoomForm } from './CreateRoomForm'
 import { PlanSummary } from './PlanSummary'
 import { InvitePage, JoinPage, RoomFlowPage } from './RoomPages'
 import { maxPlatform } from '../../shared/platform/max/adapter'
+import { cityToday, formatPlanDate } from './public-plan'
 
 const mocks = vi.hoisted(() => ({
   bootstrapData: undefined as any,
@@ -57,9 +58,6 @@ function renderJoin() {
   return { ...view, rerenderJoin: () => view.rerender(tree()) }
 }
 
-function checkboxes(name: string) {
-  return screen.getAllByRole('checkbox', { name })
-}
 
 describe('public room plan flow', () => {
   beforeEach(() => {
@@ -77,16 +75,16 @@ describe('public room plan flow', () => {
     render(<CreateRoomForm profileCityId={cityId} draftKey="public-plan-create-test" pending={false} success={false} onSubmit={onSubmit} />)
 
     fireEvent.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
-    fireEvent.change(screen.getByLabelText('Новая дата публичного предложения'), { target: { value: '2099-11-20' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить дату' }))
-    fireEvent.click(checkboxes('Вечер')[0])
-    fireEvent.click(checkboxes('Концерты')[0])
-    fireEvent.change(screen.getByRole('spinbutton', { name: /Бюджет на человека/ }), { target: { value: '2500.25' } })
+    const date = cityToday('Europe/Moscow')
+    fireEvent.click(screen.getByRole('button', { name: formatPlanDate(date) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Вечер' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Концерты' }))
+    fireEvent.change(screen.getByLabelText(/Бюджет на человека/), { target: { value: '2500.25' } })
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Куда идём в субботу?', city_id: cityId,
-      public_plan: { dates: ['2099-11-20'], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025 },
+      public_plan: { dates: [date], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025 },
     })
   })
 
@@ -188,7 +186,7 @@ describe('public room plan flow', () => {
     mocks.room = roomFixture({ public_plan: undefined })
     roomView()
     expect(screen.queryByText(/Поля заполнены из публичного предложения/)).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Бюджет, ₽')).toHaveValue(3000)
+    expect(screen.getByLabelText('Бюджет, ₽')).toHaveValue('3000')
     expect(screen.getByRole('button', { name: 'Стендап' })).toHaveAttribute('aria-pressed', 'true')
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
   })

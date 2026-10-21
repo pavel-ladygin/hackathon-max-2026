@@ -15,6 +15,8 @@ export type DatePickerProps = {
   max?: string;
   disabled?: boolean;
   className?: string;
+  invalid?: boolean;
+  describedBy?: string;
 };
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -57,7 +59,7 @@ function dateLabel(date: Date): string {
   return DATE_FORMATTER.format(date);
 }
 
-export function DatePicker({ id, label, value = null, onChange, min, max, disabled = false, className = "" }: DatePickerProps) {
+export function DatePicker({ id, label, value = null, onChange, min, max, disabled = false, className = "", invalid = false, describedBy }: DatePickerProps) {
   const generatedId = useId();
   const fieldId = id ?? `date-picker-${generatedId.replace(/:/g, "")}`;
   const labelId = `${fieldId}-label`;
@@ -126,7 +128,22 @@ export function DatePicker({ id, label, value = null, onChange, min, max, disabl
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       setDraft(date);
+      return;
     }
+    const next = new Date(date);
+    if (event.key === "ArrowLeft") next.setDate(next.getDate() - 1);
+    else if (event.key === "ArrowRight") next.setDate(next.getDate() + 1);
+    else if (event.key === "ArrowUp") next.setDate(next.getDate() - 7);
+    else if (event.key === "ArrowDown") next.setDate(next.getDate() + 7);
+    else if (event.key === "Home") next.setDate(next.getDate() - ((next.getDay() + 6) % 7));
+    else if (event.key === "End") next.setDate(next.getDate() + (6 - ((next.getDay() + 6) % 7)));
+    else if (event.key === "PageUp") next.setMonth(next.getMonth() - 1);
+    else if (event.key === "PageDown") next.setMonth(next.getMonth() + 1);
+    else return;
+    event.preventDefault();
+    const bounded = clampToBounds(next, minDate, maxDate);
+    setMonth(atMonth(bounded));
+    window.setTimeout(() => document.getElementById(`${fieldId}-day-${toValue(bounded)}`)?.focus(), 0);
   };
 
   const isDisabledDate = (date: Date) => Boolean((minDate && date < minDate) || (maxDate && date > maxDate));
@@ -144,6 +161,8 @@ export function DatePicker({ id, label, value = null, onChange, min, max, disabl
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-labelledby={labelId}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         disabled={disabled}
         onClick={openPicker}
       >
@@ -179,6 +198,7 @@ export function DatePicker({ id, label, value = null, onChange, min, max, disabl
               const outside = date.getMonth() !== month.getMonth();
               return <button
                 key={toValue(date)}
+                id={`${fieldId}-day-${toValue(date)}`}
                 type="button"
                 role="gridcell"
                 className={`${styles.day} ${outside ? styles.outside : ""} ${isSameDay(date, draft) ? styles.selected : ""}`}

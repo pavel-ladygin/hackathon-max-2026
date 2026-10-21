@@ -43,8 +43,8 @@ describe('CreateRoomForm public proposal presets', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сегодня вечером' }))
 
     expect(screen.getByRole('button', { name: 'Создать комнату' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'Концерты' })).toBeChecked()
-    expect(screen.getByRole('spinbutton')).toHaveValue(2400)
+    expect(screen.getByRole('button', { name: 'Концерты' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('2400')
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledWith({
@@ -63,8 +63,8 @@ describe('CreateRoomForm public proposal presets', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Выходные' }))
 
-    expect(screen.getByRole('checkbox', { name: 'Театр' })).toBeChecked()
-    expect(screen.getByRole('spinbutton')).toHaveValue(850)
+    expect(screen.getByRole('button', { name: 'Театр' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('850')
     // Applying a preset only edits the draft; it must never submit the form.
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
@@ -82,19 +82,19 @@ describe('CreateRoomForm public proposal presets', () => {
     const { unmount } = renderForm()
 
     fireEvent.click(screen.getByRole('button', { name: 'Недорого' }))
-    expect(screen.getByRole('spinbutton')).toHaveValue(1000)
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('1000')
     unmount()
     seedDraft({ dates: ['2026-10-21'], time_slots: ['day'], category_slugs: ['concerts'], budget: '750' })
     renderForm()
     fireEvent.click(screen.getByRole('button', { name: 'Недорого' }))
-    expect(screen.getByRole('spinbutton')).toHaveValue(750)
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('750')
   })
 
   it('disables presets for a city without a ready catalog and does not replace it with Moscow', () => {
     seedDraft({}, KAZAN_CITY_ID)
     renderForm()
 
-    expect(screen.getByRole('combobox')).toHaveValue(KAZAN_CITY_ID)
+    expect(screen.getByRole('combobox').textContent).toContain('Казань — город готовится')
     for (const label of ['Сегодня вечером', 'Выходные', 'Недорого']) {
       expect(screen.getByRole('button', { name: label })).toBeDisabled()
     }
@@ -115,7 +115,7 @@ describe('CreateRoomForm public proposal presets', () => {
 
     window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ version: 1, cityId: 'unknown-city', citySelectedExplicitly: false, name: 'Черновик', publicPlanEnabled: true, plan: { dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false } }))
     renderForm(vi.fn(), { profileCityId: 'unknown-city' })
-    expect(screen.getByRole('combobox')).toHaveValue('unknown-city')
+    expect(screen.getByRole('combobox').textContent).toContain('Город профиля не поддерживается')
     for (const label of ['Сегодня вечером', 'Выходные', 'Недорого']) {
       expect(screen.getByRole('button', { name: label })).toBeDisabled()
     }
@@ -142,9 +142,9 @@ describe('CreateRoomForm public proposal presets', () => {
     vi.setSystemTime(new Date('2026-10-20T22:00:00+03:00'))
     fireEvent.click(tonight)
 
-    expect(screen.getByRole('checkbox', { name: 'Утро' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Концерты' })).toBeChecked()
-    expect(screen.getByRole('spinbutton')).toHaveValue(1200)
+    expect(screen.getByRole('button', { name: 'Утро' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Концерты' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('1200')
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledWith({
@@ -166,9 +166,9 @@ describe('CreateRoomForm public proposal presets', () => {
 
     const onSubmit = vi.fn()
     renderForm(onSubmit)
-    expect(screen.getByRole('checkbox', { name: 'Концерты' })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Театр' })).toBeChecked()
-    expect(screen.getByRole('spinbutton')).toHaveValue(800)
+    expect(screen.getByRole('button', { name: 'Концерты' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Театр' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText(/Бюджет на человека/)).toHaveValue('800')
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledWith({

@@ -37,6 +37,58 @@ func setValidConfigEnv(t *testing.T) {
 	t.Setenv("TIMEPAD_TIMEOUT", "")
 	t.Setenv("TIMEPAD_PAGE_SIZE", "")
 	t.Setenv("TIMEPAD_MAX_REQUESTS_PER_MINUTE", "")
+	t.Setenv("EVENT_SYNC_CITY_ID", "")
+	t.Setenv("EVENT_SYNC_CITY_PROFILES", "")
+	t.Setenv("TIMEPAD_CITY_NAME", "")
+	t.Setenv("REG_S3_ENDPOINT", "")
+	t.Setenv("REG_S3_REGION", "")
+	t.Setenv("REG_S3_BUCKET", "")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "")
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "")
+}
+
+func TestREGS3AndMulticityConfigurationLoadTogether(t *testing.T) {
+	setValidConfigEnv(t)
+	t.Setenv("REG_S3_BUCKET", "hackathon-max")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "test-access")
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("EVENT_SYNC_PROVIDER", "timepad")
+	t.Setenv("TIMEPAD_UPSERT_ONLY", "false")
+	t.Setenv("KUDAGO_MAX_REQUESTS_PER_MINUTE", "12")
+	t.Setenv("EVENT_SYNC_CITY_ID", "3d3c83de-691b-510e-85e5-79685c4012ee")
+	t.Setenv("KUDAGO_LOCATION", "KZN")
+	t.Setenv("TIMEPAD_CITY_NAME", "Казань")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RegS3Bucket != "hackathon-max" || cfg.RegS3AccessKeyID != "test-access" || cfg.RegS3SecretAccessKey != "test-secret" {
+		t.Fatal("multicity configuration lost S3 upload settings")
+	}
+	if cfg.EventSyncProvider != "timepad" || cfg.TimepadUpsertOnly || cfg.KudaGoMaxRequestsPerMinute != 12 || cfg.KudaGoLocation != "kzn" || !cfg.KudaGoLocationExplicit || cfg.TimepadCityName != "Казань" {
+		t.Fatal("S3 configuration lost explicit multicity provider settings")
+	}
+	if err := cfg.ValidateSyncCity("Казань", "Europe/Moscow"); err != nil {
+		t.Fatalf("combined configuration rejected the selected city: %v", err)
+	}
+}
+
+func TestREGS3ConfigurationIsOptionalAndRequiresCompleteCredentials(t *testing.T) {
+	setValidConfigEnv(t)
+	cfg, err := Load()
+	if err != nil || cfg.RegS3Endpoint != "https://s3.regru.cloud" || cfg.RegS3Region != "us-east-1" || cfg.RegS3Bucket != "" {
+		t.Fatalf("unexpected optional S3 defaults: %+v, %v", cfg, err)
+	}
+	t.Setenv("REG_S3_BUCKET", "hackathon-max")
+	t.Setenv("REG_S3_ACCESS_KEY_ID", "test-access")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "REG_S3_BUCKET, REG_S3_ACCESS_KEY_ID, and REG_S3_SECRET_ACCESS_KEY") {
+		t.Fatalf("partial S3 config accepted or reported poorly: %v", err)
+	}
+	t.Setenv("REG_S3_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("REG_S3_ENDPOINT", "http://s3.regru.cloud")
+	if _, err := Load(); err == nil || err.Error() != "REG_S3_ENDPOINT is invalid" {
+		t.Fatalf("insecure S3 endpoint accepted or error leaked config: %v", err)
+	}
 }
 
 func TestMinimalProviderSyncSettings(t *testing.T) {

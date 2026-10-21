@@ -22,7 +22,7 @@ for (const relative of ['frontend/nginx.conf', 'deploy/nginx/worknet.team.conf']
  const target = new URL(relative, root)
  try { await access(target) } catch { continue }
  const config = await readFile(target, 'utf8')
- const updated = config.replace(/img-src [^;]+;/g, `img-src 'self' data: ${policy.images.map(host => `https://${host}`).join(' ')};`)
+ const updated = config.replace(/img-src [^;]+;/g, `img-src 'self' data: blob: ${policy.images.map(host => `https://${host}`).join(' ')};`)
  await emit(target, updated)
 }
 console.log(`Provider domain policy generated from ${fileURLToPath(canonical)}`)
