@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -516,12 +517,14 @@ func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Default().Error("event submission detail failed", "stage", "load_submission", "request_id", httpapi.RequestID(r.Context()), "error", err)
 		serverError(w, r)
 		return
 	}
 	var duplicates []map[string]any
-	rows, err := h.db.Query(r.Context(), `SELECT e.id,e.title,e.starts_at,v.name venue_name FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.venue_id IN (SELECT v2.id FROM venues v2 WHERE v2.city_id=$1 AND lower(v2.name)=lower($2)) AND lower(e.title)=lower($3) AND e.starts_at BETWEEN $4-interval '1 day' AND $4+interval '1 day' AND e.status='published'`, items.CityID, items.Payload.VenueName, items.Payload.Title, items.StartsAt)
+	rows, err := h.db.Query(r.Context(), `SELECT e.id,e.title,e.starts_at,v.name venue_name FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.venue_id IN (SELECT v2.id FROM venues v2 WHERE v2.city_id=$1 AND lower(v2.name)=lower($2)) AND lower(e.title)=lower($3) AND e.starts_at BETWEEN $4::timestamptz-interval '1 day' AND $4::timestamptz+interval '1 day' AND e.status='published'`, items.CityID, items.Payload.VenueName, items.Payload.Title, items.StartsAt)
 	if err != nil {
+		slog.Default().Error("event submission detail failed", "stage", "find_duplicates", "request_id", httpapi.RequestID(r.Context()), "error", err)
 		serverError(w, r)
 		return
 	}
@@ -532,14 +535,22 @@ func (h *Handler) detail(w http.ResponseWriter, r *http.Request) {
 		var starts time.Time
 		if err := rows.Scan(&event, &title, &starts, &venue); err != nil {
 			rows.Close()
+			slog.Default().Error("event submission detail failed", "stage", "scan_duplicates", "request_id", httpapi.RequestID(r.Context()), "error", err)
 			serverError(w, r)
 			return
 		}
 		duplicates = append(duplicates, map[string]any{"event_id": event, "title": title, "starts_at": starts, "venue_name": venue})
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		slog.Default().Error("event submission detail failed", "stage", "iterate_duplicates", "request_id", httpapi.RequestID(r.Context()), "error", err)
+		serverError(w, r)
+		return
+	}
 	rows.Close()
 	domains, err := h.domains.List(r.Context(), uuid.MustParse(UserSourceID))
 	if err != nil {
+		slog.Default().Error("event submission detail failed", "stage", "load_resource_domains", "request_id", httpapi.RequestID(r.Context()), "error", err)
 		serverError(w, r)
 		return
 	}
