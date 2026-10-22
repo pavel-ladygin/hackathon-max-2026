@@ -62,14 +62,18 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 		Provider: timepadSource, CityID: cityID, WindowStart: startsAtMin, WindowEnd: startsAtMax, UpsertOnly: c.upsertOnly || maxPages > 0,
 	})
 	if err != nil {
-		return ImportStats{}, fmt.Errorf("begin timepad sync run: %w", err)
+		return ImportStats{}, providers.WithSyncStage(err, "begin_sync")
 	}
 	defer func() {
 		stats.SyncRunID = runID
+		stats.PosterErrors = posterStore.posterErrors
 		reconciled, finishErr := providers.FinalizeSyncRun(ctx, store, runID, stats, importErr)
 		stats.Reconciled = reconciled
 		if finishErr != nil {
-			finishErr = fmt.Errorf("finish timepad sync run: %w", finishErr)
+			finishErr = providers.WithSyncStage(finishErr, "finalize_sync")
+			if reportError != nil {
+				reportError(finishErr)
+			}
 			if importErr != nil {
 				importErr = errors.Join(importErr, finishErr)
 			} else {
@@ -88,7 +92,7 @@ func (c *Client) ImportPages(ctx context.Context, cityID uuid.UUID, store provid
 		firstPage = false
 		page, err := c.fetchPage(ctx, skip, startsAtMin, startsAtMax)
 		if err != nil {
-			return ingestion.Stats(), fmt.Errorf("fetch timepad page: %w", err)
+			return ingestion.Stats(), providers.WithSyncStage(err, "fetch_page")
 		}
 		ingestion.AddPage()
 		ingestion.AddFetched(len(page.Values))
@@ -144,6 +148,7 @@ type importPosterStore struct {
 	client               *Client
 	store                providers.EventStore
 	reportError          func(error)
+	posterErrors         int
 	postersByCanonicalID map[int64][]providers.NormalizedImage
 	resolveCanonicalID   func(context.Context, int64, string) (int64, error)
 	fetchEventPoster     func(context.Context, int64) ([]providers.NormalizedImage, error)
@@ -156,7 +161,7 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 	}
 	eventID, parseErr := strconv.ParseInt(event.ExternalID, 10, 64)
 	if parseErr != nil || eventID <= 0 {
-		s.report(fmt.Errorf("resolve timepad poster for event %q: invalid event ID", event.ExternalID))
+		s.report("poster_resolve", fmt.Errorf("resolve timepad poster for event %q: invalid event ID", event.ExternalID))
 		return result, nil
 	}
 	if err := s.client.wait(ctx); err != nil {
@@ -167,7 +172,7 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
-		s.report(fmt.Errorf("resolve timepad poster for event %q: %w", event.ExternalID, resolveErr))
+		s.report("poster_resolve", fmt.Errorf("resolve timepad poster for event %q: %w", event.ExternalID, resolveErr))
 		return result, nil
 	}
 	if canonicalID == 0 {
@@ -183,7 +188,7 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}
-			s.report(fmt.Errorf("fetch timepad poster for event %q: %w", event.ExternalID, err))
+			s.report("poster_fetch", fmt.Errorf("fetch timepad poster for event %q: %w", event.ExternalID, err))
 			return result, nil
 		}
 		s.postersByCanonicalID[canonicalID] = images
@@ -196,14 +201,15 @@ func (s *importPosterStore) UpsertWithResult(ctx context.Context, cityID uuid.UU
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
-		s.report(fmt.Errorf("persist recovered timepad poster for event %q: %w", event.ExternalID, err))
+		s.report("poster_persist", fmt.Errorf("persist recovered timepad poster for event %q: %w", event.ExternalID, err))
 	}
 	return result, nil
 }
 
-func (s *importPosterStore) report(err error) {
+func (s *importPosterStore) report(stage string, err error) {
+	s.posterErrors++
 	if s.reportError != nil {
-		s.reportError(err)
+		s.reportError(providers.WithSyncStage(err, stage))
 	}
 }
 

@@ -270,7 +270,15 @@ func safeSyncErrorText(value string) string {
 			return value
 		}
 	}
+	if strings.HasPrefix(value, "timepad_http_") && len(value) == len("timepad_http_000") {
+		status, err := strconv.Atoi(strings.TrimPrefix(value, "timepad_http_"))
+		if err == nil && status >= 100 && status <= 599 {
+			return value
+		}
+	}
 	switch value {
+	case "timepad_timeout", "timepad_transport_error", "timepad_decode_error", "provider_import_failed", "provider_fetch_page_failed", "provider_begin_sync_failed", "provider_finalize_sync_failed", "provider_persist_record_failed", "provider_timeout", "provider_cancelled":
+		return value
 	case "kudago_transport_error", "kudago_timeout", "", "provider import cancelled", "provider import failed", "provider records failed to persist", "timepad_normalization_empty":
 		return value
 	default:

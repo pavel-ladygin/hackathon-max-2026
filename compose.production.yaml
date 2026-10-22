@@ -64,7 +64,20 @@ services:
 
   event-sync:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
-    command: ["/app/event-sync"]
+    # Start the Moscow worker one hour after SPB without blocking CI/CD.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        sleeper=
+        trap 'if [ -n "$$sleeper" ]; then kill "$$sleeper" 2>/dev/null || :; fi; exit 0' TERM INT
+        echo 'Moscow event sync startup delayed by 3600 seconds'
+        sleep 3600 &
+        sleeper=$$!
+        wait "$$sleeper"
+        trap - TERM INT
+        exec /app/event-sync
     environment: &event_sync_environment
       <<: *backend_environment
       INVITE_ENCRYPTION_KEY: ${INVITE_ENCRYPTION_KEY:?INVITE_ENCRYPTION_KEY is required}

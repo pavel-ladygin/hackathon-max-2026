@@ -145,6 +145,7 @@ type ImportStats struct {
 	Updated      int
 	Skipped      int
 	Errors       int
+	PosterErrors int
 	Reconciled   int
 	Rejections   RejectionStats
 	InsideWindow int

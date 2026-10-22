@@ -169,7 +169,7 @@ func TestImportFiltersCityPaginatesSequentiallyAndSupportsRerun(t *testing.T) {
 		t.Fatal("first import returned no sync run ID")
 	}
 	first.SyncRunID = uuid.Nil
-	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
+	if first != (ImportStats{PagesFetched: 2, Fetched: 4, Matched: 1, Normalized: 1, Inserted: 1, Skipped: 3, PosterErrors: 1, InsideWindow: 1, Rejections: providers.RejectionStats{City: 3}}) {
 		t.Fatalf("first stats = %+v", first)
 	}
 	if got, want := fmt.Sprint(skips), "[0 2]"; got != want {
@@ -226,7 +226,7 @@ func TestImportStopsWhenPageTotalIsReached(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1, InsideWindow: 1}) {
+	if requests != 1 || stats != (ImportStats{PagesFetched: 1, Fetched: 1, Matched: 1, Normalized: 1, Inserted: 1, PosterErrors: 1, InsideWindow: 1}) {
 		t.Fatalf("requests=%d stats=%+v", requests, stats)
 	}
 }
@@ -283,7 +283,7 @@ func TestImportFiltersNormalizedEventsOutsideRequestedWindow(t *testing.T) {
 		t.Fatal("import returned no sync run ID")
 	}
 	stats.SyncRunID = uuid.Nil
-	want := ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, InsideWindow: 2, Rejections: providers.RejectionStats{BeforeWindow: 1, AfterWindow: 1}}
+	want := ImportStats{PagesFetched: 1, Fetched: 4, Matched: 4, Normalized: 2, Inserted: 2, Skipped: 2, PosterErrors: 2, InsideWindow: 2, Rejections: providers.RejectionStats{BeforeWindow: 1, AfterWindow: 1}}
 	if stats != want {
 		t.Fatalf("stats = %+v", stats)
 	}

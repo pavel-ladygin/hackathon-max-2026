@@ -100,7 +100,7 @@ func (c *Client) resolveCanonicalEventID(ctx context.Context, currentEventID int
 			continue
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			return 0, fmt.Errorf("timepad event page returned HTTP %d", response.StatusCode)
+			return 0, httpFailure(response.StatusCode)
 		}
 		parentID, err := timepadEventIDFromURL(current)
 		if err != nil {
