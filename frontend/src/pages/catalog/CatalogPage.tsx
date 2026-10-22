@@ -5,7 +5,7 @@ import { useEventSearch, useEventSearchCount, useSetSavedEvent } from '../../fea
 import type { CategorySlug } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
 import { eventCategoryLabel, eventImage, eventImageFallback } from '../../shared/lib/events'
-import { BottomNav, Button, Chip, ChipGroup, Empty, EventCard, FavoriteButton, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
+import { Button, Chip, ChipGroup, Empty, EventCard, FavoriteButton, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import { useProfileCity } from '../../features/city/useProfileCity'
 import { CityPicker } from '../../shared/ui/CityPicker'
 import { DatePicker } from '../../shared/ui/date-picker'
@@ -97,7 +97,9 @@ export function CatalogPage() {
       </div>
       <AnimatePresence initial={false}>
         {advancedFiltersOpen ? <motion.section id="catalog-advanced-filters" className={styles.advancedFilters} aria-label="Все фильтры" initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} transition={{ duration: reduceMotion ? 0 : .22, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
-          <div className={styles.fieldLabel}><span>Город</span><Button tone="secondary" aria-haspopup="dialog" aria-label={`Изменить город: ${profileCity.city?.name ?? 'Выберите город'}`} disabled={!profileCity.canSelect} onClick={() => setCityPickerOpen(true)}>{profileCity.city?.name ?? 'Выберите город'}</Button></div>
+          <div className={catalogStyles.cityFilterSection}>
+            <div className={styles.fieldLabel}><span>Город</span><Button tone="secondary" aria-haspopup="dialog" aria-label={`Изменить город: ${profileCity.city?.name ?? 'Выберите город'}`} disabled={!profileCity.canSelect} onClick={() => setCityPickerOpen(true)}>{profileCity.city?.name ?? 'Выберите город'}</Button></div>
+          </div>
           <ChipGroup label="Категории" className={styles.catalogChips}>{CATEGORY_OPTIONS.map((category) => <Chip key={category.slug} selected={selected.includes(category.slug)} onClick={() => setSelected((current) => current.includes(category.slug) ? current.filter((item) => item !== category.slug) : [...current, category.slug])}>{category.label}</Chip>)}</ChipGroup>
           <div className={styles.filterRow}>
             <DatePicker id="catalog-date-from" label="С" value={dateFrom} max={dateTo || undefined} onChange={(value) => setDateFrom(value ?? '')} />
@@ -125,7 +127,6 @@ export function CatalogPage() {
         </AnimatePresence>
         {results.hasNextPage ? <Button className={styles.showMore} tone="secondary" disabled={results.isFetchingNextPage} onClick={() => void results.fetchNextPage()}>{results.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}</Button> : null}
       </>}</div>
-      <BottomNav activeId="catalog" items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'catalog', label: 'Афиша', icon: 'calendar' }, { id: 'saved', label: 'Моё', icon: 'saved' }]} onChange={(id) => id === 'home' ? navigate('/') : id === 'saved' ? navigate('/saved') : undefined} />
     </PageContent>
   </PageShell>
 }

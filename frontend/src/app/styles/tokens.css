@@ -14,10 +14,12 @@
   --font-size-meta: 0.6875rem;
   --font-size-control: 0.8125rem;
   --font-size-label: 0.875rem;
-  --font-size-input: 1rem;
+  --font-size-input: max(1rem, calc(1rem / var(--font-scale, 1)));
   --font-size-section: 1.0625rem;
   --font-size-heading: 1.25rem;
-  --font-size-page-title: clamp(1.875rem, 8vw, 3rem);
+  --font-size-page-title: clamp(1.875rem, calc(8vw * var(--font-scale)), 3rem);
+  --font-scale: 1;
+  --font-family-heading: var(--font-family-ui);
   --line-height-body: 1.5;
   --line-height-control: 1.5;
   --line-height-heading: 1.3;
@@ -81,6 +83,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }
 html, body, #root { min-height: 100%; margin: 0; }
+html { font-size: calc(100% * var(--font-scale, 1)); }
 body { min-width: 320px; background: var(--color-canvas); font-size: var(--font-size-body); }
 .max-app-theme[class] {
   --family-base: var(--font-family-ui);

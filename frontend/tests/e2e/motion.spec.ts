@@ -48,3 +48,28 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     }
   })
 }
+
+test('bottom navigation animates on the first click across routes and restarts on repeat', async ({ page }) => {
+  await stubMotionBackend(page)
+  await page.route('**/api/v1/me/saved-events**', (route) => route.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.goto('/')
+  const nav = page.getByRole('navigation', { name: 'Основная навигация' })
+  const catalog = nav.getByRole('button', { name: /Афиша/ })
+  await catalog.evaluate((button) => {
+    ;(window as unknown as { __navAnimations: string[] }).__navAnimations = []
+    button.addEventListener('animationstart', (event) => { (window as unknown as { __navAnimations: string[] }).__navAnimations.push((event as AnimationEvent).animationName) })
+  })
+  await catalog.click()
+  await expect(page).toHaveURL(/\/events$/)
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __navAnimations: string[] }).__navAnimations)).toEqual(expect.arrayContaining([expect.stringContaining('navCalendarFlip')]))
+
+  const saved = page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Моё/ })
+  await saved.click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await expect.poll(() => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Моё/ }).evaluate((button) => button.className)).toContain('navClick_saved')
+
+  await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Главная/ }).click()
+  await expect(page).toHaveURL('/')
+  await expect.poll(() => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Главная/ }).evaluate((button) => button.className)).toContain('navClick_home')
+})

@@ -3,8 +3,6 @@ import styles from "./ui.module.css";
 
 type NavClickToken = { id: string; sequence: number };
 let navClickSequence = 0;
-let pendingNavClick: NavClickToken | null = null;
-let consumedNavClickSequence = 0;
 
 type Tone = "primary" | "secondary" | "ghost";
 export type ButtonState = "idle" | "loading" | "success";
@@ -167,10 +165,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   return <HeartIcon />;
 }
 export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; activeId?: string; onChange?: (id: string) => void }) {
-  const [lastClick, setLastClick] = useState<NavClickToken | null>(() => pendingNavClick && pendingNavClick.sequence > consumedNavClickSequence ? pendingNavClick : null);
-  useEffect(() => {
-    if (lastClick && pendingNavClick?.sequence === lastClick.sequence) consumedNavClickSequence = lastClick.sequence;
-  }, [lastClick]);
+  const [lastClick, setLastClick] = useState<NavClickToken | null>(null);
   useEffect(() => {
     if (!lastClick) return;
     const timeout = window.setTimeout(() => {
@@ -182,7 +177,6 @@ export function BottomNav({ items, activeId, onChange }: { items: NavItem[]; act
     const clicked = lastClick?.id === item.id;
     return <button type="button" key={item.id} className={`${styles.navItem} ${activeId === item.id ? styles.active : ""} ${clicked ? styles[`navClick_${item.icon}`] : ""}`} aria-current={activeId === item.id ? "page" : undefined} onClick={() => {
       const token = { id: item.id, sequence: ++navClickSequence };
-      pendingNavClick = token;
       setLastClick(token);
       onChange?.(item.id);
     }}><span key={clicked ? `icon-${lastClick?.sequence}` : "icon"} className={`${styles.navIcon} ${styles[`navIcon_${item.icon}`]}`}><NavIcon name={item.icon} /></span><span key={clicked ? `label-${lastClick?.sequence}` : "label"} className={styles.navLabel}>{item.label}</span></button>;

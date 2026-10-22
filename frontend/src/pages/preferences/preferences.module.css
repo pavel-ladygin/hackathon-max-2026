@@ -95,6 +95,11 @@
 .option:has(.switch:disabled) { cursor: progress; }
 
 .error { margin: -6px 18px 16px; color: #b42318; font-size: var(--font-size-caption); line-height: 1.4; }
+.textSizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 18px 18px; }
+.textSizes label { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px; font-size: var(--font-size-caption); cursor: pointer; }
+.textSizes input { accent-color: var(--color-ink); }
+.textSizes label:has(input:checked) { border-color: var(--color-ink); background: var(--color-warm); }
+@media (max-width: 374px) { .textSizes { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) {
   .switch, .switch::before { transition: none; }

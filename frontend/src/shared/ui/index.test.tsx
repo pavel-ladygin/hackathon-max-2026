@@ -72,11 +72,11 @@ describe('BottomNav', () => {
     }
   })
 
-  it('carries one click animation across a route remount without animating on initial render', () => {
+  it('keeps the destination animation on the mounted shared navigation', () => {
     const items = [{ id: 'home', label: 'Главная', icon: 'home' as const }, { id: 'catalog', label: 'Афиша', icon: 'calendar' as const }]
     function RouteNav() {
       const [activeId, setActiveId] = useState('home')
-      return <BottomNav key={activeId} activeId={activeId} items={items} onChange={setActiveId} />
+      return <BottomNav activeId={activeId} items={items} onChange={setActiveId} />
     }
 
     render(<RouteNav />)

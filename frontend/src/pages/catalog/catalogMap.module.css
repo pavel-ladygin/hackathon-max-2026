@@ -377,3 +377,4 @@
 .emptyMapCard svg { width: 24px; height: 24px; margin-bottom: 12px; color: var(--color-muted); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .mapMessage h3 { margin: 0; font-size: var(--font-size-section); line-height: var(--line-height-heading); }
 .mapMessage p { margin: 8px 0 0; font-size: var(--font-size-body-small); line-height: var(--line-height-body); }
+.cityFilterSection { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }

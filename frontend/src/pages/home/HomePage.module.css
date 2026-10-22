@@ -25,5 +25,13 @@
 }
 @media (max-width: 600px) { .roomActions { width: min(155px, 42vw); } }
 
-.cityButton { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; padding: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 22px; font-weight: 700; text-align: left; cursor: pointer; }
+.cityButton { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; padding: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 1.1875rem; font-weight: 650; text-align: left; cursor: pointer; }
 .cityButton:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 6px; }
+
+.cityHeader { gap: 16px; }
+.cityGroup { flex: 1; min-width: 0; }
+.cityLabel { display: block; margin-bottom: 6px; color: var(--color-muted); font-size: var(--font-size-caption); line-height: var(--line-height-body); }
+.cityButton { max-width: 100%; gap: 10px; }
+.cityName { min-width: 0; overflow-wrap: anywhere; }
+.cityChevron { flex: none; }
+.cityHeader > button { flex-shrink: 0; }

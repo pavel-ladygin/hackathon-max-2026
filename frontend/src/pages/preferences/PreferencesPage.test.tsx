@@ -20,6 +20,7 @@ function renderPage() {
 
 describe('PreferencesPage daily notifications', () => {
   beforeEach(() => {
+    localStorage.clear()
     mocks.bootstrap = {
       data: {
         dailyNotificationsEnabled: false,
@@ -31,6 +32,14 @@ describe('PreferencesPage daily notifications', () => {
     mocks.updateNotifications.mockReset()
     mocks.updateNotifications.mockResolvedValue({ daily_notifications_enabled: true })
     mocks.replacePreferences.mockReset()
+  })
+
+  it('updates and persists text size immediately without submitting preferences', async () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('radio', { name: /Крупный/ }))
+    expect(document.documentElement.style.getPropertyValue('--font-scale')).toBe('1.15')
+    expect(localStorage.getItem('max-text-size')).toBe('large')
+    expect(mocks.replacePreferences).not.toHaveBeenCalled()
   })
 
   it('loads the saved state and immediately sends toggle changes to the separate API', async () => {
