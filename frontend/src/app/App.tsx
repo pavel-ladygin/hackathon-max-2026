@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useBootstrap } from '../features/auth/useBootstrap'
 import { OpenInMaxPage } from '../pages/system/OpenInMaxPage'
-import { Button, ErrorState, ScreenSkeleton } from '../shared/ui/index'
+import { BottomNav, Button, ErrorState, ScreenSkeleton } from '../shared/ui/index'
 import { maxPlatform } from '../shared/platform/max/adapter'
 import { AppProviders } from './providers'
 import { skeletonVariant } from './skeletonVariant'
@@ -35,6 +35,7 @@ function MaxBridgeReady() {
 
 function AppRoutes() {
   const location = useLocation()
+  const navigate = useNavigate()
   const appOpened = useRef(false)
   const [sharedEventDismissed, setSharedEventDismissed] = useState(false)
   const bootStartedAt = useRef<number | null>(null)
@@ -74,6 +75,7 @@ function AppRoutes() {
   }
 
   return (
+    <>
     <Suspense fallback={<ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Открываем экран…" />}>
     <Routes>
       <Route path="/open-in-max" element={<OpenInMaxPage />} />
@@ -95,6 +97,8 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
+    {['/', '/events', '/saved'].includes(location.pathname) && <BottomNav activeId={location.pathname === '/' ? 'home' : location.pathname === '/events' ? 'catalog' : 'saved'} items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'catalog', label: 'Афиша', icon: 'calendar' }, { id: 'saved', label: 'Моё', icon: 'saved' }]} onChange={(id) => navigate(id === 'home' ? '/' : id === 'catalog' ? '/events' : '/saved')} />}
+    </>
   )
 }
 

@@ -226,7 +226,20 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 		}()
 	}
 	stats, syncErr := provider.importer.Import(ctx, cityID, repository, func(err error) {
-		logger.Error("event sync record failed", "provider", provider.name, "priority", provider.priority, "error", "provider record persistence failed")
+		stage := providers.SyncErrorStage(err)
+		if stage == "" {
+			stage = "persist_record"
+			err = providers.WithSyncStage(err, stage)
+		}
+		attrs := []any{"provider", provider.name, "city_id", cityID, "stage", stage, "error_code", providers.SyncErrorCode(err)}
+		switch stage {
+		case "poster_resolve", "poster_fetch", "poster_persist":
+			logger.Warn("event sync poster recovery failed", attrs...)
+		case "finalize_sync":
+			logger.Error("event sync finalization failed", attrs...)
+		default:
+			logger.Error("event sync record failed", attrs...)
+		}
 	})
 	if errors.Is(syncErr, eventsources.ErrSyncRunning) || errors.Is(syncErr, eventsources.ErrSourceDisabled) {
 		logger.Info("event sync provider skipped", "provider", provider.name, "priority", provider.priority, "reason", "source sync is already running or disabled")
@@ -248,6 +261,8 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 	}
 	attributes := []any{
 		"provider", provider.name,
+		"city_id", cityID,
+		"poster_errors", stats.PosterErrors,
 		"sync_run_id", syncRunID,
 		"priority", provider.priority,
 		"duration", time.Since(startedAt),
@@ -280,7 +295,10 @@ func syncOne(ctx context.Context, cityID uuid.UUID, repository providers.SyncSto
 		return finalErr
 	}
 	if finalErr != nil {
-		logger.Error("event sync provider finished", append(attributes, "error", "provider import failed", "error_code", providers.SyncErrorCode(finalErr))...)
+		if providers.SyncErrorStage(finalErr) == "" {
+			finalErr = providers.WithSyncStage(finalErr, "import")
+		}
+		logger.Error("event sync provider finished", append(attributes, "error", "provider import failed", "stage", providers.SyncErrorStage(finalErr), "error_code", providers.SyncErrorCode(finalErr))...)
 		return finalErr
 	}
 	logger.Info("event sync provider finished", attributes...)

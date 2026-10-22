@@ -13,7 +13,8 @@ import { Button, Chip, ChipGroup, ErrorState, FieldError, PageContent, PageShell
 import styles from '../pages.module.css'
 import notificationStyles from './preferences.module.css'
 
-const MOSCOW_CITY_ID = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
+import { MOSCOW_CITY_ID } from '../../shared/lib/cities'
+import { setTextSize, readTextSize, type TextSize } from '../../shared/lib/textSize'
 const schema = z.object({
   budget: z.coerce.number().min(0).max(1_000_000),
   days: z.array(z.enum(['weekday', 'weekend'])),
@@ -28,6 +29,7 @@ export function PreferencesPage() {
   const initial = bootstrap.data?.preferences
   const [interests, setInterests] = useState<CategorySlug[]>(() => initial?.interestSlugs ?? ['concerts'])
   const [dailyNotificationsOverride, setDailyNotificationsOverride] = useState<boolean | null>(null)
+  const [textSize, updateTextSize] = useState<TextSize>(readTextSize)
   const dailyNotificationsEnabled = dailyNotificationsOverride ?? bootstrap.data?.dailyNotificationsEnabled ?? false
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { budget: (initial?.budgetMaxMinor ?? 350_000) / 100, days: initial?.usualDayTypes ?? ['weekend'], times: initial?.usualTimeSlots ?? ['evening'] } })
   const budget = useWatch({ control: form.control, name: 'budget' })
@@ -57,9 +59,10 @@ export function PreferencesPage() {
   const toggle = <T,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
   return <PageShell><TopBar title="Предпочтения" onBack={() => navigate(-1)} /><PageContent className={styles.narrow}>
     <h1 className={styles.title}>Настройте афишу</h1><p className={styles.subtitle}>Эти параметры влияют на персональные рекомендации. Условия отдельной встречи задаются приватно в комнате.</p>
+    <fieldset className={notificationStyles.card} aria-label="Размер текста"><legend>Размер текста</legend><div className={notificationStyles.textSizes}>{([['compact', 'Компактный', '90%'], ['normal', 'Обычный', '100%'], ['large', 'Крупный', '115%']] as Array<[TextSize, string, string]>).map(([value, label, scale]) => <label key={value}><input type="radio" name="text-size" value={value} checked={textSize === value} onChange={() => { updateTextSize(value); setTextSize(value) }} /><span>{label} · {scale}</span></label>)}</div></fieldset>
     <section className={notificationStyles.submissionLinks} aria-label="Предложенные мероприятия">
-      <div><span><strong>Предложить мероприятие</strong><small>Добавьте событие в афишу после проверки.</small></span><Button tone="secondary" onClick={() => navigate('/events/suggest')}>Предложить</Button></div>
-      <div><span><strong>Мои заявки</strong><small>Статусы и решения модерации.</small></span><Button tone="ghost" onClick={() => navigate('/my/event-submissions')}>Открыть</Button></div>
+      <div><span><strong>Предложить мероприятие</strong><small>Добавьте событие в афишу после проверки.</small></span><Button className={notificationStyles.submissionAction} tone="secondary" onClick={() => navigate('/events/suggest')}>Предложить</Button></div>
+      <div><span><strong>Мои заявки</strong><small>Статусы и решения модерации.</small></span><Button className={notificationStyles.submissionAction} tone="secondary" onClick={() => navigate('/my/event-submissions')}>Открыть</Button></div>
     </section>
     <section className={notificationStyles.card} aria-busy={saveNotifications.isPending}>
       <label className={notificationStyles.option} htmlFor="preferences-daily-notifications">

@@ -10,6 +10,7 @@ import type { CategorySlug, TimeSlot } from '../../shared/api/types'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { Button, Chip, ChipGroup, PageContent, PageShell } from '../../shared/ui/index'
 import styles from '../pages.module.css'
+import { cityById, MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { track } from '../../shared/analytics/client'
 
 const options: Array<{ slug: CategorySlug; label: string; icon: string }> = [
@@ -37,6 +38,7 @@ export function OnboardingPage() {
   const queryClient = useQueryClient()
   const bootstrap = useBootstrap()
   const stored = bootstrap.data?.preferences
+  const cityId = stored?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID
   const [interests, setInterests] = useState<CategorySlug[]>(() => stored?.interestSlugs ?? ['concerts', 'exhibitions', 'food'])
   const form = useForm<ProfileForm>({ resolver: zodResolver(schema), defaultValues: { budget: (stored?.budgetMaxMinor ?? 350_000) / 100, usual: stored?.usualDayTypes ?? ['weekend'], times: stored?.usualTimeSlots ?? ['evening'] } })
   const budget = useWatch({ control: form.control, name: 'budget' })
@@ -45,7 +47,7 @@ export function OnboardingPage() {
   useEffect(() => { track('onboarding_started') }, [step])
   const save = useMutation({
     mutationFn: (values: ProfileForm) => apiClient.replacePreferences({
-      city_id: stored?.cityId ?? bootstrap.data?.user.cityId ?? 'a0f625ee-2154-5a45-8afe-37adf955ec24',
+      city_id: cityId,
       interest_slugs: interests,
       budget_max_minor: values.budget * 100,
       usual_day_types: values.usual,
@@ -89,7 +91,7 @@ export function OnboardingPage() {
             <h1 className={styles.title}>Настроим подборку</h1>
             <p className={styles.subtitle}>Пара деталей поможет точнее ранжировать события и быстрее находить общее.</p>
             <div className={styles.formStack}>
-              <label className={styles.fieldLabel}>Ваш город<input className={styles.input} value="Москва" readOnly aria-describedby="city-help" /><span id="city-help" className={styles.eyebrow}>Город можно изменить в профиле</span></label>
+              <label className={styles.fieldLabel}>Ваш город<input className={styles.input} value={cityById(cityId)?.name ?? 'Выбранный город'} readOnly aria-describedby="city-help" /><span id="city-help" className={styles.eyebrow}>Город можно изменить на главной</span></label>
               <label className={styles.fieldLabel}>Комфортный бюджет · до {budget.toLocaleString('ru')} ₽<input className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} aria-describedby="budget-error" {...form.register('budget')} /></label>
               {form.formState.errors.budget ? <p id="budget-error" className={styles.fieldError}>Укажите корректный бюджет.</p> : null}
               <fieldset className={styles.fieldLabel} aria-invalid={Boolean(form.formState.errors.usual)}><legend>Когда обычно удобно</legend><ChipGroup label="Дни недели"><Chip selected={usual.includes('weekday')} onClick={() => form.setValue('usual', toggleValue(usual, 'weekday'), { shouldValidate: true })}>Будни</Chip><Chip selected={usual.includes('weekend')} onClick={() => form.setValue('usual', toggleValue(usual, 'weekend'), { shouldValidate: true })}>Выходные</Chip></ChipGroup>{form.formState.errors.usual ? <p className={styles.fieldError}>Выберите хотя бы один вариант.</p> : null}</fieldset>

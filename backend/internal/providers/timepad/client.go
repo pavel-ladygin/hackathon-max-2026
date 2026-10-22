@@ -219,7 +219,7 @@ func (c *Client) doWithHandler(ctx context.Context, request *http.Request, handl
 				return nil, ctx.Err()
 			}
 			if attempt == maxRequestAttempts {
-				return nil, fmt.Errorf("perform timepad request after %d attempts: %w", attempt, err)
+				return nil, requestFailure(err)
 			}
 			if err := c.waitRetry(ctx, c.retryDelay(attempt, nil)); err != nil {
 				return nil, err
@@ -244,10 +244,10 @@ func (c *Client) doWithHandler(ctx context.Context, request *http.Request, handl
 				return response, nil
 			}
 			if !retryableResponseReadError(handleErr) {
-				return nil, fmt.Errorf("decode timepad response: %w", handleErr)
+				return nil, decodeFailure(handleErr)
 			}
 			if attempt == maxRequestAttempts {
-				return nil, fmt.Errorf("decode timepad response after %d attempts: %w", attempt, handleErr)
+				return nil, decodeFailure(handleErr)
 			}
 			if err := c.waitRetry(ctx, c.retryDelay(attempt, nil)); err != nil {
 				return nil, err
@@ -307,27 +307,4 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-func responseError(response *http.Response) error {
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
-	if err != nil {
-		return fmt.Errorf("read timepad error response with status %d: %w", response.StatusCode, err)
-	}
-	truncated := len(body) > maxErrorBodyBytes
-	if truncated {
-		body = body[:maxErrorBodyBytes]
-	}
-	message := strings.TrimSpace(string(body))
-	if truncated {
-		message += " [truncated]"
-	}
-	if response.StatusCode == http.StatusTooManyRequests {
-		if message == "" {
-			return errors.New("timepad rate limit exceeded (status 429)")
-		}
-		return fmt.Errorf("timepad rate limit exceeded (status 429): %s", message)
-	}
-	if message == "" {
-		return fmt.Errorf("timepad response status %d", response.StatusCode)
-	}
-	return fmt.Errorf("timepad response status %d: %s", response.StatusCode, message)
-}
+func responseError(response *http.Response) error { return httpFailure(response.StatusCode) }

@@ -2,24 +2,31 @@
   margin: 26px 0 34px;
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: var(--color-paper);
 }
 
-.submissionLinks { display: grid; gap: 2px; margin: 22px 0 28px; border: 1px solid var(--color-border); border-radius: 16px; padding: 4px 16px; background: var(--color-paper); }
-.submissionLinks > div { display: flex; min-height: 74px; align-items: center; justify-content: space-between; gap: 12px; }
+.submissionLinks { display: grid; gap: 2px; margin: 22px 0 28px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 8px 20px; background: var(--color-paper); }
+.submissionLinks > div { display: flex; flex-wrap: wrap; min-height: 74px; align-items: center; gap: 16px; padding: 18px 0; }
 .submissionLinks > div + div { border-top: 1px solid #eeeae5; }
-.submissionLinks span { display: grid; gap: 4px; }
-.submissionLinks strong { color: var(--color-ink); font-size: 13px; }
-.submissionLinks small { color: var(--color-muted); font-size: 11px; line-height: 1.4; }
+.submissionLinks > div > span { display: grid; flex: 1 1 8rem; min-width: 0; gap: 4px; }
+.submissionLinks strong { color: var(--color-ink); font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); line-height: var(--line-height-heading); }
+.submissionLinks small { color: var(--color-muted); font-size: var(--font-size-caption); line-height: 1.4; }
+.submissionAction.submissionAction { width: 7.25rem; max-width: 100%; flex: 0 0 auto; min-width: 0; min-height: 3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 12px; background: var(--color-soft); color: var(--color-ink); font-size: var(--font-size-body-small); font-weight: var(--font-weight-semibold); line-height: 1.4; }
+
+@media (max-width: 359px) {
+  .submissionLinks { padding-right: 16px; padding-left: 16px; }
+  .submissionLinks > div { gap: 12px; }
+  .submissionAction.submissionAction { width: 6.5rem; padding-right: 8px; padding-left: 8px; }
+}
 
 .option {
   position: relative;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
   column-gap: 12px;
-  min-height: 145px;
-  padding: 18px 18px 62px;
+  row-gap: 24px;
+  padding: 20px;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -37,23 +44,26 @@
 .icon svg { width: 21px; height: 21px; }
 
 .copy { display: grid; align-content: start; gap: 6px; min-width: 0; }
-.copy strong { color: var(--color-ink); font-size: 16px; line-height: 1.25; letter-spacing: -.02em; }
-.copy > span { color: var(--color-muted); font-size: 12px; line-height: 1.45; }
+.copy strong { color: var(--color-ink); font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); line-height: var(--line-height-heading); letter-spacing: -.02em; }
+.copy > span { color: var(--color-muted); font-size: var(--font-size-caption); line-height: 1.45; }
 
 .hint {
-  position: absolute;
-  bottom: 25px;
-  left: 18px;
-  max-width: calc(100% - 102px);
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: center;
+  min-height: 32px;
+  padding-right: 68px;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1.4;
 }
 
 .switch {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
+  position: relative;
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: end;
   width: 56px;
   height: 32px;
   margin: 0;
@@ -84,7 +94,12 @@
 .switch:disabled { cursor: progress; opacity: .65; }
 .option:has(.switch:disabled) { cursor: progress; }
 
-.error { margin: -6px 18px 16px; color: #b42318; font-size: 11px; line-height: 1.4; }
+.error { margin: -6px 18px 16px; color: #b42318; font-size: var(--font-size-caption); line-height: 1.4; }
+.textSizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 18px 18px; }
+.textSizes label { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px; font-size: var(--font-size-caption); cursor: pointer; }
+.textSizes input { accent-color: var(--color-ink); }
+.textSizes label:has(input:checked) { border-color: var(--color-ink); background: var(--color-warm); }
+@media (max-width: 374px) { .textSizes { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) {
   .switch, .switch::before { transition: none; }

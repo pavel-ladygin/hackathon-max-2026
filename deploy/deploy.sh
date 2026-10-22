@@ -54,10 +54,29 @@ if test -f "$RELEASE_FILE"; then
   previous_sha=${RELEASE_SHA:-}
 fi
 
-compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile spb)
 export BACKEND_IMAGE="$IMAGE_PREFIX/backend:$release_sha"
 export FRONTEND_IMAGE="$IMAGE_PREFIX/frontend:$release_sha"
 "${compose[@]}" config --quiet
+
+start_application_services() {
+  # Stop both workers before replacing either one so their shared provider lock
+  # cannot make the new deployment skip its first scheduled run.
+  "${compose[@]}" stop event-sync-timepad-spb event-sync
+  "${compose[@]}" up -d postgres backend frontend daily-notifications
+
+  # The SPB service starts immediately. The Moscow service delays its worker
+  # startup by one hour in compose.production.yaml.
+  "${compose[@]}" up -d --no-deps --force-recreate event-sync-timepad-spb
+  "${compose[@]}" up -d --no-deps --force-recreate event-sync
+}
+
+sync_services_are_running() {
+  local running
+  running=$("${compose[@]}" ps --status running event-sync-timepad-spb event-sync --format '{{.Service}}')
+  grep -Fxq 'event-sync-timepad-spb' <<<"$running" \
+    && grep -Fxq 'event-sync' <<<"$running"
+}
 
 mkdir -p "$BACKUP_DIR"
 backup="$BACKUP_DIR/postgres-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
@@ -68,7 +87,7 @@ fi
 
 "${compose[@]}" pull
 "${compose[@]}" run --rm migrate
-"${compose[@]}" up -d postgres backend frontend event-sync daily-notifications
+start_application_services
 
 healthy=false
 for attempt in $(seq 1 30); do
@@ -76,6 +95,7 @@ for attempt in $(seq 1 30); do
     && curl --fail --silent --show-error "$PUBLIC_URL/" >/dev/null \
     && curl --fail --silent --show-error "$PUBLIC_URL/open/nonexistent-spa-route" >/dev/null \
     && "${compose[@]}" ps --status running daily-notifications --format '{{.Names}}' | grep -q . \
+    && sync_services_are_running \
     && internal_auth_is_enforced; then
     healthy=true
     break
@@ -96,6 +116,6 @@ if [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]]; then
   export BACKEND_IMAGE="$IMAGE_PREFIX/backend:$previous_sha"
   export FRONTEND_IMAGE="$IMAGE_PREFIX/frontend:$previous_sha"
   "${compose[@]}" pull
-  "${compose[@]}" up -d postgres backend frontend event-sync daily-notifications || true
+  start_application_services || true
 fi
 exit 1

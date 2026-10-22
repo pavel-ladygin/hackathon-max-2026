@@ -5,6 +5,8 @@ import { AnalyticsDashboard } from './pages/internal/AnalyticsDashboard'
 import { EventSourcesPage } from './pages/internal/EventSourcesPage'
 import { EventModerationPage } from './pages/internal/EventModerationPage'
 import './app/styles/base.css'
+import { initializeTextSize } from './shared/lib/textSize'
+initializeTextSize()
 
 // Keep the internal dashboard out of the MAX application tree: the proxy
 // authenticates this path and the page does not need MAX bootstrap or bridge.
