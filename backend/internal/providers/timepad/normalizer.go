@@ -144,25 +144,35 @@ func ticketURL(raw string) *string {
 }
 
 func normalizePrices(event eventDTO) (*int32, *int32) {
-	minimum := event.RegistrationData.PriceMin
-	maximum := event.RegistrationData.PriceMax
-	if minimum == 0 && maximum == 0 {
-		found := false
-		for _, ticket := range event.TicketTypes {
-			if !ticket.IsActive || ticket.Price < 0 || math.IsNaN(ticket.Price) || math.IsInf(ticket.Price, 0) {
-				continue
+	if event.RegistrationData.PriceMin != nil && event.RegistrationData.PriceMax != nil {
+		minimum := *event.RegistrationData.PriceMin
+		maximum := *event.RegistrationData.PriceMax
+		if minimum != 0 || maximum != 0 {
+			minMinor, minOK := rublesToMinor(minimum)
+			maxMinor, maxOK := rublesToMinor(maximum)
+			if !minOK || !maxOK || maxMinor < minMinor {
+				return nil, nil
 			}
-			if !found || ticket.Price < minimum {
-				minimum = ticket.Price
-			}
-			if !found || ticket.Price > maximum {
-				maximum = ticket.Price
-			}
-			found = true
+			return &minMinor, &maxMinor
 		}
-		if !found {
-			return nil, nil
+	}
+
+	var minimum, maximum float64
+	found := false
+	for _, ticket := range event.TicketTypes {
+		if !ticket.IsActive || ticket.Price < 0 || math.IsNaN(ticket.Price) || math.IsInf(ticket.Price, 0) {
+			continue
 		}
+		if !found || ticket.Price < minimum {
+			minimum = ticket.Price
+		}
+		if !found || ticket.Price > maximum {
+			maximum = ticket.Price
+		}
+		found = true
+	}
+	if !found {
+		return nil, nil
 	}
 	minMinor, minOK := rublesToMinor(minimum)
 	maxMinor, maxOK := rublesToMinor(maximum)
