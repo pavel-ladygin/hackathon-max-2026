@@ -24,7 +24,7 @@ type eventDTO struct {
 	Location         locationDTO         `json:"location"`
 	Organization     organizationDTO     `json:"organization"`
 	Categories       categoriesDTO       `json:"categories"`
-	TicketTypes      []ticketTypeDTO     `json:"ticket_types"`
+	TicketTypes      ticketTypesDTO      `json:"ticket_types"`
 	AgeLimit         flexibleText        `json:"age_limit"`
 	AccessStatus     string              `json:"access_status"`
 	ModerationStatus string              `json:"moderation_status"`
@@ -109,16 +109,86 @@ func (categories *categoriesDTO) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type ticketTypesDTO []ticketTypeDTO
+
 type ticketTypeDTO struct {
-	Price     float64 `json:"price"`
-	IsActive  bool    `json:"is_active"`
-	Remaining int     `json:"remaining"`
+	Price    float64
+	IsActive bool
+}
+
+// UnmarshalJSON tolerates optional ticket data without allowing an unsupported
+// value to turn into a free ticket. Non-array forms are treated as absent.
+func (tickets *ticketTypesDTO) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*tickets = nil
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil {
+		if !json.Valid(data) {
+			return err
+		}
+		*tickets = nil
+		return nil
+	}
+
+	decoded := make(ticketTypesDTO, 0, len(entries))
+	for _, entry := range entries {
+		var wire struct {
+			Price    json.RawMessage `json:"price"`
+			IsActive *bool           `json:"is_active"`
+		}
+		if err := json.Unmarshal(entry, &wire); err != nil || wire.IsActive == nil {
+			*tickets = nil
+			return nil
+		}
+		if !*wire.IsActive {
+			continue
+		}
+		price := decodeOptional[*float64](wire.Price)
+		if price == nil {
+			// A partial set cannot establish a reliable minimum or maximum.
+			// A complete registration range can still supply the event price.
+			*tickets = nil
+			return nil
+		}
+		decoded = append(decoded, ticketTypeDTO{Price: *price, IsActive: true})
+	}
+	if len(decoded) == 0 {
+		*tickets = nil
+		return nil
+	}
+	*tickets = decoded
+	return nil
 }
 
 type registrationDataDTO struct {
-	PriceMin           float64 `json:"price_min"`
-	PriceMax           float64 `json:"price_max"`
-	IsRegistrationOpen bool    `json:"is_registration_open"`
+	PriceMin           *float64
+	PriceMax           *float64
+	IsRegistrationOpen bool
+}
+
+// UnmarshalJSON decodes each optional registration field separately so a
+// malformed price bound cannot discard a usable companion bound or make a
+// provider page undecodable.
+func (registration *registrationDataDTO) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		if !json.Valid(data) {
+			return err
+		}
+		*registration = registrationDataDTO{}
+		return nil
+	}
+
+	*registration = registrationDataDTO{
+		PriceMin: decodeOptional[*float64](fields["price_min"]),
+		PriceMax: decodeOptional[*float64](fields["price_max"]),
+	}
+	if raw, ok := fields["is_registration_open"]; ok {
+		registration.IsRegistrationOpen = decodeOptional[bool](raw)
+	}
+	return nil
 }
 
 // flexibleText isolates Timepad's inconsistent optional scalar encoding. In
