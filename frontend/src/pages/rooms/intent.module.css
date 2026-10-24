@@ -30,8 +30,8 @@
   gap: 10px;
   margin: 0;
   padding: 0;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-bold);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .choiceField legend {
@@ -42,8 +42,8 @@
 
 .choiceField {
   display: block;
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .choiceField .fieldError {
@@ -61,13 +61,15 @@
 
 .choiceOptions button {
   max-width: 100%;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .fieldError {
   margin: -1px 0 0;
   color: #b42318;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.4;
 }
 
@@ -75,12 +77,27 @@
   display: block;
   width: 100%;
   margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.rangeField > span[id$="-help"] {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .textField textarea {
   display: block;
   width: 100%;
   margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.textField textarea::placeholder {
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .formErrors {
@@ -88,6 +105,8 @@
   gap: 5px;
   margin: -8px 0 0;
 }
+
+.formErrors { font-size: 12px; font-weight: 400; }
 
 .intentFooter {
   position: sticky;
@@ -97,6 +116,8 @@
   padding: 16px 0 calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgb(250 249 246 / 0%), var(--color-canvas) 24%);
 }
+
+.intentFooter button { font-size: 14px; font-weight: 600; }
 
 @media (max-width: 359px) {
   .choiceOptions {
@@ -117,16 +138,7 @@
   }
 }
 
-.dateEntry {
-  display: grid;
-  min-width: 0;
-  gap: 10px;
-}
-
-.dateEntry input { min-width: 0; width: 100%; }
-
-.rangeField input[type="number"],
-.dateEntry input {
+.rangeField input[type="number"] {
   min-height: 48px;
   font-size: var(--font-size-input);
 }

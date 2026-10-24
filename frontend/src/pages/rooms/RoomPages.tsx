@@ -185,7 +185,6 @@ export function RoomFlowPage() {
 
 const intentSchema = (timezone?: string) => z.object({
   dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату').max(14, 'Не больше 14 дат').refine((dates) => new Set(dates).size === dates.length && dates.every((date) => isCanonicalDate(date) && (!timezone || date >= cityToday(timezone))), 'Выберите актуальные даты без повторов; прошедшие даты нужно изменить самостоятельно'),
-  day_types: z.array(z.enum(['weekday', 'weekend'])),
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
   category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1),
   budget: z.number({ invalid_type_error: 'Введите бюджет' }).min(0).max(1_000_000).multipleOf(0.01, 'Укажите сумму с точностью до копейки'),
@@ -198,18 +197,11 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const queryClient = useQueryClient()
   const city = roomCity(room.city_id)
   const timezone = city?.timezone
-  const initialDates = room.myIntent?.dates ?? room.public_plan?.dates ?? []
-  const [additionalDates, setAdditionalDates] = useState<string[]>([])
-  const [dateToAdd, setDateToAdd] = useState('')
-  const [dateError, setDateError] = useState('')
   const errorSummary = useRef<HTMLParagraphElement>(null)
-  const upcoming = timezone ? upcomingCityDates(7, timezone) : room.public_plan ? [] : upcomingDates(7)
-  const formDefaults = intentDefaults(room, upcoming[0]?.[0] ?? '')
+  const formDefaults = intentDefaults(room, timezone ? cityToday(timezone) : localDate(new Date()))
   const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema(timezone)), defaultValues: formDefaults })
   const [budgetText, setBudgetText] = useState(String(formDefaults.budget))
   const dates = useWatch({ control: form.control, name: 'dates' })
-  const dateChoices: Array<[string, string]> = [...new Set([...initialDates, ...dates, ...upcoming.map(([date]) => date), ...additionalDates])].map((date) => [date, formatRoomDate(date)])
-  const dayTypes = useWatch({ control: form.control, name: 'day_types' })
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
@@ -219,7 +211,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
       if (!(error instanceof ApiError)) return
-      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', day_types: 'day_types', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', free_text: 'free_text' }
+      const mapping: Record<string, keyof IntentForm> = { dates: 'dates', time_slots: 'time_slots', category_slugs: 'category_slugs', budget_max_minor: 'budget', free_text: 'free_text' }
       for (const [field, message] of Object.entries(error.fieldErrors)) if (mapping[field]) form.setError(mapping[field], { message })
     },
   })
@@ -230,15 +222,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
       <p className={styles.subtitle}>{city ? `${city.name} · ${city.timezone}` : 'Часовой пояс города проверит сервер.'}</p><PrivacyNote />
       <form className={`${styles.formStack} ${intentStyles.intentForm}`} onSubmit={(event) => { void form.handleSubmit((values) => { if (!save.isPending) save.mutate(values) }, () => window.requestAnimationFrame(() => errorSummary.current?.focus()))(event) }}>
         {Object.keys(form.formState.errors).length ? <p ref={errorSummary} tabIndex={-1} className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время, бюджет и интересы.</p> : null}
-        <fieldset className={intentStyles.choiceField}><legend>Когда удобно</legend><RoomDateChoices id="intent-add-date" options={dateChoices} selected={dates} onToggle={(value) => form.setValue('dates', toggleValue(dates, value), { shouldValidate: true })} onLimitReached={() => setDateError('Можно выбрать не больше 14 дат.')} date={dateToAdd} onDateChange={(value) => { setDateToAdd(value); setDateError('') }} min={timezone ? cityToday(timezone) : undefined} error={dateError || form.formState.errors.dates?.message} description={timezone ? `Выберите удобные даты, начиная с ${cityToday(timezone)}.` : undefined} disabled={save.isPending} onAddDate={() => {
-            if (!isCanonicalDate(dateToAdd) || (timezone && dateToAdd < cityToday(timezone))) { setDateError('Выберите актуальную дату в часовом поясе города.'); return }
-            if (dates.includes(dateToAdd)) { setDateError('Эта дата уже выбрана.'); return }
-            if (dates.length >= 14) { setDateError('Можно выбрать не больше 14 дат.'); return }
-            setAdditionalDates((values) => values.includes(dateToAdd) ? values : [...values, dateToAdd])
-            if (!dates.includes(dateToAdd)) form.setValue('dates', [...dates, dateToAdd], { shouldValidate: true, shouldDirty: true })
-            setDateToAdd('')
-          }} /></fieldset>
-        <ChoiceField title="Тип дня (необязательно)" error={form.formState.errors.day_types?.message} options={[['weekday', 'Будни'], ['weekend', 'Выходные']]} selected={dayTypes} onToggle={(value) => form.setValue('day_types', toggleValue(dayTypes, value as IntentForm['day_types'][number]), { shouldValidate: true })} />
+        <fieldset className={intentStyles.choiceField}><legend>Когда удобно</legend><RoomDateChoices id="intent-date-picker" selected={dates} onChange={(nextDates) => form.setValue('dates', nextDates, { shouldValidate: true, shouldDirty: true })} min={timezone ? cityToday(timezone) : undefined} error={form.formState.errors.dates?.message} description={timezone ? `Выберите удобные даты, начиная с ${cityToday(timezone)}.` : undefined} disabled={save.isPending} /></fieldset>
         <ChoiceField title="Время" error={form.formState.errors.time_slots?.message} options={[['morning', 'Утро'], ['day', 'День'], ['evening', 'Вечер'], ['night', 'Ночь']]} selected={timeSlots} onToggle={(value) => form.setValue('time_slots', toggleValue(timeSlots, value as IntentForm['time_slots'][number]), { shouldValidate: true })} />
         <ChoiceField title="Что интересно" error={form.formState.errors.category_slugs?.message} options={CATEGORY_OPTIONS.map(({ slug, label }) => [slug, label] as [CategorySlug, string])} selected={categories} onToggle={(value) => form.setValue('category_slugs', toggleValue(categories, value as CategorySlug), { shouldValidate: true })} />
         <div className={intentStyles.rangeField}><MoneyInput id="room-budget" label="Бюджет, ₽" suffix="₽" value={budgetText} required invalid={Boolean(form.formState.errors.budget)} describedBy="room-budget-help" onChange={(value) => { setBudgetText(value); const minor = decimalToMinor(value); form.setValue('budget', minor === null ? Number.NaN : minor / 100, { shouldValidate: true, shouldDirty: true }) }} /><span id="room-budget-help" className={styles.subtitle}>До {Number(budget || 0).toLocaleString('ru', { maximumFractionDigits: 2 })} ₽ для вас</span>{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</div>
@@ -462,36 +446,23 @@ function expectedScreen(room: RoomSnapshot) {
 }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
-  return { dates: values.dates, day_types: values.day_types, time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: Math.round(values.budget * 100), radius_m: null, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
+  return { dates: values.dates, day_types: [], time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: Math.round(values.budget * 100), radius_m: null, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }
 
-function addDays(date: Date, amount: number) { const next = new Date(date); next.setDate(next.getDate() + amount); return next }
 function localDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function formatRoomDate(date: string) { return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' }).format(new Date(`${date}T12:00:00`)) }
-function upcomingDates(count: number): Array<[string, string]> { return Array.from({ length: count }, (_, index) => { const date = addDays(new Date(), index); return [localDate(date), new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(date)] }) }
-
-function upcomingCityDates(count: number, timezone: string): Array<[string, string]> {
-  const today = cityToday(timezone)
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(`${today}T12:00:00Z`)
-    date.setUTCDate(date.getUTCDate() + index)
-    const value = date.toISOString().slice(0, 10)
-    return [value, formatRoomDate(value)]
-  })
-}
 
 function intentDefaults(room: RoomSnapshot, fallbackDate: string): IntentForm {
   const intent = room.myIntent
   return intent ? {
     dates: [...intent.dates],
-    day_types: [...intent.day_types],
     time_slots: [...intent.time_slots],
     category_slugs: [...intent.category_slugs],
     budget: intent.budget_max_minor / 100,
     free_text: intent.free_text ?? '',
-  } : room.public_plan ? { dates: [...room.public_plan.dates], day_types: [], time_slots: [...room.public_plan.time_slots], category_slugs: [...room.public_plan.category_slugs], budget: room.public_plan.budget_max_minor / 100, free_text: '' } : { dates: [fallbackDate], day_types: [], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, free_text: '' }
+  } : room.public_plan ? { dates: [...room.public_plan.dates], time_slots: [...room.public_plan.time_slots], category_slugs: [...room.public_plan.category_slugs], budget: room.public_plan.budget_max_minor / 100, free_text: '' } : { dates: [fallbackDate], time_slots: ['evening'], category_slugs: ['concerts', 'standup'], budget: 3_000, free_text: '' }
 }
 
 function maxAppUrl(token: string) {

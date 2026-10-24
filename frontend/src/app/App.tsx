@@ -97,7 +97,7 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
-    {['/', '/events', '/saved'].includes(location.pathname) && <BottomNav activeId={location.pathname === '/' ? 'home' : location.pathname === '/events' ? 'catalog' : 'saved'} items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'catalog', label: 'Афиша', icon: 'calendar' }, { id: 'saved', label: 'Моё', icon: 'saved' }]} onChange={(id) => navigate(id === 'home' ? '/' : id === 'catalog' ? '/events' : '/saved')} />}
+    {['/', '/events', '/saved'].includes(location.pathname) && <BottomNav activeId={location.pathname === '/' ? 'home' : location.pathname === '/events' ? 'catalog' : 'saved'} items={[{ id: 'home', label: 'Главная', icon: 'home' }, { id: 'catalog', label: 'Афиша', icon: 'calendar' }, { id: 'saved', label: 'Избранное', icon: 'saved' }]} onChange={(id) => navigate(id === 'home' ? '/' : id === 'catalog' ? '/events' : '/saved')} />}
     </>
   )
 }

@@ -64,10 +64,10 @@ test('bottom navigation animates on the first click across routes and restarts o
   await expect(page).toHaveURL(/\/events$/)
   await expect.poll(() => page.evaluate(() => (window as unknown as { __navAnimations: string[] }).__navAnimations)).toEqual(expect.arrayContaining([expect.stringContaining('navCalendarFlip')]))
 
-  const saved = page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Моё/ })
+  const saved = page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Избранное/ })
   await saved.click()
   await expect(page).toHaveURL(/\/saved$/)
-  await expect.poll(() => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Моё/ }).evaluate((button) => button.className)).toContain('navClick_saved')
+  await expect.poll(() => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Избранное/ }).evaluate((button) => button.className)).toContain('navClick_saved')
 
   await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Главная/ }).click()
   await expect(page).toHaveURL('/')

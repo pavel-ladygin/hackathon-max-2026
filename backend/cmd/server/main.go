@@ -25,6 +25,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventsubmissions"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/eventuploads"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/maxwelcome"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/objectstorage"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/providers/generic"
@@ -175,6 +176,10 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 	if err != nil {
 		return nil, err
 	}
+	maxWelcomeHandler, err := maxwelcome.New(cfg.MAXBotToken, cfg.MAXAppURL, cfg.MAXBotWebhookSecret)
+	if err != nil {
+		return nil, err
+	}
 
 	roomService, err := rooms.NewCreateService(db, behaviorRecorder, invites, poolBuilder)
 	if err != nil {
@@ -214,6 +219,11 @@ func newHandler(ctx context.Context, cfg config.Config, db *store.Pool, logger *
 				protected.Use(authService.Middleware)
 				roomService.RegisterRoutes(protected)
 			})
+		},
+		func(r chi.Router) {
+			if maxWelcomeHandler != nil {
+				maxWelcomeHandler.RegisterRoutes(r)
+			}
 		},
 	)), nil
 }

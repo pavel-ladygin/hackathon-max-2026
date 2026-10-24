@@ -23,6 +23,7 @@
 .day { display: grid; min-height: 42px; place-items: center; border: 0; border-radius: 13px; background: transparent; color: var(--color-ink, #242423); font: inherit; font-size: var(--font-size-body-small); font-weight: var(--font-weight-bold); }
 .day:hover:not(:disabled) { background: var(--color-hover, #f3f0ec); }
 .day:disabled { color: #c7c0b9; cursor: not-allowed; }
+.day[aria-disabled="true"] { color: #c7c0b9; cursor: not-allowed; }
 .outside { color: #b9b0a7; font-weight: var(--font-weight-medium); }
 .selected { background: var(--color-ink, #242423); color: #fff; }
 .selected:hover:not(:disabled) { background: #343432; }

@@ -1,7 +1,11 @@
 .root { display: grid; gap: 10px; min-width: 0; }
-.choices { display: flex; flex-wrap: wrap; gap: 8px; }
-.add { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 8px; }
-.add > button { min-height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 13px; background: var(--color-soft); color: var(--color-ink); font: inherit; font-size: var(--font-size-body-small); font-weight: var(--font-weight-bold); }
-.add > button:disabled { color: var(--color-muted); cursor: not-allowed; opacity: .65; }
-.hint,.error { font-size: var(--font-size-caption); line-height: 1.45; }.hint { color: var(--color-muted); font-weight: var(--font-weight-regular); }.error { color: var(--color-danger); font-weight: var(--font-weight-semibold); }
-@media (max-width: 520px) { .add { grid-template-columns: 1fr; } }
+.picker > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.chip { display: inline-flex; width: fit-content; min-height: 44px; align-items: center; gap: 8px; border: 1px solid var(--color-ink, #242423); border-radius: 999px; padding: 5px 12px 5px 15px; background: var(--color-ink, #242423); color: #fff; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; cursor: pointer; }
+.chip:hover:not(:disabled) { background: #343432; }
+.chip:focus-visible { outline: 2px solid var(--color-ink, #242423); outline-offset: 3px; }
+.chip:disabled { cursor: not-allowed; opacity: .55; }
+.remove { display: inline-grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 50%; background: rgb(255 255 255 / 14%); color: inherit; font-size: 18px; line-height: 1; }
+.hint, .error { font-size: var(--font-size-caption); line-height: 1.45; }
+.hint { color: var(--color-muted); font-weight: var(--font-weight-regular); }
+.error { color: var(--color-danger); font-weight: var(--font-weight-semibold); }

@@ -169,7 +169,8 @@ docker compose --env-file .env.submission.example up -d --no-build
 | --- | --- |
 | `APP_ENV`, `HTTP_ADDR`, `DATABASE_URL`, `LOG_LEVEL` | Режим и логи; Compose задаёт адрес `:8080` и собирает URL БД из `POSTGRES_*` |
 | `MAX_BOT_TOKEN` | Проверка подписи MAX и работа бота; для живого MAX нужен действующий токен |
-| `MAX_APP_URL`, `INVITE_URL_TEMPLATE`, `MAX_DEEP_LINK_TEMPLATE` | `MAX_APP_URL` нужен production-уведомлениям; HTTPS-шаблоны приглашений содержат `{token}` ровно один раз |
+| `MAX_APP_URL`, `INVITE_URL_TEMPLATE`, `MAX_DEEP_LINK_TEMPLATE` | `MAX_APP_URL` нужен production-уведомлениям и приветствию бота; HTTPS-шаблоны приглашений содержат `{token}` ровно один раз |
+| `MAX_BOT_WEBHOOK_SECRET` | Необязательный секрет webhook приветствия; пока он не задан, маршрут webhook выключен |
 | `INVITE_ENCRYPTION_KEY`, `INVITE_ENCRYPTION_KEY_VERSION` | Стабильный base64-ключ шифрования приглашений (32 байта до кодирования) и его версия |
 | `POSTGRES_PORT`, `BACKEND_PORT`, `FRONTEND_PORT` | Порты хоста локального стенда: 5432, 8080, 8081 |
 | `VITE_MAX_APP_URL`, `VITE_TICKET_PROVIDER_ALLOWLIST`, `VITE_YANDEX_MAPS_API_KEY` | Параметры локальной сборки frontend; API проксируется через `/api/v1` |
@@ -224,6 +225,8 @@ python -m unittest discover -s backend/tests/contract -v
 ## Развёртывание и обслуживание
 
 Production: <https://worknet.team>. Nginx завершает HTTPS и проксирует frontend/API; PostgreSQL не публикуется наружу. Скрипт `deploy/deploy.sh <40-character-commit-sha>` создаёт резервную копию PostgreSQL, обновляет образы, применяет миграции, выполняет smoke-проверки и предусматривает откат образов при ошибке. Реальные переменные находятся в приватном env-файле на сервере. Отдельно проверяются доступность MAX, TLS, домены билетов и состояние источников.
+
+Приветствие при запуске бота включается только после настройки `MAX_BOT_WEBHOOK_SECRET` в backend environment и создания webhook-подписки MAX на `https://worknet.team/api/v1/max/webhook` с типом события `bot_started` и тем же значением `secret`. Подписку нужно создать вручную через `POST https://platform-api2.max.ru/subscriptions` с заголовком `Authorization: <MAX_BOT_TOKEN>` и телом `{"url":"https://worknet.team/api/v1/max/webhook","update_types":["bot_started"],"secret":"<MAX_BOT_WEBHOOK_SECRET>"}`. Код не регистрирует подписку и не переключает тип получения обновлений. Смотрите официальные инструкции MAX: [создание webhook-подписки](https://dev.max.ru/docs-api/methods/POST/subscriptions), [формат события Update](https://dev.max.ru/docs-api/objects/Update), [отправка сообщений и inline-кнопок](https://dev.max.ru/docs-api/methods/POST/messages).
 
 Импорт событий **не входит** в стандартный локальный запуск. Для включения KudaGo и, при наличии токена, Timepad:
 

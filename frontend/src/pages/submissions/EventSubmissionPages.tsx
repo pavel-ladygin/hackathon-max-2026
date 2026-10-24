@@ -161,7 +161,7 @@ export function EventSubmissionPage() {
   const startsAt = values.start_date && values.start_time ? `${values.start_date}T${values.start_time}` : ''
   const endsAt = values.end_date && values.end_time ? `${values.end_date}T${values.end_time}` : ''
   return <PageShell><TopBar title={review ? 'Предпросмотр' : 'Предложить событие'} onBack={() => review ? setReview(false) : navigate(-1)} /><PageContent className={styles.narrow}>
-    <p className={styles.eyebrow}>СОБЫТИЯ ОТ ГОРОЖАН</p><h1 className={styles.title}>{review ? 'Проверьте детали' : 'Добавьте событие в афишу'}</h1><p className={styles.lead}>Заявка появится в каталоге после проверки модератором. Бесплатное событие можно предложить без ссылки.</p>
+    <p className={styles.eyebrow}>СОБЫТИЯ ОТ ПОЛЬЗОВАТЕЛЕЙ</p><h1 className={styles.title}>{review ? 'Проверьте детали' : 'Добавьте событие в афишу'}</h1><p className={styles.lead}>Заявка появится в каталоге после проверки модератором. Бесплатное событие можно предложить без ссылки.</p>
     {!review ? <form className={styles.form} onSubmit={form.handleSubmit(mapLocalErrors)} noValidate>
       <label>Название<input maxLength={200} autoComplete="off" {...form.register('title')} aria-invalid={Boolean(field('title'))} />{field('title') && <small role="alert">{field('title')}</small>}</label>
       <label>Описание<textarea rows={5} maxLength={10_000} {...form.register('description')} aria-invalid={Boolean(field('description'))} />{field('description') && <small role="alert">{field('description')}</small>}</label>

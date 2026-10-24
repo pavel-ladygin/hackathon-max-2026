@@ -43,4 +43,49 @@ describe("DatePicker", () => {
     expect(screen.getByRole("gridcell", { name: "10 сентября 2026 г." })).not.toBeDisabled();
     expect(screen.getByRole("gridcell", { name: "21 сентября 2026 г." })).toBeDisabled();
   });
+
+  it("drafts multiple dates across months and commits only on Apply", () => {
+    const onChange = vi.fn();
+    render(<DatePicker id="dates" label="Выбор дат" mode="multiple" value={["2026-09-22"]} onChange={onChange} maxSelections={14} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Выбор дат" }));
+    fireEvent.click(screen.getByRole("gridcell", { name: "23 сентября 2026 г." }));
+    fireEvent.click(screen.getByRole("button", { name: "Следующий месяц" }));
+    fireEvent.click(screen.getByRole("gridcell", { name: "5 октября 2026 г." }));
+    expect(screen.getByText("3 из 14")).toBeVisible();
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    expect(onChange).toHaveBeenCalledWith(["2026-09-22", "2026-09-23", "2026-10-05"]);
+  });
+
+  it("cancels multiple-date drafts on Escape and clears only the draft until Apply", () => {
+    const onChange = vi.fn();
+    render(<DatePicker id="dates" label="Выбор дат" mode="multiple" value={["2026-09-22"]} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Выбор дат" }));
+    fireEvent.click(screen.getByRole("gridcell", { name: "23 сентября 2026 г." }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Выбор дат" }));
+    fireEvent.click(screen.getByRole("button", { name: "Очистить" }));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it("prevents selecting more than maxSelections", () => {
+    const onChange = vi.fn();
+    render(<DatePicker id="dates" label="Выбор дат" mode="multiple" value={["2026-09-22"]} onChange={onChange} maxSelections={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выбор дат" }));
+    const cappedDate = screen.getByRole("gridcell", { name: "23 сентября 2026 г." });
+    expect(cappedDate).toHaveAttribute("aria-disabled", "true");
+    expect(cappedDate).not.toBeDisabled();
+    expect(screen.getByRole("gridcell", { name: "22 сентября 2026 г." })).not.toBeDisabled();
+    cappedDate.focus();
+    expect(cappedDate).toHaveFocus();
+    fireEvent.keyDown(cappedDate, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

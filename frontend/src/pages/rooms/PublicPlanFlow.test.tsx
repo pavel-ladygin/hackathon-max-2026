@@ -7,7 +7,7 @@ import { CreateRoomForm } from './CreateRoomForm'
 import { PlanSummary } from './PlanSummary'
 import { InvitePage, JoinPage, RoomFlowPage } from './RoomPages'
 import { maxPlatform } from '../../shared/platform/max/adapter'
-import { cityToday, formatPlanDate } from './public-plan'
+import { cityToday } from './public-plan'
 
 const mocks = vi.hoisted(() => ({
   bootstrapData: undefined as any,
@@ -76,7 +76,10 @@ describe('public room plan flow', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
     const date = cityToday('Europe/Moscow')
-    fireEvent.click(screen.getByRole('button', { name: formatPlanDate(date) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Выбор дат' }))
+    const dateLabel = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00`))
+    fireEvent.click(screen.getByRole('gridcell', { name: dateLabel }))
+    fireEvent.click(screen.getByRole('button', { name: 'Применить' }))
     fireEvent.click(screen.getByRole('button', { name: 'Вечер' }))
     fireEvent.click(screen.getByRole('button', { name: 'Концерты' }))
     fireEvent.change(screen.getByLabelText(/Бюджет на человека/), { target: { value: '2500.25' } })
@@ -136,7 +139,7 @@ describe('public room plan flow', () => {
     mocks.room = roomFixture()
     const firstView = roomView()
     expect(screen.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
-    expect(screen.getByRole('button', { name: /20 ноября/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Удалить .*20 нояб/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Вечер' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Концерты' })).toHaveAttribute('aria-pressed', 'true')
     expect((screen.getByLabelText(/Бюджет, ₽/) as HTMLInputElement).value).toBe('2500.25')
@@ -144,7 +147,7 @@ describe('public room plan flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить предпочтения' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-server', expect.objectContaining({
-      dates: ['2099-11-20'], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025,
+      dates: ['2099-11-20'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025,
     })))
     firstView.unmount()
 
@@ -152,7 +155,7 @@ describe('public room plan flow', () => {
     mocks.room = roomFixture({ myIntent: savedIntent })
     roomView()
     expect(screen.queryByText(/Поля заполнены из публичного предложения/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /25 ноября/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Удалить .*25 нояб/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Утро' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Театр' })).toHaveAttribute('aria-pressed', 'true')
     expect((screen.getByLabelText(/Бюджет, ₽/) as HTMLInputElement).value).toBe('4000')
@@ -194,7 +197,7 @@ describe('public room plan flow', () => {
   it('shows a past plan date unchanged and requires an explicit valid replacement', async () => {
     mocks.room = roomFixture({ public_plan: { ...plan, dates: ['2000-01-01'] } })
     roomView()
-    expect(screen.getByRole('button', { name: /1 января/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Удалить .*1 янв/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить предпочтения' }))
     expect(await screen.findByText(/прошедшие даты нужно изменить самостоятельно/)).toBeVisible()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()

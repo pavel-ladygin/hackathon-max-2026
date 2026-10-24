@@ -65,6 +65,8 @@ services:
     environment:
       <<: *backend-environment
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?MAX_BOT_TOKEN is required; set it in .env}
+      MAX_APP_URL: ${MAX_APP_URL:-https://max.ru/t255_hakaton_max_bot}
+      MAX_BOT_WEBHOOK_SECRET: ${MAX_BOT_WEBHOOK_SECRET:-}
       INTERNAL_ADMIN_PROXY_SECRET: ${INTERNAL_ADMIN_PROXY_SECRET:-}
       MAX_INIT_DATA_MAX_AGE: ${MAX_INIT_DATA_MAX_AGE:-1h}
       TICKET_PROVIDER_ALLOWLIST: ${TICKET_PROVIDER_ALLOWLIST:-}

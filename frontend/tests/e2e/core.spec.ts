@@ -7,6 +7,7 @@ const event = { id: 'event-1', title: 'Джазовый вечер в Оранж
 const openApp = (page: Page, path: string) => page.goto(path, { waitUntil: 'domcontentloaded' })
 
 async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new') {
+  await page.route('https://st.max.ru/js/max-web-app.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }))
   let onboardingState = initialState
   let storedPreferences = initialState === 'complete' ? preferences : null
   let preferencesWrites = 0
@@ -36,7 +37,7 @@ async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new')
     if (route.request().method() !== 'POST') return route.fallback()
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ room, invite: room.invite }) })
   })
-  return { get preferencesWrites() { return preferencesWrites }, roomId }
+  return { get preferencesWrites() { return preferencesWrites }, get savedPreferences() { return storedPreferences }, roomId }
 }
 
 test('real bootstrap and preferences work with HTTP discovery', async ({ page }) => {
@@ -45,8 +46,12 @@ test('real bootstrap and preferences work with HTTP discovery', async ({ page })
   await expect(page.getByRole('heading', { name: 'Что вам интересно?' })).toBeVisible()
   await page.getByRole('button', { name: 'Продолжить' }).click()
   await expect(page.getByRole('heading', { name: 'Настроим подборку' })).toBeVisible()
+  await page.getByRole('button', { name: 'Ваш город' }).click()
+  await page.getByRole('option', { name: /Санкт-Петербург/ }).click()
+  await expect(page.getByRole('button', { name: 'Ваш город' })).toContainText('Санкт-Петербург')
   await page.getByRole('button', { name: 'Сформировать подборку' }).click()
   await expect.poll(() => backend.preferencesWrites).toBe(1)
+  expect(backend.savedPreferences?.city_id).toBe('bf61fbf5-8c5b-53da-96c7-3560df3f8177')
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByText('Для вас')).toBeVisible()
 })
@@ -72,6 +77,46 @@ test('creates a room and opens the invite route', async ({ page }) => {
   await expect(page.getByTestId('invite-url')).toContainText('/join/invite-e2e')
 })
 
+test('room calendar drafts multiple dates, removes selected dates, and fits narrow screens', async ({ page }) => {
+  await stubBackend(page, 'complete')
+  await page.clock.install({ time: new Date('2099-11-20T12:00:00Z') })
+  await openApp(page, '/rooms/new')
+  await page.getByRole('checkbox', { name: /Добавить публичное предложение/ }).check()
+  await expect(page.getByText('Быстрый выбор', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Создать комнату' }).click()
+  const errorSummary = page.locator('[data-error-summary]')
+  await expect(errorSummary).toBeVisible()
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const summaryBox = await errorSummary.boundingBox()
+    const nameBox = await page.getByLabel('Название комнаты').boundingBox()
+    expect(summaryBox!.y + summaryBox!.height).toBeLessThan(nameBox!.y)
+  }
+  const calendar = page.getByRole('button', { name: 'Выбор дат', exact: true })
+  await calendar.click()
+  await page.getByRole('gridcell', { name: '20 ноября 2099 г.', exact: true }).click()
+  await page.getByRole('gridcell', { name: '24 ноября 2099 г.', exact: true }).click()
+  await page.getByRole('button', { name: 'Следующий месяц' }).click()
+  await page.getByRole('gridcell', { name: '5 декабря 2099 г.', exact: true }).click()
+  await page.getByRole('button', { name: 'Применить' }).click()
+  const selected = page.getByRole('button', { name: /^Удалить / })
+  await expect(selected).toHaveCount(3)
+  const first = selected.first()
+  await expect(first).toHaveCSS('background-color', 'rgb(23, 23, 22)')
+  await first.click()
+  await expect(selected).toHaveCount(2)
+  await calendar.click()
+  await page.getByRole('button', { name: 'Очистить' }).click()
+  await page.keyboard.press('Escape')
+  await expect(selected).toHaveCount(2)
+  await calendar.click()
+  await expect(page.getByRole('gridcell', { name: '24 ноября 2099 г.', exact: true })).toHaveAttribute('aria-selected', 'true')
+  const dialogBox = await page.getByRole('dialog', { name: 'Выбор дат' }).boundingBox()
+  expect(dialogBox!.x).toBeGreaterThanOrEqual(0)
+  expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(390)
+})
+
 test('home room CTA opens the real creation flow', async ({ page }) => {
   const backend = await stubBackend(page, 'complete')
   await openApp(page, '/')
@@ -89,7 +134,7 @@ test('catalog filters, save action and saved navigation form one flow', async ({
   await page.getByRole('button', { name: 'Концерты' }).click()
   await expect(page.getByRole('button', { name: 'Фильтры · 1' })).toBeVisible()
   await page.getByRole('button', { name: /Сохранить «Джазовый вечер/ }).click()
-  await page.getByRole('button', { name: /Моё/ }).click()
+  await page.getByRole('button', { name: /Избранное/ }).click()
   await expect(page).toHaveURL(/\/saved$/)
   await expect(page.getByText('Джазовый вечер в Оранжерее')).toBeVisible()
 })

@@ -9,7 +9,9 @@ import { ApiError } from '../../shared/api/errors'
 import type { CategorySlug, TimeSlot } from '../../shared/api/types'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { Button, Chip, ChipGroup, PageContent, PageShell } from '../../shared/ui/index'
+import { CityPicker } from '../../shared/ui/CityPicker'
 import styles from '../pages.module.css'
+import onboardingStyles from './onboarding.module.css'
 import { cityById, MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { track } from '../../shared/analytics/client'
 
@@ -38,7 +40,9 @@ export function OnboardingPage() {
   const queryClient = useQueryClient()
   const bootstrap = useBootstrap()
   const stored = bootstrap.data?.preferences
-  const cityId = stored?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID
+  const [selectedCityId, setSelectedCityId] = useState<string | null>(null)
+  const [cityPickerOpen, setCityPickerOpen] = useState(false)
+  const cityId = selectedCityId ?? stored?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID
   const [interests, setInterests] = useState<CategorySlug[]>(() => stored?.interestSlugs ?? ['concerts', 'exhibitions', 'food'])
   const form = useForm<ProfileForm>({ resolver: zodResolver(schema), defaultValues: { budget: (stored?.budgetMaxMinor ?? 350_000) / 100, usual: stored?.usualDayTypes ?? ['weekend'], times: stored?.usualTimeSlots ?? ['evening'] } })
   const budget = useWatch({ control: form.control, name: 'budget' })
@@ -89,9 +93,16 @@ export function OnboardingPage() {
           <form onSubmit={form.handleSubmit((values) => save.mutate(values))}>
             <p className={styles.eyebrow}>ВАШ ПРОФИЛЬ</p>
             <h1 className={styles.title}>Настроим подборку</h1>
-            <p className={styles.subtitle}>Пара деталей поможет точнее ранжировать события и быстрее находить общее.</p>
+            <p className={`${styles.subtitle} ${onboardingStyles.profileIntro}`}>Пара деталей поможет точнее ранжировать события и быстрее находить общее.</p>
             <div className={styles.formStack}>
-              <label className={styles.fieldLabel}>Ваш город<input className={styles.input} value={cityById(cityId)?.name ?? 'Выбранный город'} readOnly aria-describedby="city-help" /><span id="city-help" className={styles.eyebrow}>Город можно изменить на главной</span></label>
+              <div className={styles.fieldLabel}>
+                <label htmlFor="onboarding-city">Ваш город</label>
+                <button id="onboarding-city" className={onboardingStyles.cityTrigger} type="button" aria-haspopup="dialog" aria-expanded={cityPickerOpen} aria-describedby="city-help" disabled={save.isPending} onClick={() => setCityPickerOpen(true)}>
+                  <span>{cityById(cityId)?.name ?? 'Выбранный город'}</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 10 5 5 5-5" /></svg>
+                </button>
+                <span id="city-help" className={onboardingStyles.cityHelp}>Выберите город для вашей афиши</span>
+              </div>
               <label className={styles.fieldLabel}>Комфортный бюджет · до {budget.toLocaleString('ru')} ₽<input className={styles.range} type="range" min="0" max="10000" step="500" aria-invalid={Boolean(form.formState.errors.budget)} aria-describedby="budget-error" {...form.register('budget')} /></label>
               {form.formState.errors.budget ? <p id="budget-error" className={styles.fieldError}>Укажите корректный бюджет.</p> : null}
               <fieldset className={styles.fieldLabel} aria-invalid={Boolean(form.formState.errors.usual)}><legend>Когда обычно удобно</legend><ChipGroup label="Дни недели"><Chip selected={usual.includes('weekday')} onClick={() => form.setValue('usual', toggleValue(usual, 'weekday'), { shouldValidate: true })}>Будни</Chip><Chip selected={usual.includes('weekend')} onClick={() => form.setValue('usual', toggleValue(usual, 'weekend'), { shouldValidate: true })}>Выходные</Chip></ChipGroup>{form.formState.errors.usual ? <p className={styles.fieldError}>Выберите хотя бы один вариант.</p> : null}</fieldset>
@@ -101,6 +112,7 @@ export function OnboardingPage() {
             <div className={styles.footer}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем…' : 'Сформировать подборку'}</Button></div>
           </form>
         )}
+        {cityPickerOpen ? <CityPicker cityId={cityId} onSelect={async (id) => { setSelectedCityId(id) }} onClose={() => setCityPickerOpen(false)} /> : null}
       </PageContent>
     </PageShell>
   )

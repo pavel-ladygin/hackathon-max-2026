@@ -25,6 +25,8 @@ type Config struct {
 	DatabaseURL                 string
 	LogLevel                    slog.Level
 	MAXBotToken                 string
+	MAXAppURL                   string
+	MAXBotWebhookSecret         string
 	InternalAdminProxySecret    string
 	MAXInitDataMaxAge           time.Duration
 	TrustedProxyCIDRs           []net.IPNet
@@ -65,6 +67,8 @@ func Load() (Config, error) {
 		HTTPAddr:                    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		DatabaseURL:                 strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		MAXBotToken:                 strings.TrimSpace(os.Getenv("MAX_BOT_TOKEN")),
+		MAXAppURL:                   strings.TrimSpace(os.Getenv("MAX_APP_URL")),
+		MAXBotWebhookSecret:         strings.TrimSpace(os.Getenv("MAX_BOT_WEBHOOK_SECRET")),
 		InternalAdminProxySecret:    strings.TrimSpace(os.Getenv("INTERNAL_ADMIN_PROXY_SECRET")),
 		MAXInitDataMaxAge:           time.Hour,
 		InviteEncryptionKeyVersion:  1,
