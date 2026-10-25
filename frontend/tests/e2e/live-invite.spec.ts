@@ -1,17 +1,20 @@
 import { expect, test, type Page } from '@playwright/test'
+import type { RoomSnapshotDto } from '../../src/shared/api/types'
 
 const cityId = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
 const user = { id: 'invite-recipient', display_name: 'Анна', avatar_url: null, city_id: cityId, locale: 'ru' }
 type BootstrapInput = { init_data: string; start_param: string | null }
 
-async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' = 'joinable') {
+async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' = 'joinable', options: { alreadyJoined?: boolean; roomState?: 'collecting_intents' | 'ranking'; coldInvite?: boolean } = {}) {
   const bootstraps: BootstrapInput[] = []
   let joins = 0
   let joinGate: Promise<void> | null = null
-  const joinedRoom = { id: 'room-invite-a', name: 'Вечер с Павлом', city_id: cityId, state: 'collecting_intents', round_no: 1, version: 2, participants: [{ ...user, role: 'participant', intent_ready: false }], my_intent: null, pool: null, match: null, invite: null, allowed_actions: ['edit_intent'], created_at: '2026-10-25T12:00:00Z', expires_at: '2099-01-01T00:00:00Z' }
-  await page.addInitScript(() => {
-    window.WebApp = { initData: 'signed-initial', initDataUnsafe: {}, platform: 'web', ready: () => {} }
-  })
+  let bootstrapGate: Promise<void> | null = null
+  const ranking = options.roomState === 'ranking'
+  const joinedRoom: RoomSnapshotDto = { id: 'room-invite-a', name: 'Вечер с Павлом', city_id: cityId, state: options.roomState ?? 'collecting_intents', round_no: 1, version: 2, participants: [{ id: 'creator', display_name: 'Павел', avatar_url: null, role: 'creator', intent_ready: true }, { ...user, role: 'participant', intent_ready: ranking }], my_intent: ranking ? { dates: ['2099-10-26'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 200_000, radius_m: null, exclusion_slugs: [], location: null, free_text: null, version: 1, round_no: 1, submitted_at: '2099-10-25T12:00:00Z' } : null, pool: null, match: null, invite: null, allowed_actions: ranking ? ['wait'] : ['edit_intent'], created_at: '2026-10-25T12:00:00Z', expires_at: '2099-01-01T00:00:00Z' }
+  await page.addInitScript((coldInvite) => {
+    window.WebApp = { initData: coldInvite ? 'signed-invite-a' : 'signed-initial', initDataUnsafe: coldInvite ? { start_param: 'invite-a' } : {}, platform: 'web', ready: () => {} }
+  }, options.coldInvite ?? false)
   await page.route('https://st.max.ru/js/max-web-app.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }))
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname
@@ -19,11 +22,12 @@ async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' =
       const body = route.request().postDataJSON() as BootstrapInput
       bootstraps.push(body)
       const token = body.init_data === 'signed-invite-a' ? 'invite-a' : body.init_data === 'signed-invite-b' ? 'invite-b' : null
+      if (body.init_data === 'signed-invite-a' && bootstrapGate) await bootstrapGate
       if (body.init_data === 'invalid-signed-data') return route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Invalid init data' } } })
       return route.fulfill({ json: {
         access_token: 'local-test-session', user, onboarding_state: 'complete', preferences: null,
         daily_notifications_enabled: false, shared_event_id: null,
-        invite_context: token ? { token, room_id: `room-${token}`, room_name: token === 'invite-a' ? 'Вечер с Павлом' : 'Вечер с Сергеем', city_id: cityId, public_plan: null, inviter: { id: 'creator', display_name: token === 'invite-a' ? 'Павел' : 'Сергей', avatar_url: null, role: 'creator', intent_ready: true }, expires_at: '2099-01-01T00:00:00Z', already_joined: false, status } : null,
+        invite_context: token ? { token, room_id: `room-${token}`, room_name: token === 'invite-a' ? 'Вечер с Павлом' : 'Вечер с Сергеем', city_id: cityId, public_plan: null, inviter: { id: 'creator', display_name: token === 'invite-a' ? 'Павел' : 'Сергей', avatar_url: null, role: 'creator', intent_ready: true }, expires_at: '2099-01-01T00:00:00Z', already_joined: options.alreadyJoined ?? false, status } : null,
       } })
     }
     if (/\/room-invites\/[^/]+\/join$/.test(path)) { joins += 1; if (joinGate) await joinGate; return route.fulfill({ json: joinedRoom }) }
@@ -34,7 +38,7 @@ async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' =
     if (path.endsWith('/behavior/events:batch')) return route.fulfill({ status: 202, json: { accepted: 1, duplicates: 0, rejected: 0 } })
     return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'No local fixture' } } })
   })
-  return { bootstraps, get joins() { return joins }, deferNextJoin() { let release!: () => void; joinGate = new Promise<void>((resolve) => { release = resolve }); return release } }
+  return { bootstraps, get joins() { return joins }, deferNextJoin() { let release!: () => void; joinGate = new Promise<void>((resolve) => { release = resolve }); return release }, deferFirstInviteBootstrap() { let release!: () => void; bootstrapGate = new Promise<void>(resolve => { release = resolve }); return release } }
 }
 
 async function bridgeLaunch(page: Page, token: 'a' | 'b') {
@@ -82,6 +86,51 @@ test('BUG-02 a second warm invitation replaces the first on its open page', asyn
   await expect(page.getByRole('heading', { name: 'Вас приглашает Сергей' })).toBeVisible()
   expect(session.bootstraps.filter((body) => body.init_data === 'signed-invite-a')).toHaveLength(1)
   expect(session.bootstraps.filter((body) => body.init_data === 'signed-invite-b')).toHaveLength(1)
+  expect(session.joins).toBe(0)
+})
+
+for (const roomState of ['collecting_intents', 'ranking'] as const) {
+  test(`BUG-02 an existing member returns to the server ${roomState} screen without joining again`, async ({ page }) => {
+    const session = await stubSession(page, 'joinable', { alreadyJoined: true, roomState })
+    await page.goto('/events', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('searchbox', { name: 'Найти событие' })).toBeVisible()
+    await bridgeLaunch(page, 'a')
+    await expect(page).toHaveURL(roomState === 'ranking' ? /\/rooms\/room-invite-a\/waiting$/ : /\/rooms\/room-invite-a\/intent$/)
+    await expect(page.getByRole('heading', { name: roomState === 'ranking' ? 'Формируем общий пул…' : 'Мои предпочтения' })).toBeVisible()
+    await expect(page.getByText('Комната уже заполнена.', { exact: true })).toHaveCount(0)
+    expect(session.joins).toBe(0)
+    const bootstrapCount = session.bootstraps.length
+    await page.getByRole('button', { name: 'Назад', exact: true }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('pageshow')) })
+    await expect(page).toHaveURL(/\/$/)
+    expect(session.bootstraps).toHaveLength(bootstrapCount)
+  })
+}
+
+test('BUG-02 a cold reload preserves an already joined room route', async ({ page }) => {
+  const session = await stubSession(page, 'joinable', { alreadyJoined: true, roomState: 'ranking', coldInvite: true })
+  await page.goto('/rooms/room-invite-a/waiting', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Формируем общий пул…' })).toBeVisible()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page).toHaveURL(/\/rooms\/room-invite-a\/waiting$/)
+  await expect(page.getByRole('heading', { name: 'Формируем общий пул…' })).toBeVisible()
+  expect(session.joins).toBe(0)
+})
+
+test('BUG-02 a slow old bootstrap cannot replace the latest invitation', async ({ page }) => {
+  const session = await stubSession(page)
+  await page.goto('/events', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('searchbox', { name: 'Найти событие' })).toBeVisible()
+  const release = session.deferFirstInviteBootstrap()
+  await bridgeLaunch(page, 'a')
+  await expect.poll(() => session.bootstraps.some(input => input.init_data === 'signed-invite-a')).toBe(true)
+  await bridgeLaunch(page, 'b')
+  await expect(page.getByRole('heading', { name: 'Вас приглашает Сергей' })).toBeVisible()
+  release()
+  await page.waitForLoadState('networkidle')
+  await expect(page).toHaveURL(/\/join\/invite-b$/)
+  await expect(page.getByRole('heading', { name: 'Вас приглашает Сергей' })).toBeVisible()
   expect(session.joins).toBe(0)
 })
 

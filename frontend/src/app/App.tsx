@@ -42,6 +42,7 @@ function AppRoutes() {
   const bootFailure = useRef<unknown>(null)
   const consumedLaunchRevision = useRef<number | null>(null)
   const bootstrap = useBootstrap()
+  const initialLaunchRevision = useRef(bootstrap.launchRevision)
   const sharedEventId = bootstrap.data?.sharedEventId
   useEffect(() => { bootStartedAt.current = performance.now() }, [])
   useEffect(() => {
@@ -57,21 +58,29 @@ function AppRoutes() {
     bootFailure.current = null
   }, [bootstrap.data, bootstrap.error, bootstrap.isError, location.pathname])
   useEffect(() => {
-    if (!bootstrap.data || bootstrap.data.onboardingState !== 'complete' || consumedLaunchRevision.current === bootstrap.launchRevision) return
-    consumedLaunchRevision.current = bootstrap.launchRevision
-    const invite = bootstrap.data.inviteContext
-    if (invite?.token && !invite.already_joined) navigate(`/join/${encodeURIComponent(invite.token)}`, { replace: true })
-  }, [bootstrap.data, bootstrap.launchRevision, navigate])
+    if (!bootstrap.data || bootstrap.data.onboardingState !== 'complete') return
+    if (consumedLaunchRevision.current !== bootstrap.launchRevision) {
+      consumedLaunchRevision.current = bootstrap.launchRevision
+      const invite = bootstrap.data.inviteContext
+      if (invite?.token && !invite.already_joined) {
+        const target = `/join/${encodeURIComponent(invite.token)}`
+        if (location.pathname !== target) navigate(target, { replace: true })
+        return
+      }
+      if (invite?.already_joined && bootstrap.launchRevision !== initialLaunchRevision.current) {
+        const roomPath = `/rooms/${encodeURIComponent(invite.room_id)}`
+        if (location.pathname !== roomPath && !location.pathname.startsWith(`${roomPath}/`)) navigate(`${roomPath}/waiting`, { replace: true })
+        return
+      }
+    }
+    if (location.pathname.startsWith('/onboarding')) navigate('/', { replace: true })
+  }, [bootstrap.data, bootstrap.launchRevision, location.pathname, navigate])
   if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={getOpenInMaxStartParam(location.pathname)} />
   if (bootstrap.isPending) return <ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
 
-  const isOnboarding = location.pathname.startsWith('/onboarding')
   if (bootstrap.data.onboardingState === 'new' && location.pathname === '/') {
     return <Navigate to="/onboarding/interests" replace />
-  }
-  if (bootstrap.data.onboardingState === 'complete' && isOnboarding) {
-    return <Navigate to="/" replace />
   }
   if (location.pathname === '/' && sharedEventId && !sharedEventDismissed) {
     return <Navigate to={`/events/${encodeURIComponent(sharedEventId)}`} replace state={{ sharedEventEntry: true }} />

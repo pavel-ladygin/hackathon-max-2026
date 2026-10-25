@@ -38,6 +38,9 @@ async function stubParticipant(browser: Browser, user: typeof creator, options: 
   // The fixture exercises the HTTP client and UI, not the remote MAX SDK.
   await page.route('https://st.max.ru/js/max-web-app.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }))
   await page.route('**/api/v1/auth/max/bootstrap', async (route) => {
+    const alreadyJoined = roomState.members.has(user.id)
+    const room = roomFor(user.id)
+    const status = alreadyJoined || roomState.members.size < 2 && room.state === 'collecting_intents' ? 'joinable' : 'full'
     const bootstrap = user.id === creator.id ? {
       access_token: `access-${user.id}`, token_type: 'Bearer', expires_in: 3600,
       user, onboarding_state: 'complete', preferences: null, invite_context: null,
@@ -46,7 +49,8 @@ async function stubParticipant(browser: Browser, user: typeof creator, options: 
       user, onboarding_state: 'complete', preferences: null,
       invite_context: {
         token: inviteToken, room_id: roomId, room_name: 'Планы на ноябрь', city_id: creator.city_id,
-        public_plan: plan, inviter: participant(creator), expires_at: '2099-12-01T00:00:00Z', already_joined: false, status: 'joinable',
+        public_plan: status === 'joinable' && room.state === 'collecting_intents' ? plan : null,
+        inviter: participant(creator), expires_at: '2099-12-01T00:00:00Z', already_joined: alreadyJoined, status,
       },
     }
     await route.fulfill({ status: 200, contentType: 'application/json', json: bootstrap })
@@ -188,7 +192,9 @@ test('two participants preview, join, and separately confirm their own plan-deri
     expect(roomState.createBody).toMatchObject({ city_id: creator.city_id, public_plan: plan })
 
     const recipientPage = recipientClient.page
+    const initialRecipientBootstrap = recipientPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/auth/max/bootstrap'))
     await recipientPage.goto(`/join/${inviteToken}`, { waitUntil: 'domcontentloaded' })
+    expect((await (await initialRecipientBootstrap).json()).invite_context).toMatchObject({ already_joined: false, status: 'joinable' })
     await expect(recipientPage.getByRole('heading', { name: /Вас приглашает Участник|Вас приглашает Создатель/ })).toBeVisible()
     await expect(recipientPage.getByRole('region', { name: 'Публичное предложение комнаты' })).toContainText('20 ноября')
     await expect(recipientPage.getByRole('region', { name: 'Публичное предложение комнаты' })).toContainText('Концерты')
@@ -200,6 +206,8 @@ test('two participants preview, join, and separately confirm their own plan-deri
     await expect(recipientPage).toHaveURL(new RegExp(`/rooms/${roomId}/intent$`))
     await expect(recipientPage.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
     await expect(recipientPage.getByLabel(/Бюджет, ₽/)).toHaveValue('2500.25')
+    expect(roomState.members.has(creator.id)).toBe(true)
+    expect(roomState.members.has(recipient.id)).toBe(true)
     await recipientPage.screenshot({ path: testInfo.outputPath('private-room-preferences.png'), fullPage: true })
     await expectFocusedFieldClearOfSaveBar(recipientPage, recipientPage.getByLabel(/Бюджет, ₽/), testInfo.outputPath('private-budget-focused-viewport.png'))
     await expectFocusedFieldClearOfSaveBar(recipientPage, recipientPage.getByLabel('Дополнительное пожелание'), testInfo.outputPath('private-note-focused-viewport.png'))
@@ -237,13 +245,18 @@ test('two participants preview, join, and separately confirm their own plan-deri
     expect(roomState.intents[recipient.id]).toMatchObject({ dates: [...plan.dates, '2099-11-24'], time_slots: plan.time_slots, category_slugs: plan.category_slugs, budget_max_minor: 400_050 })
     expect(roomState.intents[creator.id]).toMatchObject({ dates: plan.dates, category_slugs: ['cinema'], budget_max_minor: 150_025 })
 
+    const creatorBootstrap = creatorPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/auth/max/bootstrap'))
     await creatorPage.reload({ waitUntil: 'domcontentloaded' })
+    expect((await (await creatorBootstrap).json()).invite_context).toBeNull()
+    const recipientBootstrap = recipientPage.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/auth/max/bootstrap'))
     await recipientPage.reload({ waitUntil: 'domcontentloaded' })
+    expect((await (await recipientBootstrap).json()).invite_context).toMatchObject({ already_joined: true, status: 'joinable', public_plan: null })
     await expect(creatorPage.getByRole('heading', { name: 'Формируем общий пул…' })).toBeVisible()
     await expect(recipientPage.getByRole('heading', { name: 'Формируем общий пул…' })).toBeVisible()
     expect(roomState.intents[creator.id]).toBeDefined()
     expect(roomState.intents[recipient.id]).toBeDefined()
     expect(roomState.createBody).toMatchObject({ public_plan: plan })
+    expect(roomState.joinCalls).toBe(1)
   } finally {
     await recipientClient.context.close()
     await creatorClient.context.close()
