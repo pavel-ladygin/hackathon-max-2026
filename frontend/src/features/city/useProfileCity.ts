@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useBootstrap } from '../auth/useBootstrap'
 import { apiClient } from '../../shared/api/client'
 import type { PreferencesRequestDto } from '../../shared/api/types'
-import { maxPlatform } from '../../shared/platform/max/adapter'
 import { ACTIVE_CITIES, cityById } from '../../shared/lib/cities'
 
 type BootstrapData = Awaited<ReturnType<typeof apiClient.bootstrap>>
@@ -17,8 +16,7 @@ export function useProfileCity() {
       const nextCity = cityById(nextCityId)
       if (!nextCity?.ready || !ACTIVE_CITIES.some((city) => city.id === nextCityId)) throw new Error('Этот город пока недоступен.')
 
-      const activeBootstrap = queryClient.getQueryData<BootstrapData>(['bootstrap', maxPlatform.getStartParam()])
-        ?? bootstrap.data
+      const activeBootstrap = bootstrap.data
       const preferences = activeBootstrap?.preferences
       if (!preferences) throw new Error('Сначала завершите настройку профиля.')
       if (preferences.cityId === nextCityId) return { nextCityId, preferences }

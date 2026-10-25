@@ -40,6 +40,7 @@ function AppRoutes() {
   const [sharedEventDismissed, setSharedEventDismissed] = useState(false)
   const bootStartedAt = useRef<number | null>(null)
   const bootFailure = useRef<unknown>(null)
+  const consumedLaunchRevision = useRef<number | null>(null)
   const bootstrap = useBootstrap()
   const sharedEventId = bootstrap.data?.sharedEventId
   useEffect(() => { bootStartedAt.current = performance.now() }, [])
@@ -55,7 +56,12 @@ function AppRoutes() {
     if (bootFailure.current) trackClientError('app_boot', bootFailure.current)
     bootFailure.current = null
   }, [bootstrap.data, bootstrap.error, bootstrap.isError, location.pathname])
-  const inviteContext = bootstrap.data?.inviteContext
+  useEffect(() => {
+    if (!bootstrap.data || bootstrap.data.onboardingState !== 'complete' || consumedLaunchRevision.current === bootstrap.launchRevision) return
+    consumedLaunchRevision.current = bootstrap.launchRevision
+    const invite = bootstrap.data.inviteContext
+    if (invite?.token && !invite.already_joined) navigate(`/join/${encodeURIComponent(invite.token)}`, { replace: true })
+  }, [bootstrap.data, bootstrap.launchRevision, navigate])
   if (import.meta.env.PROD && !maxPlatform.isMax) return <OpenInMaxPage startParam={getOpenInMaxStartParam(location.pathname)} />
   if (bootstrap.isPending) return <ScreenSkeleton variant={skeletonVariant(location.pathname)} label="Знакомимся с вами…" />
   if (bootstrap.isError) return <ErrorState title="Не удалось открыть приложение" description="Проверьте соединение и повторите запуск." action={<Button onClick={() => void bootstrap.refetch()}>Повторить</Button>} />
@@ -66,9 +72,6 @@ function AppRoutes() {
   }
   if (bootstrap.data.onboardingState === 'complete' && isOnboarding) {
     return <Navigate to="/" replace />
-  }
-  if (location.pathname === '/' && inviteContext?.token && !inviteContext.already_joined) {
-    return <Navigate to={`/join/${encodeURIComponent(inviteContext.token)}`} replace />
   }
   if (location.pathname === '/' && sharedEventId && !sharedEventDismissed) {
     return <Navigate to={`/events/${encodeURIComponent(sharedEventId)}`} replace state={{ sharedEventEntry: true }} />

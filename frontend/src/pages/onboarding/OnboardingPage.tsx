@@ -14,6 +14,7 @@ import styles from '../pages.module.css'
 import onboardingStyles from './onboarding.module.css'
 import { cityById, MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { track } from '../../shared/analytics/client'
+import { launchContext } from '../../shared/platform/max/launchContext'
 
 const options: Array<{ slug: CategorySlug; label: string; icon: string }> = [
   { slug: 'concerts', label: 'Концерты', icon: '♫' },
@@ -50,6 +51,7 @@ export function OnboardingPage() {
   const times = useWatch({ control: form.control, name: 'times' })
   useEffect(() => { track('onboarding_started') }, [step])
   const save = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: ProfileForm) => apiClient.replacePreferences({
       city_id: cityId,
       interest_slugs: interests,
@@ -57,9 +59,10 @@ export function OnboardingPage() {
       usual_day_types: values.usual,
       usual_time_slots: values.times,
     }),
-    onSuccess: async () => {
+    onSuccess: async (_data, _values, launchRevision) => {
       track('onboarding_completed')
       await queryClient.refetchQueries({ queryKey: ['bootstrap'] })
+      if (launchContext.getSnapshot().revision !== launchRevision) return
       navigate('/', { replace: true })
     },
     onError: (error) => {
