@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useEventDetail, useSetSavedEvent } from '../../features/discovery/queries'
+import { matchedEventHasStarted, readMatchedEventPreview, type MatchedEventPreview } from '../../features/discovery/matchedEventPreview'
 import { apiClient } from '../../shared/api/client'
 import { track, trackClientError, trackFailure, trackPerformance } from '../../shared/analytics/client'
 import { ApiError } from '../../shared/api/errors'
@@ -10,8 +11,19 @@ import { withMinimumDuration } from '../../shared/lib/async'
 import { maxPlatform } from '../../shared/platform/max/adapter'
 import { Button, Empty, EventImage, FavoriteButton, InlineNotice, PageContent, PageShell, ScreenSkeleton, TopBar } from '../../shared/ui/index'
 import styles from '../pages.module.css'
+import { MatchedEventUnavailable } from './MatchedEventUnavailable'
 
-export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => void } = {}) {
+type EventPageProps = { onLeaveSharedEvent?: () => void }
+
+export function EventPage(props: EventPageProps = {}) {
+  const { eventId } = useParams()
+  const location = useLocation()
+  const matchedEvent = readMatchedEventPreview(location.state, eventId)
+  if (matchedEvent && matchedEventHasStarted(matchedEvent)) return <MatchedEventUnavailable event={matchedEvent} started />
+  return <EventDetailsPage {...props} matchedEvent={matchedEvent} />
+}
+
+function EventDetailsPage({ onLeaveSharedEvent, matchedEvent }: EventPageProps & { matchedEvent?: MatchedEventPreview }) {
   const { eventId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -54,6 +66,7 @@ export function EventPage({ onLeaveSharedEvent }: { onLeaveSharedEvent?: () => v
   if (event.isPending) return <ScreenSkeleton variant="event" label="Открываем событие…" />
   if (event.isError) {
     const notFound = event.error instanceof ApiError && event.error.code === 'NOT_FOUND'
+    if (notFound && matchedEvent) return <MatchedEventUnavailable event={matchedEvent} started={matchedEventHasStarted(matchedEvent)} />
     return <Empty title={notFound ? 'Событие не найдено' : 'Не удалось загрузить событие'} description={notFound ? undefined : 'Проверьте соединение и попробуйте ещё раз.'} action={notFound ? <Button onClick={() => { if (sharedEventEntry) onLeaveSharedEvent?.(); navigate('/') }}>Вернуться в афишу</Button> : <Button state={event.isFetching ? 'loading' : 'idle'} onClick={() => void event.refetch()}>Повторить</Button>} />
   }
 

@@ -12,6 +12,7 @@ import { DatePicker } from '../../shared/ui/date-picker'
 import styles from '../pages.module.css'
 import catalogStyles from './catalogMap.module.css'
 import { useDebouncedValue } from './useDebouncedValue'
+import { useCityToday } from './useCityToday'
 import { track } from '../../shared/analytics/client'
 import { EventImpression } from '../../shared/analytics/EventImpression'
 
@@ -31,20 +32,26 @@ export function CatalogPage() {
   const [price, setPrice] = useState(10_000)
   const [view, setView] = useState<'list' | 'map'>('list')
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
+  const today = useCityToday(profileCity.city?.timezone ?? 'Europe/Moscow')
+  const fromError = dateFrom && dateFrom < today ? 'Дата начала уже прошла — выберите сегодня или более поздний день' : ''
+  const toError = dateTo && dateTo < today ? 'Дата окончания уже прошла — выберите сегодня или более поздний день'
+    : dateFrom && dateTo && dateTo < dateFrom ? 'Дата окончания должна быть не раньше даты начала' : ''
+  const dateError = fromError || toError
+  const filtersOpen = advancedFiltersOpen || Boolean(dateError)
   const trackedSearch = useRef('')
   const reduceMotion = useReducedMotion()
   const normalizedQuery = debouncedQuery.trim()
   const params = useMemo(() => ({ city_id: cityId ?? undefined, q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined, limit: 24 }), [cityId, dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
   const mapFilters = useMemo(() => ({ city_id: cityId ?? undefined, q: normalizedQuery || undefined, category_slugs: selected.length ? selected : undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, price_max_minor: price < 10_000 ? price * 100 : undefined, free_only: freeOnly || undefined }), [cityId, dateFrom, dateTo, freeOnly, normalizedQuery, price, selected])
-  const results = useEventSearch(params, view === 'list')
-  const searchCount = useEventSearchCount(mapFilters, view === 'list' && Boolean(results.data?.pages[0]) && !results.isPlaceholderData)
+  const results = useEventSearch(params, view === 'list' && !dateError)
+  const searchCount = useEventSearchCount(mapFilters, view === 'list' && !dateError && Boolean(results.data?.pages[0]) && !results.isPlaceholderData)
   const save = useSetSavedEvent()
   const events = results.data?.pages.flatMap((page) => page.items) ?? []
   const shownTotal = results.data?.pages[0]?.totalEstimate ?? (searchCount.isSuccess ? searchCount.data : null)
   const activeFilterCount = selected.length + (freeOnly ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (price < 10_000 ? 1 : 0)
   const filterSnapshot = JSON.stringify({ selected, freeOnly, dateFrom, dateTo, price })
   const previousFilters = useRef(filterSnapshot)
-  const isRefreshing = results.isFetching && !results.isFetchingNextPage && !results.isPending && events.length > 0
+  const isRefreshing = !dateError && results.isFetching && !results.isFetchingNextPage && !results.isPending && events.length > 0
   const resetFilters = () => {
     track('filters_reset', { properties: { previous_active_filter_count: activeFilterCount } })
     setSelected([])
@@ -88,7 +95,7 @@ export function CatalogPage() {
       <div className={styles.catalogControls}>
         <div className={styles.quickFilters} aria-label="Быстрые фильтры">
           <Chip selected={freeOnly} onClick={() => setFreeOnly((value) => !value)}>Бесплатно</Chip>
-          <Chip selected={advancedFiltersOpen || activeFilterCount > 0} aria-expanded={advancedFiltersOpen} aria-controls="catalog-advanced-filters" onClick={() => setAdvancedFiltersOpen((value) => { if (!value) track('filters_opened'); return !value })}>Фильтры{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Chip>
+          <Chip selected={filtersOpen || activeFilterCount > 0} aria-expanded={filtersOpen} aria-controls="catalog-advanced-filters" onClick={() => setAdvancedFiltersOpen((value) => { if (!value) track('filters_opened'); return !value })}>Фильтры{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Chip>
         </div>
         <div className={`${styles.refreshOverlay} ${isRefreshing ? styles.refreshOverlayVisible : ''}`} role="status" aria-live="polite" aria-hidden={!isRefreshing}>
           <span className={styles.refreshDot} aria-hidden="true" />
@@ -96,15 +103,16 @@ export function CatalogPage() {
         </div>
       </div>
       <AnimatePresence initial={false}>
-        {advancedFiltersOpen ? <motion.section id="catalog-advanced-filters" className={styles.advancedFilters} aria-label="Все фильтры" initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} transition={{ duration: reduceMotion ? 0 : .22, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
+        {filtersOpen ? <motion.section id="catalog-advanced-filters" className={styles.advancedFilters} aria-label="Все фильтры" initial={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: reduceMotion ? 0 : -6 }} transition={{ duration: reduceMotion ? 0 : .22, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
           <div className={catalogStyles.cityFilterSection}>
             <div className={styles.fieldLabel}><span>Город</span><Button tone="secondary" aria-haspopup="dialog" aria-label={`Изменить город: ${profileCity.city?.name ?? 'Выберите город'}`} disabled={!profileCity.canSelect} onClick={() => setCityPickerOpen(true)}>{profileCity.city?.name ?? 'Выберите город'}</Button></div>
           </div>
           <ChipGroup label="Категории" className={styles.catalogChips}>{CATEGORY_OPTIONS.map((category) => <Chip key={category.slug} selected={selected.includes(category.slug)} onClick={() => setSelected((current) => current.includes(category.slug) ? current.filter((item) => item !== category.slug) : [...current, category.slug])}>{category.label}</Chip>)}</ChipGroup>
-          <div className={styles.filterRow}>
-            <DatePicker id="catalog-date-from" label="С" value={dateFrom} max={dateTo || undefined} onChange={(value) => setDateFrom(value ?? '')} />
-            <DatePicker id="catalog-date-to" label="По" value={dateTo} min={dateFrom || undefined} onChange={(value) => setDateTo(value ?? '')} />
+          <div className={catalogStyles.dateRange}>
+            <DatePicker id="catalog-date-from" className={catalogStyles.dateField} label="С" value={dateFrom} min={today} max={dateTo >= today ? dateTo : undefined} invalid={Boolean(fromError)} describedBy={fromError ? 'catalog-date-error' : undefined} onChange={(value) => { setAdvancedFiltersOpen(true); setDateFrom(value ?? '') }} />
+            <DatePicker id="catalog-date-to" className={catalogStyles.dateField} label="По" value={dateTo} min={dateFrom > today ? dateFrom : today} invalid={Boolean(toError)} describedBy={toError ? 'catalog-date-error' : undefined} onChange={(value) => { setAdvancedFiltersOpen(true); setDateTo(value ?? '') }} />
           </div>
+          {dateError ? <p id="catalog-date-error" className={`${styles.error} ${catalogStyles.dateError}`} role="alert">{dateError}</p> : null}
           <label className={styles.fieldLabel}>Бюджет · до {price.toLocaleString('ru-RU')} ₽<input className={styles.range} type="range" name="price-maximum" min="0" max="10000" step="500" value={price} onChange={(event) => setPrice(Number(event.target.value))} /></label>
           <div className={`${styles.filterActions} ${activeFilterCount ? '' : styles.filterActionsInactive}`} aria-hidden={!activeFilterCount}>
             <Button tone="ghost" disabled={!activeFilterCount} tabIndex={activeFilterCount ? 0 : -1} onClick={resetFilters}>Очистить фильтры</Button>
@@ -117,7 +125,7 @@ export function CatalogPage() {
           <span className={catalogStyles.segmentedLabel}>{nextView === 'list' ? 'Список' : 'Карта'}</span>
         </button>)}
       </div>
-      <div className={styles.catalogResults}>{view === 'map' ? <>
+      <div className={styles.catalogResults}>{dateError ? null : view === 'map' ? <>
         <div className={styles.sectionHead}><h2>События на карте</h2></div>
         <Suspense fallback={<ScreenSkeleton variant="map" inline label="Загружаем карту…" />}><CatalogMap key={cityId} filters={mapFilters} /></Suspense>
       </> : results.isPending ? <ScreenSkeleton variant="cards" inline label="Загружаем события…" /> : results.isError ? <Empty inline title="Поиск недоступен" description="Проверьте соединение и попробуйте ещё раз." action={<Button onClick={() => void results.refetch()}>Повторить</Button>} /> : events.length === 0 ? <Empty inline title="Ничего не нашли" description="Попробуйте убрать фильтр или изменить запрос." /> : <>

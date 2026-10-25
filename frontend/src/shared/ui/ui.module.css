@@ -15,6 +15,8 @@
 .iconButtonSelected, .iconButton_favorite[aria-pressed="true"] { background: var(--color-favorite-selected); }
 .iconButton:active { transform: scale(.94); }
 @media (hover: hover) and (pointer: fine) { .iconButton:hover { background: var(--color-hover); box-shadow: var(--shadow-control); } .iconButton_favorite:hover { background: var(--color-favorite-selected); } }
+.backButton { padding: 0; -webkit-appearance: none; appearance: none; }
+.backButton svg { flex-shrink: 0; }
 .prominentBack { width: 48px; height: 48px; }
 .prominentBack svg { width: 23px; height: 23px; }
 .favoriteButton { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border: 1px solid var(--color-favorite-border); border-radius: var(--radius-md); padding: 0; background: var(--color-favorite-soft); color: var(--color-favorite); box-shadow: var(--shadow-control-soft); touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform var(--motion-fast) var(--motion-spring), background-color var(--motion-fast) var(--motion-ease-standard), box-shadow var(--motion-fast) var(--motion-ease-standard), opacity var(--motion-fast) var(--motion-ease-standard); }

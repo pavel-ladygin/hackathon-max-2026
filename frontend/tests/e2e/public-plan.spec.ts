@@ -69,6 +69,10 @@ async function stubParticipant(browser: Browser, user: typeof creator, options: 
     if (route.request().method() !== 'GET') return route.fallback()
     await route.fulfill({ status: 200, contentType: 'application/json', json: roomFor(user.id) })
   })
+  await page.route('**/api/v1/feed/home**', (route) => route.fulfill({ json: {
+    feed_id: `feed-${user.id}`, generated_at: '2099-11-20T12:00:00Z', sections: [],
+    active_room: roomState.members.has(user.id) ? { id: roomId, name: 'Планы на ноябрь', state: roomFor(user.id).state } : null,
+  } }))
   await page.route(`**/api/v1/room-invites/${inviteToken}/join`, async (route) => {
     roomState.joinCalls += 1
     roomState.members.add(recipient.id)
@@ -86,7 +90,7 @@ async function stubParticipant(browser: Browser, user: typeof creator, options: 
 }
 
 async function submitIntent(page: Page) {
-  await page.getByRole('button', { name: 'Сохранить предпочтения' }).click()
+  await page.getByRole('button', { name: 'Подтвердить пожелания' }).click()
 }
 
 async function activate(locator: Locator, touch: boolean) {
@@ -95,7 +99,7 @@ async function activate(locator: Locator, touch: boolean) {
 }
 
 async function expectFocusedFieldClearOfSaveBar(page: Page, selector: ReturnType<Page['getByLabel']>, screenshotPath: string) {
-  const saveButton = page.getByRole('button', { name: 'Сохранить предпочтения' })
+  const saveButton = page.getByRole('button', { name: 'Подтвердить пожелания' })
   await selector.scrollIntoViewIfNeeded()
   await selector.focus()
   await expect(selector).toBeFocused()
@@ -204,7 +208,8 @@ test('two participants preview, join, and separately confirm their own plan-deri
 
     await recipientPage.getByRole('button', { name: 'Присоединиться' }).click()
     await expect(recipientPage).toHaveURL(new RegExp(`/rooms/${roomId}/intent$`))
-    await expect(recipientPage.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
+    await expect(recipientPage.getByRole('heading', { name: 'Подтвердите личные пожелания' })).toBeVisible()
+    await expect(recipientPage.getByText(/Мы перенесли условия из публичного плана встречи/)).toBeVisible()
     await expect(recipientPage.getByLabel(/Бюджет, ₽/)).toHaveValue('2500.25')
     expect(roomState.members.has(creator.id)).toBe(true)
     expect(roomState.members.has(recipient.id)).toBe(true)
@@ -215,7 +220,8 @@ test('two participants preview, join, and separately confirm their own plan-deri
     expect(roomState.intentCalls).toEqual([])
 
     await creatorPage.goto(`/rooms/${roomId}/intent`, { waitUntil: 'domcontentloaded' })
-    await expect(creatorPage.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
+    await expect(creatorPage.getByRole('heading', { name: 'Подтвердите личные пожелания' })).toBeVisible()
+    await expect(creatorPage.getByText(/Мы перенесли условия из публичного плана встречи/)).toBeVisible()
     await expect(creatorPage.getByLabel(/Бюджет, ₽/)).toHaveValue('2500.25')
     expect(roomState.intentCalls).toEqual([])
 
@@ -231,6 +237,16 @@ test('two participants preview, join, and separately confirm their own plan-deri
     expect(roomState.intents[creator.id]).toMatchObject({ dates: plan.dates, time_slots: plan.time_slots, category_slugs: ['cinema'], budget_max_minor: 150_025 })
     expect(roomState.intents[recipient.id]).toBeUndefined()
     expect([...roomState.members].map((id) => [id, Boolean(roomState.intents[id])])).toEqual([[creator.id, true], [recipient.id, false]])
+
+    await creatorPage.getByRole('button', { name: 'Назад', exact: true }).click()
+    await expect(creatorPage).toHaveURL('/')
+    await creatorPage.getByRole('button', { name: 'Продолжить', exact: true }).click()
+    await expect(creatorPage).toHaveURL(new RegExp(`/rooms/${roomId}/waiting$`))
+    await expect(creatorPage.getByRole('heading', { name: 'Ждём второго участника' })).toBeVisible()
+    await expect(creatorPage.getByLabel(/Бюджет, ₽/)).toHaveCount(0)
+    await creatorPage.reload({ waitUntil: 'domcontentloaded' })
+    await expect(creatorPage.getByRole('heading', { name: 'Ждём второго участника' })).toBeVisible()
+    expect(roomState.intentCalls).toEqual([creator.id])
 
     await recipientPage.getByLabel(/Бюджет, ₽/).fill('4000.50')
     await recipientPage.getByRole('button', { name: 'Выбор дат', exact: true }).click()
