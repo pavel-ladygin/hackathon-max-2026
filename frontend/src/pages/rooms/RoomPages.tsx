@@ -200,6 +200,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const queryClient = useQueryClient()
   const city = roomCity(room.city_id)
   const timezone = city?.timezone
+  const confirmingPublicPlan = Boolean(room.public_plan && !room.myIntent)
   const errorSummary = useRef<HTMLParagraphElement>(null)
   const formDefaults = intentDefaults(room, timezone ? cityToday(timezone) : localDate(new Date()))
   const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema(timezone)), defaultValues: formDefaults })
@@ -220,8 +221,8 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   })
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${intentStyles.intentPage}`}>
-      <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>Мои предпочтения</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>Укажите, что подходит именно сейчас. Другой участник не увидит ответы.</p>
-      {room.public_plan && !room.myIntent ? <p className={styles.subtitle}>Поля заполнены из публичного предложения. Измените их для себя и подтвердите свои предпочтения. Другой участник подтверждает их отдельно.</p> : null}
+      <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>{confirmingPublicPlan ? 'Подтвердите личные пожелания' : 'Мои предпочтения'}</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>{confirmingPublicPlan ? 'Мы перенесли условия из публичного плана встречи. Проверьте их и при необходимости измените для себя' : 'Укажите, что подходит именно сейчас. Другой участник не увидит ответы.'}</p>
+      {confirmingPublicPlan ? <p className={styles.subtitle}>Каждый участник подтверждает свои пожелания отдельно</p> : null}
       <p className={styles.subtitle}>{city ? `${city.name} · ${timeZoneLabel(city.timezone)}` : 'Время зависит от выбранного города.'}</p><PrivacyNote />
       <form className={`${styles.formStack} ${intentStyles.intentForm}`} onSubmit={(event) => { void form.handleSubmit((values) => { if (!save.isPending) save.mutate(values) }, () => window.requestAnimationFrame(() => errorSummary.current?.focus()))(event) }}>
         {Object.keys(form.formState.errors).length ? <p ref={errorSummary} tabIndex={-1} className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время, бюджет и интересы.</p> : null}
@@ -231,7 +232,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <div className={intentStyles.rangeField}><MoneyInput id="room-budget" label="Бюджет, ₽" suffix="₽" value={budgetText} required invalid={Boolean(form.formState.errors.budget)} describedBy="room-budget-help" onChange={(value) => { setBudgetText(value); const minor = decimalToMinor(value); form.setValue('budget', minor === null ? Number.NaN : minor / 100, { shouldValidate: true, shouldDirty: true }) }} /><span id="room-budget-help" className={styles.subtitle}>До {Number(budget || 0).toLocaleString('ru', { maximumFractionDigits: 2 })} ₽ для вас</span>{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</div>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {save.isError ? <AuthRecoveryAction error={save.error} /> : null}{save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
-        <div className={`${styles.footer} ${intentStyles.intentFooter}`}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button></div>
+        <div className={`${styles.footer} ${intentStyles.intentFooter}`}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : confirmingPublicPlan ? 'Подтвердить пожелания' : 'Сохранить предпочтения'}</Button></div>
       </form>
     </PageContent></PageShell>
   )

@@ -139,14 +139,15 @@ describe('public room plan flow', () => {
   it('prefills personal fields from the proposal, saves only on explicit submit, then prefers saved intent', async () => {
     mocks.room = roomFixture()
     const firstView = roomView()
-    expect(screen.getByText(/Поля заполнены из публичного предложения/)).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Подтвердите личные пожелания' })).toBeVisible()
+    expect(screen.getByText(/Мы перенесли условия из публичного плана встречи/)).toBeVisible()
     expect(screen.getByRole('button', { name: /Удалить .*20 нояб/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Вечер' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Концерты' })).toHaveAttribute('aria-pressed', 'true')
     expect((screen.getByLabelText(/Бюджет, ₽/) as HTMLInputElement).value).toBe('2500.25')
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить предпочтения' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить пожелания' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-server', expect.objectContaining({
       dates: ['2099-11-20'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025,
     })))
@@ -155,7 +156,8 @@ describe('public room plan flow', () => {
     const savedIntent: MyIntentDto = { dates: ['2099-11-25'], day_types: ['weekday'], time_slots: ['morning'], category_slugs: ['theatre'], budget_max_minor: 400_000, radius_m: null, exclusion_slugs: [], location: null, free_text: null, version: 1, round_no: 1, submitted_at: '2099-01-01T00:00:00Z' }
     mocks.room = roomFixture({ myIntent: savedIntent })
     roomView()
-    expect(screen.queryByText(/Поля заполнены из публичного предложения/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Мои предпочтения' })).toBeVisible()
+    expect(screen.queryByText(/Мы перенесли условия из публичного плана встречи/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Удалить .*25 нояб/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Утро' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Театр' })).toHaveAttribute('aria-pressed', 'true')
@@ -189,7 +191,9 @@ describe('public room plan flow', () => {
   it('keeps legacy personal defaults without submitting an invented public plan', () => {
     mocks.room = roomFixture({ public_plan: undefined })
     roomView()
-    expect(screen.queryByText(/Поля заполнены из публичного предложения/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Мои предпочтения' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Сохранить предпочтения' })).toBeVisible()
+    expect(screen.queryByText(/Мы перенесли условия из публичного плана встречи/)).not.toBeInTheDocument()
     expect(screen.getByLabelText('Бюджет, ₽')).toHaveValue('3000')
     expect(screen.getByRole('button', { name: 'Стендап' })).toHaveAttribute('aria-pressed', 'true')
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
@@ -199,7 +203,7 @@ describe('public room plan flow', () => {
     mocks.room = roomFixture({ public_plan: { ...plan, dates: ['2000-01-01'] } })
     roomView()
     expect(screen.getByRole('button', { name: /Удалить .*1 янв/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить предпочтения' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить пожелания' }))
     expect(await screen.findByText(/прошедшие даты нужно изменить самостоятельно/)).toBeVisible()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
     expect(mocks.room.public_plan.dates).toEqual(['2000-01-01'])
