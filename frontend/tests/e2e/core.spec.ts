@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import type { RoomIntentRequestDto, RoomSnapshotDto } from '../../src/shared/api/types'
 
 const user = { id: 'e2e-user', display_name: 'Е2Е пользователь', avatar_url: null, city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', locale: 'ru' }
 const preferences = { city_id: user.city_id, interest_slugs: ['concerts', 'exhibitions', 'food'], budget_max_minor: 350_000, usual_day_types: ['weekend'], usual_time_slots: ['evening'], version: 1, updated_at: '2026-01-01T00:00:00.000Z' }
@@ -12,8 +13,10 @@ async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new')
   let storedPreferences = initialState === 'complete' ? preferences : null
   let preferencesWrites = 0
   let eventSaved = false
+  let roomCreated = false
+  let roomCreates = 0
   const roomId = 'room-e2e'
-  const room = { id: roomId, name: 'Куда идём?', city_id: user.city_id, state: 'collecting_intents', round_no: 1, version: 1, participants: [{ id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: false }], my_intent: null, pool: null, match: null, invite: { url: 'http://127.0.0.1:4173/join/invite-e2e', max_deep_link: 'https://max.ru/t255_hakaton_max_bot?startapp=invite-e2e', expires_at: '2030-01-01T00:00:00Z' }, allowed_actions: ['edit_intent', 'invite'], created_at: '2026-01-01T00:00:00Z', expires_at: '2030-01-01T00:00:00Z' }
+  const room: RoomSnapshotDto = { id: roomId, name: 'Куда идём?', city_id: user.city_id, state: 'collecting_intents', round_no: 1, version: 1, participants: [{ id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: false }], my_intent: null, pool: null, match: null, invite: { url: 'http://127.0.0.1:4173/join/invite-e2e', max_deep_link: 'https://max.ru/t255_hakaton_max_bot?startapp=invite-e2e', expires_at: '2030-01-01T00:00:00Z' }, allowed_actions: ['edit_intent', 'invite'], created_at: '2026-01-01T00:00:00Z', expires_at: '2030-01-01T00:00:00Z' }
 
   await page.route('**/api/v1/auth/max/bootstrap', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'e2e-access-token', token_type: 'Bearer', expires_in: 3600, user, onboarding_state: onboardingState, preferences: storedPreferences, invite_context: null }) }))
   await page.route('**/api/v1/me/preferences', async (route) => {
@@ -22,7 +25,7 @@ async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new')
     preferencesWrites += 1; storedPreferences = { ...preferences, ...body }; onboardingState = 'complete'
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(storedPreferences) })
   })
-  await page.route('**/api/v1/feed/home**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ feed_id: 'feed-e2e', generated_at: '2026-01-01T00:00:00Z', sections: [{ type: 'for_you', title: 'Для вас', items: [{ ...event, saved: eventSaved }] }], active_room: null }) }))
+  await page.route('**/api/v1/feed/home**', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ feed_id: 'feed-e2e', generated_at: '2026-01-01T00:00:00Z', sections: [{ type: 'for_you', title: 'Для вас', items: [{ ...event, saved: eventSaved }] }], active_room: roomCreated ? { id: room.id, name: room.name, city_id: room.city_id, state: room.state } : null }) }))
   await page.route(/\/api\/v1\/events\/search(?:\?.*)?$/, async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ ...event, saved: eventSaved }], applied_filters: {}, total_estimate: null, next_cursor: null }) }))
   await page.route('**/api/v1/events/search/count**', (route) => route.fulfill({ json: { total: 1 } }))
   await page.route(`**/api/v1/events/${event.id}`, async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...event, saved: eventSaved, description: 'Вечер живой музыки в центре Москвы.', ends_at: '2026-01-01T21:00:00Z', venue: { id: 'venue-1', name: event.venue_name, address: 'Москва, ул. Пример, 1', latitude: 55.75, longitude: 37.61, metro: 'Тверская', district: 'ЦАО' }, images: [], ticket_available: true, status: 'published', age_rating: '16+', data_provenance: { source: 'demo', source_updated_at: null, is_demo: true } }) }))
@@ -33,11 +36,22 @@ async function stubBackend(page: Page, initialState: 'new' | 'complete' = 'new')
   await page.route(/\/api\/v1\/me\/saved-events(?:\?.*)?$/, async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: eventSaved ? [{ event: { ...event, saved: true }, saved_at: '2026-01-01T00:00:00Z', match: null }] : [], next_cursor: null }) }))
   await page.route('**/api/v1/behavior/events:batch', async (route) => route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ accepted: 1, duplicates: 0, rejected: 0 }) }))
   await page.route(`**/api/v1/rooms/${roomId}`, async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(room) }))
+  await page.route(`**/api/v1/rooms/${roomId}/intent/me`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    const intent = route.request().postDataJSON() as RoomIntentRequestDto
+    room.my_intent = { ...intent, version: 1, round_no: 1, submitted_at: '2026-10-25T12:00:00Z' }
+    room.participants[0].intent_ready = true
+    room.allowed_actions = ['wait', 'invite']
+    room.version += 1
+    await route.fulfill({ json: room })
+  })
   await page.route('**/api/v1/rooms', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
+    roomCreated = true
+    roomCreates += 1
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ room, invite: room.invite }) })
   })
-  return { get preferencesWrites() { return preferencesWrites }, get savedPreferences() { return storedPreferences }, roomId }
+  return { get preferencesWrites() { return preferencesWrites }, get savedPreferences() { return storedPreferences }, roomId, room, get roomCreates() { return roomCreates } }
 }
 
 test('real bootstrap and preferences work with HTTP discovery', async ({ page }) => {
@@ -77,6 +91,56 @@ test('creates a room and opens the invite route', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Пригласите друга' })).toBeVisible()
   await expect(page.getByText('Е', { exact: true })).toBeVisible()
   await expect(page.getByTestId('invite-url')).toContainText('/join/invite-e2e')
+})
+
+test('BUG-01 recovers the same invite after leaving, continuing and reloading', async ({ page }, testInfo) => {
+  const backend = await stubBackend(page, 'complete')
+  backend.room.name = 'Планы на вечер'
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { (window as Window & { copiedInvite?: string }).copiedInvite = text } } })
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async (payload: ShareData) => { (window as Window & { sharedInvite?: string }).sharedInvite = payload.url } })
+  })
+  await openApp(page, '/rooms/new')
+  await page.getByLabel('Название комнаты').fill('Планы на вечер')
+  await page.getByRole('button', { name: 'Создать комнату' }).click()
+  await expect(page.getByRole('heading', { name: 'Пригласите друга' })).toBeVisible()
+  const originalInvite = await page.getByTestId('invite-url').innerText()
+  await page.getByRole('button', { name: 'Назад', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await page.getByRole('button', { name: 'Продолжить', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Мои предпочтения' })).toBeVisible()
+  await page.getByRole('button', { name: 'Сохранить предпочтения' }).click()
+  await expect(page.getByRole('heading', { name: 'Ждём второго участника' })).toBeVisible()
+  await expect(page.getByTestId('invite-url')).toHaveText(originalInvite)
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Ждём второго участника' })).toBeVisible()
+  await expect(page.getByTestId('invite-url')).toHaveText(originalInvite)
+  await page.screenshot({ path: testInfo.outputPath('bug01-waiting.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Скопировать ссылку' }).click()
+  await expect(page.getByText('✓ Ссылка скопирована')).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { copiedInvite?: string }).copiedInvite)).toBe(originalInvite)
+  await page.getByRole('button', { name: 'Пригласить через MAX' }).click()
+  await expect(page.getByRole('button', { name: 'Пригласить через MAX' })).toBeEnabled()
+  await expect(page.getByText('Открыли отправку в MAX')).toHaveCount(0)
+  expect(await page.evaluate(() => (window as Window & { sharedInvite?: string }).sharedInvite)).toBe(backend.room.invite!.max_deep_link)
+  expect(backend.roomCreates).toBe(1)
+  expect(backend.room.round_no).toBe(1)
+
+  // Long tokens and enlarged text must remain readable without horizontal scrolling.
+  backend.room.invite!.url = `http://127.0.0.1:4173/join/${'long-token-'.repeat(12)}`
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('invite-url')).toHaveText(backend.room.invite!.url)
+  await page.evaluate(() => document.documentElement.style.setProperty('--font-scale', '1.15'))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Скопировать ссылку' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('bug01-waiting-invite.png'), fullPage: true })
+
+  backend.room.participants.push({ id: 'friend', display_name: 'Друг', avatar_url: null, role: 'participant', intent_ready: false })
+  backend.room.allowed_actions = ['wait']
+  await expect(page.getByText('2 / 2 участника')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('invite-url')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Пригласить через MAX' })).toHaveCount(0)
 })
 
 test('room calendar drafts multiple dates, removes selected dates, and fits narrow screens', async ({ page }) => {

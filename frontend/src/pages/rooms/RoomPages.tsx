@@ -32,7 +32,10 @@ import recoveryStyles from './recovery.module.css'
 import { track, trackFailure } from '../../shared/analytics/client'
 import { CreateRoomForm } from './CreateRoomForm'
 import { PlanSummary } from './PlanSummary'
-import { cityToday, isCanonicalDate, roomCity, sharePlanText } from './public-plan'
+import { cityToday, isCanonicalDate, roomCity } from './public-plan'
+import { RoomInviteActions } from './RoomInviteActions'
+import { useInviteExpired, useRoomInvite } from './useRoomInvite'
+import { launchContext } from '../../shared/platform/max/launchContext'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
 export function NewRoomPage() {
@@ -45,16 +48,18 @@ export function NewRoomPage() {
   const draftKey = `room-create-v1:${bootstrap.data?.user.id ?? 'pending'}`
   useEffect(() => { track('room_creation_started') }, [])
   const create = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: Parameters<typeof apiClient.createRoom>[0]) => {
       const body = JSON.stringify(values)
       if (createAttempt.current?.body !== body) createAttempt.current = { body, key: crypto.randomUUID() }
       return apiClient.createRoom(values, createAttempt.current.key)
     },
-    onSuccess: async ({ room }) => {
+    onSuccess: async ({ room }, _values, launchRevision) => {
       queryClient.setQueryData(['room', room.id], room)
       setCreateSuccess(true)
       try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable in a WebView. */ }
       await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350))
+      if (launchContext.getSnapshot().revision !== launchRevision) return
       navigate(`/rooms/${room.id}/invite`)
     },
     onError: (error) => trackFailure('room_creation_failed', error),
@@ -77,33 +82,13 @@ export function InvitePage() {
 function RoomInvite({ roomId }: { roomId: string | undefined }) {
   const navigate = useNavigate()
   const room = useRoom(roomId)
-  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sharing' | 'copying' | 'opened' | 'cancelled' | 'share-error' | 'copied' | 'copy-error'>('idle')
-  const expiresAt = room.data?.invite?.expires_at
-  const expired = useInviteExpired(expiresAt, room.refetch)
+  const invite = useRoomInvite(room.data, room.refetch)
   if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <RoomReadError title="Комната недоступна" error={room.error} retry={() => void room.refetch()} pending={room.isFetching} />
   const creator = room.data.participants.find((participant) => participant.role === 'creator')
   const creatorInitial = Array.from(creator?.displayName.trim() ?? '')[0]?.toUpperCase() || '?'
-  const rawUrl = room.data.invite?.url ?? ''
-  const maxLink = room.data.invite?.max_deep_link ?? rawUrl
-  const canInvite = Boolean(room.data.invite) && room.data.allowed_actions.includes('invite') && room.data.participants.length < 2 && !expired && ['collecting_intents', 'ranking'].includes(room.data.state)
-  const busy = inviteStatus === 'sharing' || inviteStatus === 'copying'
-  const share = async () => {
-    if (!canInvite || !maxLink || busy) return
-    setInviteStatus('sharing')
-    const result = await maxPlatform.shareInvite({ text: sharePlanText(room.data), link: maxLink })
-    setInviteStatus(result.status === 'opened' ? 'opened' : result.status === 'cancelled' ? 'cancelled' : 'share-error')
-    // invite_shared requires an agreed metric definition; opening a sheet is not delivery.
-    if (result.status === 'failed' || result.status === 'unavailable') trackFailure('invite_share_failed', new Error('Invite sharing failed'), { roomId: room.data.id })
-  }
-  const copy = async () => {
-    if (!canInvite || !rawUrl || busy) return
-    setInviteStatus('copying')
-    const ok = await maxPlatform.copyText(rawUrl)
-    setInviteStatus(ok ? 'copied' : 'copy-error')
-  }
-  if (!canInvite) return <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-    <h1 className={styles.title}>Приглашение больше недоступно</h1><p className={styles.subtitle}>{expired ? 'Срок приглашения истёк.' : room.data.participants.length >= 2 ? 'Друг уже присоединился. Продолжите совместный выбор в комнате.' : 'Вступление в эту комнату завершено.'}</p>
+  if (!invite.canInvite) return <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
+    <h1 className={styles.title}>Приглашение больше недоступно</h1><p className={styles.subtitle}>{invite.expired ? 'Срок приглашения истёк.' : room.data.participants.length >= 2 ? 'Друг уже присоединился. Продолжите совместный выбор в комнате.' : 'Вступление в эту комнату завершено.'}</p>
     <div className={styles.footer}><Button onClick={() => navigate(`/rooms/${room.data.id}/${expectedScreen(room.data)}`)}>Перейти в комнату</Button><Button tone="secondary" onClick={() => navigate('/')}>На главную</Button></div>
   </PageContent></PageShell>
   return (
@@ -111,10 +96,9 @@ function RoomInvite({ roomId }: { roomId: string | undefined }) {
       <div className={styles.avatars}><span className={styles.avatar}>{creatorInitial}</span><span className={styles.avatar}>{room.data.participants.length > 1 ? 'А' : '+'}</span></div>
       <h1 className={styles.title}>Пригласите друга</h1><p className={styles.subtitle}>Отправьте приглашение в MAX. После подключения каждый отдельно заполнит пожелания.</p>
       <PlanSummary plan={room.data.public_plan} cityId={room.data.city_id} />
-      <div className={styles.inviteLink} data-testid="invite-url">{rawUrl || 'Ссылка появится после создания комнаты'}</div>
+      <div className={styles.inviteLink} data-testid="invite-url">{invite.rawUrl || 'Ссылка появится после создания комнаты'}</div>
       <PrivacyNote>Предпочтения и оценки останутся скрытыми до взаимного лайка.</PrivacyNote>
-      <div aria-live="polite">{inviteStatus === 'opened' ? <p>Открыли отправку в MAX</p> : inviteStatus === 'cancelled' ? <p>Отправка отменена. Можно попробовать снова или скопировать ссылку.</p> : inviteStatus === 'copied' ? <p>✓ Ссылка скопирована</p> : inviteStatus === 'share-error' ? <p className={styles.error} role="alert">Не удалось открыть отправку. Попробуйте ещё раз или скопируйте ссылку.</p> : inviteStatus === 'copy-error' ? <p className={styles.error} role="alert">Не удалось скопировать ссылку. Вы можете скопировать её вручную выше.</p> : null}</div>
-      <div className={styles.footer}><Button disabled={!maxLink || busy} state={inviteStatus === 'sharing' ? 'loading' : 'idle'} loadingLabel="Открываем MAX…" onClick={() => void share()}>Пригласить через MAX</Button><Button tone="secondary" disabled={!rawUrl || busy} state={inviteStatus === 'copying' ? 'loading' : 'idle'} loadingLabel="Копируем…" onClick={() => void copy()}>Скопировать ссылку</Button><Button tone="ghost" onClick={() => navigate(`/rooms/${roomId}/intent`)}>Перейти к моим пожеланиям</Button></div>
+      <RoomInviteActions {...invite} className={styles.footer}><Button tone="ghost" onClick={() => navigate(`/rooms/${roomId}/intent`)}>Перейти к моим пожеланиям</Button></RoomInviteActions>
     </PageContent></PageShell>
   )
 }
@@ -138,16 +122,17 @@ export function JoinPage() {
   const expired = useInviteExpired(context?.expires_at, bootstrap.refetch)
   const joinBlocked = !context || (context.status !== 'joinable' || expired) && !context.already_joined
   const queryClient = useQueryClient()
-  const join = useMutation({ mutationFn: () => {
+  const join = useMutation({ onMutate: () => launchContext.getSnapshot().revision, mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
     return apiClient.joinRoom(inviteToken)
-  }, onSuccess: async (room) => {
+  }, onSuccess: async (room, _variables, launchRevision) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['bootstrap'] }),
       queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
     ])
+    if (launchContext.getSnapshot().revision !== launchRevision) return
     navigate(`/rooms/${room.id}/intent`, { replace: true })
   }, onError: async (error) => {
     trackFailure('room_join_failed', error, { roomId: context?.room_id })
@@ -177,7 +162,7 @@ export function RoomFlowPage() {
   if (room.data.state === 'closed') content = <ClosedScreen room={room.data} />
   else if (roomScreen !== expected) content = <Navigate to={`/rooms/${roomId}/${expected}`} replace />
   else if (expected === 'intent') content = <IntentScreen key={`${room.data.id}:${room.data.round_no}`} room={room.data} />
-  else if (expected === 'waiting') content = <WaitingScreen room={room.data} />
+  else if (expected === 'waiting') content = <WaitingScreen room={room.data} refetch={room.refetch} />
   else if (expected === 'vote') content = <VoteScreen room={room.data} />
   else if (expected === 'match') content = <MatchScreen room={room.data} />
   else content = <RecoveryScreen key={`${room.data.id}:${room.data.round_no}`} room={room.data} />
@@ -211,8 +196,9 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
   const save = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
+    onSuccess: async (_data, _values, launchRevision) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (launchContext.getSnapshot().revision !== launchRevision) return; navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
       if (!(error instanceof ApiError)) return
@@ -239,15 +225,16 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   )
 }
 
-function WaitingScreen({ room }: { room: RoomSnapshot }) {
+function WaitingScreen({ room, refetch = noRoomRefetch }: { room: RoomSnapshot; refetch?: () => unknown }) {
   const navigate = useNavigate()
   const reducedMotion = useReducedMotion()
+  const invite = useRoomInvite(room, refetch)
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <p className={styles.eyebrow}>ОБЩАЯ ПОДБОРКА</p><h1 className={styles.title}>{room.state === 'ranking' ? 'Формируем общий пул…' : 'Ждём второго участника'}</h1><p className={styles.subtitle}>{room.state === 'voting' ? 'Вы просмотрели все события. Ждём, когда второй участник завершит выбор.' : 'Ваши пожелания сохранены. Подборка появится, когда оба участника будут готовы.'}</p>
-      <div className={styles.statusList} aria-live="polite"><AnimatePresence initial={false}>{room.participants.map((participant) => <motion.div className={styles.statusRow} key={participant.id} layout={!reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 8, scale: .92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: -8, scale: .92 }} transition={{ duration: reducedMotion ? 0 : .24 }}><span className={styles.smallAvatar}>{participantInitials(participant.displayName)}</span><span><strong>{participant.displayName}</strong><small>{room.state === 'voting' ? 'Участник совместного выбора' : participant.intentReady ? '✓ Предпочтения заполнены' : 'Заполняет предпочтения…'}</small></span></motion.div>)}</AnimatePresence></div>
-      <p aria-live="polite" style={{ minHeight: 20, textAlign: 'center', color: 'var(--color-muted)' }}>{room.participants.length} / 2 участника</p>
-      {room.state !== 'voting' ? <div className={styles.explain}><strong>Как формируется подборка</strong><span>✓ Учитываем постоянные интересы</span><span>✓ Добавляем текущие условия</span><span>{room.participants.length === 2 ? '○ Ждём готовности обоих' : '○ Ждём присоединения друга'}</span></div> : null}<PrivacyNote />
+      <div className={`${styles.statusList} ${styles.waitingParticipants}`} aria-live="polite"><AnimatePresence initial={false}>{room.participants.map((participant) => <motion.div className={styles.statusRow} key={participant.id} layout={!reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 8, scale: .92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: -8, scale: .92 }} transition={{ duration: reducedMotion ? 0 : .24 }}><span className={styles.smallAvatar}>{participantInitials(participant.displayName)}</span><span><strong>{participant.displayName}</strong><small>{room.state === 'voting' ? 'Участник совместного выбора' : participant.intentReady ? '✓ Предпочтения заполнены' : 'Заполняет предпочтения…'}</small></span></motion.div>)}</AnimatePresence><div className={styles.participantCount}><svg className={styles.participantCountIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-2a5.5 5.5 0 0 1 11 0v2M16 5.3a3 3 0 0 1 0 5.4M20.5 19v-2a5.5 5.5 0 0 0-3.2-5" /></svg><span>{room.participants.length} / 2 участника</span></div></div>
+      {invite.canInvite ? <section className={styles.waitingInvite} aria-label="Приглашение в комнату"><p className={styles.eyebrow}>ПРИГЛАШЕНИЕ В КОМНАТУ</p><div className={styles.inviteLink} data-testid="invite-url">{invite.rawUrl}</div><RoomInviteActions {...invite} className={styles.waitingInviteActions} showShareOpenedStatus={false} /></section> : null}
+      {room.state !== 'voting' ? <div className={styles.explain}><strong>Как формируется подборка</strong><span>✓ Учитываем постоянные интересы</span><span>✓ Добавляем текущие условия</span><span>{room.participants.length === 2 ? '○ Ждём готовности обоих' : '○ Ждём присоединения друга'}</span></div> : null}
     </PageContent></PageShell>
   )
 }
@@ -389,10 +376,26 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
       return combinedRelaxedIntent(room.myIntent, changes, new Date(), timezone)
     } catch { return null } // A saved choice may expire while this screen remains open.
   })()
-  const restart = useMutation({ mutationFn: () => {
-    if (!nextIntent) throw new Error('No room intent change selected')
-    return apiClient.replaceMyIntent(room.id, nextIntent)
-  }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) }, onSettled: () => { restartLocked.current = false } })
+  const restart = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
+    mutationFn: () => {
+      if (!nextIntent) throw new Error('No room intent change selected')
+      return apiClient.replaceMyIntent(room.id, nextIntent)
+    },
+    onSuccess: async (_data, _values, launchRevision) => {
+      await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
+      if (launchContext.getSnapshot().revision !== launchRevision) return
+      navigate(`/rooms/${room.id}/waiting`, { replace: true })
+    },
+    onError: async (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
+      }
+    },
+    onSettled: () => {
+      restartLocked.current = false
+    },
+  })
   if (!room.allowed_actions.includes('restart_with_new_intent')) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
@@ -430,18 +433,6 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   )
 }
 
-function useInviteExpired(expiresAt: string | undefined, refetch: () => unknown) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!expiresAt) return
-    const delay = Date.parse(expiresAt) - Date.now()
-    if (delay > 2_147_483_647) return
-    const timer = window.setTimeout(() => { setNow(Date.now()); void refetch() }, Math.max(0, delay))
-    return () => window.clearTimeout(timer)
-  }, [expiresAt, refetch])
-  return Boolean(expiresAt && Date.parse(expiresAt) <= now)
-}
-
 function AuthRecoveryAction({ error }: { error: unknown }) {
   return error instanceof ApiError && error.status === 401 ? <Button tone="secondary" onClick={() => window.location.reload()}>Восстановить вход в MAX</Button> : null
 }
@@ -467,6 +458,8 @@ function ClosedScreen({ room }: { room: RoomSnapshot }) {
 function ChoiceField<T extends string>({ title, options, selected, onToggle, error }: { title: string; options: Array<[T, string]>; selected: T[]; onToggle: (value: T) => void; error?: string }) {
   return <fieldset className={intentStyles.choiceField} aria-invalid={Boolean(error)}><legend>{title}</legend><ChoiceChips className={intentStyles.choiceOptions} options={options} selected={selected} onToggle={onToggle} />{error ? <span className={intentStyles.fieldError} role="alert">{error}</span> : null}</fieldset>
 }
+
+const noRoomRefetch = () => undefined
 
 function expectedScreen(room: RoomSnapshot) {
   if (room.state === 'matched') return 'match'

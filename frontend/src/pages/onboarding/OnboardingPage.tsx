@@ -60,7 +60,6 @@ export function OnboardingPage() {
     onSuccess: async () => {
       track('onboarding_completed')
       await queryClient.refetchQueries({ queryKey: ['bootstrap'] })
-      navigate('/', { replace: true })
     },
     onError: (error) => {
       if (!(error instanceof ApiError)) return

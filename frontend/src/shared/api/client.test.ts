@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from 'vitest'
 import { ApiClient } from './client'
 
 describe('API client', () => {
+  it('does not let an aborted old bootstrap replace the current session token', async () => {
+    const sessionBody = (token: string) => ({ access_token: token, user: { id: 'user-1', display_name: 'Анна', avatar_url: null, city_id: null, locale: 'ru' }, onboarding_state: 'complete', preferences: null, daily_notifications_enabled: false, invite_context: null })
+    let finishOld!: (value: Response) => void
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve }))
+      .mockResolvedValueOnce(Response.json(sessionBody('current-token')))
+      .mockResolvedValueOnce(Response.json({ status: 'ready', database: 'ready', migrations: 'current' }))
+    const client = new ApiClient({ baseUrl: '/api/v1', fetchImpl })
+    const controller = new AbortController()
+    const oldBootstrap = client.bootstrap({ init_data: 'old-launch', start_param: null }, controller.signal)
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBe(controller.signal)
+    await client.bootstrap({ init_data: 'latest-launch', start_param: null })
+    controller.abort()
+    finishOld(Response.json(sessionBody('stale-token')))
+    await expect(oldBootstrap).rejects.toMatchObject({ name: 'AbortError' })
+    await client.health()
+    expect(new Headers(fetchImpl.mock.calls[2][1]?.headers).get('Authorization')).toBe('Bearer current-token')
+  })
+
   it('uploads a poster as multipart with auth and reports progress', async () => {
     const fakeXHR = {
       upload: { onprogress: null as ((event: ProgressEvent) => void) | null },
