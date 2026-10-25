@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiClient } from '../../shared/api/client'
-import { maxPlatform } from '../../shared/platform/max/adapter'
+import { launchContext } from '../../shared/platform/max/launchContext'
 import type { Preferences } from '../../shared/api/types'
 import { MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID } from '../../shared/lib/cities'
 import { useProfileCity } from './useProfileCity'
@@ -22,7 +22,8 @@ const initialPreferences: Preferences = {
 
 function setup(preferences: Preferences | null = initialPreferences) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  const key = ['bootstrap', maxPlatform.getStartParam()]
+  const launch = launchContext.getSnapshot()
+  const key = ['bootstrap', launch.revision, launch.startParam]
   const bootstrap = {
     accessToken: 'token',
     user: { id: 'user-1', displayName: 'Ирина', avatarUrl: null, cityId: MOSCOW_CITY_ID, locale: 'ru' },

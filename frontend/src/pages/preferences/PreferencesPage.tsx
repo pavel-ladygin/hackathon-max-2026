@@ -15,6 +15,7 @@ import notificationStyles from './preferences.module.css'
 
 import { MOSCOW_CITY_ID } from '../../shared/lib/cities'
 import { setTextSize, readTextSize, type TextSize } from '../../shared/lib/textSize'
+import { launchContext } from '../../shared/platform/max/launchContext'
 const schema = z.object({
   budget: z.coerce.number().min(0).max(1_000_000),
   days: z.array(z.enum(['weekday', 'weekend'])),
@@ -45,8 +46,9 @@ export function PreferencesPage() {
     onError: () => setDailyNotificationsOverride(null),
   })
   const save = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: FormValues) => apiClient.replacePreferences({ city_id: initial?.cityId ?? bootstrap.data?.user.cityId ?? MOSCOW_CITY_ID, interest_slugs: interests, budget_max_minor: values.budget * 100, usual_day_types: values.days, usual_time_slots: values.times }),
-    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['bootstrap'] }); await client.invalidateQueries({ queryKey: ['home-feed'] }); navigate('/') },
+    onSuccess: async (_data, _values, launchRevision) => { await client.invalidateQueries({ queryKey: ['bootstrap'] }); await client.invalidateQueries({ queryKey: ['home-feed'] }); if (launchContext.getSnapshot().revision !== launchRevision) return; navigate('/') },
     onError: (error) => {
       if (!(error instanceof ApiError)) return
       if (error.fieldErrors.budget_max_minor) form.setError('budget', { message: error.fieldErrors.budget_max_minor }, { shouldFocus: true })

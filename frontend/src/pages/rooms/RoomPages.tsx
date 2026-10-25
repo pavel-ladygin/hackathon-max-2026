@@ -34,6 +34,7 @@ import { PlanSummary } from './PlanSummary'
 import { cityToday, isCanonicalDate, roomCity } from './public-plan'
 import { RoomInviteActions } from './RoomInviteActions'
 import { useInviteExpired, useRoomInvite } from './useRoomInvite'
+import { launchContext } from '../../shared/platform/max/launchContext'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
 export function NewRoomPage() {
@@ -46,16 +47,18 @@ export function NewRoomPage() {
   const draftKey = `room-create-v1:${bootstrap.data?.user.id ?? 'pending'}`
   useEffect(() => { track('room_creation_started') }, [])
   const create = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: Parameters<typeof apiClient.createRoom>[0]) => {
       const body = JSON.stringify(values)
       if (createAttempt.current?.body !== body) createAttempt.current = { body, key: crypto.randomUUID() }
       return apiClient.createRoom(values, createAttempt.current.key)
     },
-    onSuccess: async ({ room }) => {
+    onSuccess: async ({ room }, _values, launchRevision) => {
       queryClient.setQueryData(['room', room.id], room)
       setCreateSuccess(true)
       try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable in a WebView. */ }
       await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350))
+      if (launchContext.getSnapshot().revision !== launchRevision) return
       navigate(`/rooms/${room.id}/invite`)
     },
     onError: (error) => trackFailure('room_creation_failed', error),
@@ -118,16 +121,17 @@ export function JoinPage() {
   const expired = useInviteExpired(context?.expires_at, bootstrap.refetch)
   const joinBlocked = !context || (context.status !== 'joinable' || expired) && !context.already_joined
   const queryClient = useQueryClient()
-  const join = useMutation({ mutationFn: () => {
+  const join = useMutation({ onMutate: () => launchContext.getSnapshot().revision, mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
     return apiClient.joinRoom(inviteToken)
-  }, onSuccess: async (room) => {
+  }, onSuccess: async (room, _variables, launchRevision) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['bootstrap'] }),
       queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
     ])
+    if (launchContext.getSnapshot().revision !== launchRevision) return
     navigate(`/rooms/${room.id}/intent`, { replace: true })
   }, onError: async (error) => {
     trackFailure('room_join_failed', error, { roomId: context?.room_id })
@@ -190,8 +194,9 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
   const save = useMutation({
+    onMutate: () => launchContext.getSnapshot().revision,
     mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
+    onSuccess: async (_data, _values, launchRevision) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (launchContext.getSnapshot().revision !== launchRevision) return; navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
       if (!(error instanceof ApiError)) return
@@ -357,10 +362,10 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
         : selectedSuggestion?.intent ?? null
     } catch { return null } // A saved choice may expire while this screen remains open.
   })()
-  const restart = useMutation({ mutationFn: () => {
+  const restart = useMutation({ onMutate: () => launchContext.getSnapshot().revision, mutationFn: () => {
     if (!nextIntent) throw new Error('No room intent change selected')
     return apiClient.replaceMyIntent(room.id, nextIntent)
-  }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
+  }, onSuccess: async (_data, _values, launchRevision) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (launchContext.getSnapshot().revision !== launchRevision) return; navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
   if (!room.allowed_actions.includes('restart_with_new_intent')) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
