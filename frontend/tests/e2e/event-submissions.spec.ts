@@ -148,7 +148,7 @@ test('submit an event, approve it in moderation, and see it in the user history'
   await expect(page.getByRole('status')).toContainText('Событие одобрено')
   await page.getByRole('button', { name: 'Одобрено' }).click()
   await page.getByRole('button', { name: /Вечер живого джаза/ }).click()
-  await expect(page.getByText('01.06.2099, 13:30 · Europe/Moscow')).toBeVisible()
+  await expect(page.getByText('01.06.2099, 13:30 · Московское время')).toBeVisible()
   await expect(page.getByText('2 янв. 2099 г., 03:00')).toBeVisible()
   await expect(page.getByText('moderator-e2e')).toBeVisible()
 

@@ -7,7 +7,7 @@ describe('PlanSummary', () => {
   it('shows city and timezone even for a legacy room without a plan', () => {
     render(<PlanSummary cityId={MOSCOW_CITY_ID} />)
     expect(screen.getByText('Москва')).toBeInTheDocument()
-    expect(screen.getByText('Часовой пояс: Europe/Moscow')).toBeInTheDocument()
+    expect(screen.getByText('Московское время')).toBeInTheDocument()
     expect(screen.getByText('Детали встречи можно уточнить у пригласившего.')).toBeInTheDocument()
     expect(screen.queryByText(/задаётся при создании комнаты и не меняется/)).not.toBeInTheDocument()
   })

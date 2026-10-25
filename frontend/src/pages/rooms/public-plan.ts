@@ -1,3 +1,4 @@
+import { timeZoneLabel } from '../../shared/lib/timeZoneLabel'
 import { z } from 'zod'
 import { CATEGORY_REGISTRY } from '../../shared/api/categories'
 import type { PublicPlan, RoomSnapshot } from '../../shared/api/types'
@@ -142,7 +143,7 @@ export function formatBudgetMinor(amount: number): string {
 
 export function sharePlanText(room: Pick<RoomSnapshot, 'name' | 'city_id' | 'public_plan'>): string {
   const city = roomCity(room.city_id)
-  const lines = [`Присоединяйся к комнате «${room.name}»${city ? ` в городе ${city.name} (${city.timezone})` : ''}.`]
+  const lines = [`Присоединяйся к комнате «${room.name}»${city ? ` в городе ${city.name} (${timeZoneLabel(city.timezone).toLocaleLowerCase('ru-RU')})` : ''}.`]
   const plan = room.public_plan
   if (!plan) return lines[0]
 

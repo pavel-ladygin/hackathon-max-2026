@@ -90,10 +90,11 @@ export function EventImage({ alt, className = "", width = 400, height = 400, fal
   }} />;
 }
 
-export type EventCardData = { id?: string; title: string; meta?: string; eyebrow?: string; image: string; fallbackImage?: string };
-export function EventCard({ event, compact = false, onClick, className = "" }: { event: EventCardData; compact?: boolean; onClick?: () => void; className?: string }) {
-  const content = <><EventImage src={event.image} fallbackSrc={event.fallbackImage} alt="" /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong>{event.title}</strong>{event.meta && <span>{event.meta}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
-  return onClick ? <button type="button" className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`} onClick={onClick}>{content}</button> : <article className={`${styles.eventCard} ${compact ? styles.compact : ""} ${className}`}>{content}</article>;
+export type EventCardData = { id?: string; title: string; place?: string; price?: string; meta?: string; eyebrow?: string; image: string; fallbackImage?: string };
+export function EventCard({ event, compact = false, withFavorite = false, onClick, className = "" }: { event: EventCardData; compact?: boolean; withFavorite?: boolean; onClick?: () => void; className?: string }) {
+  const cardClassName = `${styles.eventCard} ${compact ? styles.compact : ""} ${withFavorite ? styles.eventCardWithFavorite : ""} ${className}`;
+  const content = <><EventImage src={event.image} fallbackSrc={event.fallbackImage} alt="" /><span className={styles.eventCopy}><span className={styles.eyebrow}>{event.eyebrow ?? "СОБЫТИЕ"}</span><strong aria-label={event.title}>{event.title}</strong>{(event.place ?? event.meta) && <span className={styles.eventPlace} aria-label={event.place ?? event.meta}>{event.place ?? event.meta}</span>}{event.price && <span className={styles.eventPrice}>{event.price}</span>}</span><span className={styles.arrow} aria-hidden="true">›</span></>;
+  return onClick ? <button type="button" className={cardClassName} onClick={onClick}>{content}</button> : <article className={cardClassName}>{content}</article>;
 }
 
 export function PageShell({ children, className = "", withBottomNav = false }: { children: ReactNode; className?: string; withBottomNav?: boolean }) {

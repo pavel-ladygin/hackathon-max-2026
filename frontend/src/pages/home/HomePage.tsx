@@ -93,7 +93,7 @@ export function HomePage() {
         <div className={styles.sectionHead}><h2>Для вас</h2><span className={styles.eyebrow}>{allEvents.length} событий</span></div>
         {allEvents.length === 0 ? <Empty inline title="В этом городе пока нет событий" description="Загляните позже или выберите другой город." /> : null}
         <div className={styles.eventGrid}>
-          {allEvents.slice(1).map((event, index) => <EventImpression key={event.id} event={event} listType="feed" position={index + 2}><EventCard className={styles.feedCard} event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, meta: `${event.venue_name} · ${event.price_label}` }} onClick={() => navigate(`/events/${event.id}`)} /></EventImpression>)}
+          {allEvents.slice(1).map((event, index) => <EventImpression key={event.id} event={event} listType="feed" position={index + 2}><EventCard event={{ id: event.id, title: event.title, image: eventImage(event.imageUrl, event.category_slug), eyebrow: `${eventCategoryLabel(event.category_slug)} · ${event.date_label}`, place: event.venue_name, price: event.price_label }} onClick={() => navigate(`/events/${event.id}`)} /></EventImpression>)}
         </div>
         </>}
       </PageContent>

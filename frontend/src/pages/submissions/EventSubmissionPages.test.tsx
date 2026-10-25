@@ -56,7 +56,7 @@ describe('EventSubmissionPage', () => {
     fireEvent.change(screen.getByLabelText(/Ссылка на событие или билеты/), { target: { value: 'https://tickets.example/show' } })
     fireEvent.click(screen.getByRole('button', { name: 'Проверить перед отправкой' }))
 
-    expect(await screen.findByText(new RegExp(`10:00 · America/Los_Angeles`))).toBeInTheDocument()
+    expect(await screen.findByText(new RegExp(`10:00 · Местное время`))).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Отправить на модерацию' }))
     await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce())
     expect(mocks.create.mock.calls[0][0]).toMatchObject({ starts_at_local: `${start}T10:00`, price_mode: 'paid', price_from_minor: 1234, ticket_url: 'https://tickets.example/show' })

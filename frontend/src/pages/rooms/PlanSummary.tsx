@@ -1,3 +1,4 @@
+import { timeZoneLabel } from '../../shared/lib/timeZoneLabel'
 import type { PublicPlan } from '../../shared/api/types'
 import { categoryLabel, formatBudgetMinor, formatPlanDate, roomCity, TIME_SLOT_OPTIONS } from './public-plan'
 import styles from './public-plan.module.css'
@@ -9,7 +10,7 @@ export function PlanSummary({ plan, cityId }: { plan?: PublicPlan | null; cityId
       <div className={styles.summaryCity}>
         <span>Город</span>
         <strong>{city?.name ?? 'Город уточняется'}</strong>
-        <small>{city ? `Часовой пояс: ${city.timezone}` : 'Часовой пояс пока неизвестен'}</small>
+        <small>{city ? timeZoneLabel(city.timezone) : 'Часовой пояс пока неизвестен'}</small>
       </div>
       {plan ? <dl className={styles.summaryDetails}>
         <div><dt>Даты</dt><dd>{plan.dates.map(formatPlanDate).join(', ')}</dd></div>

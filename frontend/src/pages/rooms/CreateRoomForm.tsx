@@ -1,3 +1,4 @@
+import { timeZoneLabel } from '../../shared/lib/timeZoneLabel'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { CategorySlug, PublicPlan } from '../../shared/api/types'
 import { CATEGORY_OPTIONS } from '../../shared/api/categories'
@@ -155,7 +156,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
         <CustomSelect id="create-room-city" label="Город комнаты" value={cityId} placeholder={invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Выберите город'} error={errors.city} options={[...(!knownCity ? [{ value: cityId, label: invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Сохранённый город недоступен — выберите вручную', disabled: true }] : []), { value: '', label: 'Выберите город' }, ...ROOM_CITIES.map((item) => ({ value: item.id, label: item.ready ? item.name : `${item.name} — город готовится`, disabled: !item.ready }))]} onChange={(value) => { setExplicitCityId(value); setErrors((current) => ({ ...current, city: undefined, dates: undefined })) }} />
         {!knownCity ? <span id="create-room-city-help" className={styles.hint}>Город из профиля пока недоступен. Выберите город для этой комнаты.</span> : null}
         {city && !city.ready ? <span className={styles.hint}>Каталог для Казани готовится. Создать комнату в этом городе пока нельзя.</span> : null}
-        {city ? <span className={styles.hint}>Часовой пояс: {city.timezone}</span> : null}
+        {city ? <span className={styles.hint}>{timeZoneLabel(city.timezone)}</span> : null}
         {errors.city ? <span id="create-room-city-error" className={styles.error} role="alert">{errors.city}</span> : null}
       </div>
 
@@ -168,7 +169,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
         {publicPlanEnabled ? <div className={styles.planFields}>
           <fieldset className={styles.fieldset} aria-describedby={errors.dates ? 'create-plan-date-input-error' : 'create-plan-date-input-help'}>
             <legend>Подходящие даты</legend>
-            <RoomDateChoices id="create-plan-date-input" selected={plan.dates} onChange={(dates) => changePlan({ dates })} min={today ?? undefined} error={errors.dates} description={city ? `Выбирайте даты начиная с ${today}, ${city.timezone}.` : 'Сначала выберите город с часовым поясом.'} disabled={pending || success || !cityReady} />
+            <RoomDateChoices id="create-plan-date-input" selected={plan.dates} onChange={(dates) => changePlan({ dates })} min={today ?? undefined} error={errors.dates} disabled={pending || success || !cityReady} />
             {!plan.dates.length ? <p className={styles.hint}>Даты не выбраны.</p> : null}
           </fieldset>
 
