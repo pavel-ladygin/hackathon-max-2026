@@ -35,6 +35,7 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await expect(page.getByRole('tab', { name: 'Карта' })).toHaveAttribute('aria-selected', 'true')
 
     await page.goto('/rooms/new')
+    await page.getByLabel('Название комнаты').fill('Куда идём?')
     const create = page.getByRole('button', { name: 'Создать комнату' })
     await create.click()
     await expect(page.getByRole('button', { name: 'Создаём…' })).toHaveAttribute('aria-busy', 'true')
