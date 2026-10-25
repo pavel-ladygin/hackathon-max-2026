@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RoomSnapshot } from '../../shared/api/types'
@@ -55,7 +55,8 @@ describe('BUG-01 waiting invitation recovery', () => {
     expect(await screen.findByText('✓ Ссылка скопирована')).toBeVisible()
     expect(platform.copyText).toHaveBeenCalledWith('https://example.test/join/abc')
     fireEvent.click(screen.getByRole('button', { name: 'Пригласить через MAX' }))
-    expect(await screen.findByText('Открыли отправку в MAX')).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Пригласить через MAX' })).toBeEnabled())
+    expect(screen.queryByText('Открыли отправку в MAX')).not.toBeInTheDocument()
     expect(platform.shareInvite).toHaveBeenCalledWith({ text: expect.any(String), link: 'https://max.ru/example?startapp=abc' })
     expect(screen.getByRole('heading', { name: 'Ждём второго участника' })).toBeVisible()
   })
@@ -87,7 +88,8 @@ describe('BUG-01 waiting invitation recovery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Пригласить через MAX' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось открыть отправку')
     fireEvent.click(screen.getByRole('button', { name: 'Пригласить через MAX' }))
-    expect(await screen.findByText('Открыли отправку в MAX')).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Пригласить через MAX' })).toBeEnabled())
+    expect(screen.queryByText('Открыли отправку в MAX')).not.toBeInTheDocument()
   })
 
   it.each([
