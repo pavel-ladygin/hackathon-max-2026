@@ -81,6 +81,8 @@ function RoomInvite({ roomId }: { roomId: string | undefined }) {
   const expired = useInviteExpired(expiresAt, room.refetch)
   if (room.isPending) return <ScreenSkeleton variant="room" label="Готовим приглашение…" />
   if (room.isError || !room.data) return <RoomReadError title="Комната недоступна" error={room.error} retry={() => void room.refetch()} pending={room.isFetching} />
+  const creator = room.data.participants.find((participant) => participant.role === 'creator')
+  const creatorInitial = Array.from(creator?.displayName.trim() ?? '')[0]?.toUpperCase() || '?'
   const rawUrl = room.data.invite?.url ?? ''
   const maxLink = room.data.invite?.max_deep_link ?? rawUrl
   const canInvite = Boolean(room.data.invite) && room.data.allowed_actions.includes('invite') && room.data.participants.length < 2 && !expired && ['collecting_intents', 'ranking'].includes(room.data.state)
@@ -105,7 +107,7 @@ function RoomInvite({ roomId }: { roomId: string | undefined }) {
   </PageContent></PageShell>
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
-      <div className={styles.avatars}><span className={styles.avatar}>И</span><span className={styles.avatar}>{room.data.participants.length > 1 ? 'А' : '+'}</span></div>
+      <div className={styles.avatars}><span className={styles.avatar}>{creatorInitial}</span><span className={styles.avatar}>{room.data.participants.length > 1 ? 'А' : '+'}</span></div>
       <h1 className={styles.title}>Пригласите друга</h1><p className={styles.subtitle}>Отправьте приглашение в MAX. После подключения каждый отдельно заполнит пожелания.</p>
       <PlanSummary plan={room.data.public_plan} cityId={room.data.city_id} />
       <div className={styles.inviteLink} data-testid="invite-url">{rawUrl || 'Ссылка появится после создания комнаты'}</div>

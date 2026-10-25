@@ -75,6 +75,7 @@ test('creates a room and opens the invite route', async ({ page }) => {
   await page.getByRole('button', { name: 'Создать комнату' }).click()
   await expect(page).toHaveURL(new RegExp(`/rooms/${backend.roomId}/invite$`))
   await expect(page.getByRole('heading', { name: 'Пригласите друга' })).toBeVisible()
+  await expect(page.getByText('Е', { exact: true })).toBeVisible()
   await expect(page.getByTestId('invite-url')).toContainText('/join/invite-e2e')
 })
 
