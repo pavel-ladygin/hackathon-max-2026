@@ -96,7 +96,8 @@
 
 .error { margin: -6px 18px 16px; color: #b42318; font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); }
 .textSizeField { min-width: 0; width: 100%; box-sizing: border-box; }
-.textSizes { display: grid; grid-template-columns: 1fr; gap: 8px; min-width: 0; margin: 12px 18px 18px; }
+.textSizeField > legend { float: left; width: calc(100% - 36px); margin: 18px 18px 12px; padding: 0; color: var(--color-ink); font-size: var(--app-type-label-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-body-line); }
+.textSizes { display: grid; clear: both; grid-template-columns: 1fr; gap: 8px; min-width: 0; margin: 0 18px 18px; }
 .textSizes label { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; min-width: 0; min-height: 48px; align-items: center; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px 12px; font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); cursor: pointer; }
 .textSizes input { flex: none; accent-color: var(--color-ink); }
 .textSizeLabel { min-width: 0; overflow-wrap: anywhere; }

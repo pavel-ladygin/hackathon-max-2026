@@ -1,0 +1,38 @@
+.content {
+  padding-top: 48px;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.icon {
+  display: grid;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-warm);
+  color: var(--color-muted);
+}
+
+.icon svg { display: block; width: 44px; height: 44px; }
+
+.title {
+  margin: 0 0 16px;
+  font-size: var(--app-type-page-title-size);
+  line-height: var(--app-type-page-title-line);
+}
+
+.summary {
+  margin: 28px 0;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.summary strong { display: block; font-size: var(--app-type-heading-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-heading-line); }
+.summary p { margin: 10px 0 0; color: var(--app-text-secondary); font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); }
+.summary p + p { margin-top: 5px; }

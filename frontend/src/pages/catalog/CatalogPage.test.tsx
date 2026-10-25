@@ -3,12 +3,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MOSCOW_CITY_ID, SAINT_PETERSBURG_CITY_ID, cityById } from '../../shared/lib/cities'
 import { CatalogPage } from './CatalogPage'
+import { cityDate } from './useCityToday'
 
 let selectedCityId = MOSCOW_CITY_ID
 const selectCity = vi.fn(async (id: string) => { selectedCityId = id })
 vi.mock('../../features/city/useProfileCity', () => ({ useProfileCity: () => ({ cityId: selectedCityId, city: cityById(selectedCityId), selectCity, canSelect: true, isPending: false, error: null }) }))
 
 const searchCalls: Array<Record<string, unknown>> = []
+const searchEnabled: boolean[] = []
 const countCalls: Array<{ params: Record<string, unknown>; enabled: boolean }> = []
 const defaultResult = {
   data: { pages: [{ items: [{ id: 'event-1', title: 'Jazz evening', imageUrl: null, category_slug: 'concerts' as const, date_label: 'Сегодня', venue_name: 'Club', price_label: 'Бесплатно', saved: false }], totalEstimate: null as number | null }] },
@@ -24,8 +26,9 @@ let resultState: Omit<typeof defaultResult, 'data'> & { data: typeof defaultResu
 let countState: { data: number | undefined; isSuccess: boolean } = { data: 1, isSuccess: true }
 
 vi.mock('../../features/discovery/queries', () => ({
-  useEventSearch: (params: Record<string, unknown>) => {
+  useEventSearch: (params: Record<string, unknown>, enabled: boolean) => {
     searchCalls.push(params)
+    searchEnabled.push(enabled)
     return resultState
   },
   useEventSearchCount: (params: Record<string, unknown>, enabled: boolean) => {
@@ -41,12 +44,20 @@ function renderCatalog() {
   return render(<MemoryRouter><CatalogPage /></MemoryRouter>)
 }
 
+function pickDate(field: 'С' | 'По', day: number) {
+  fireEvent.click(screen.getByRole('button', { name: field }))
+  fireEvent.click(screen.getByRole('gridcell', { name: `${day} октября 2026 г.` }))
+  fireEvent.click(screen.getByRole('button', { name: 'Применить' }))
+}
+
 describe('CatalogPage search', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-25T12:00:00Z'))
     selectedCityId = MOSCOW_CITY_ID
     selectCity.mockClear()
     searchCalls.length = 0
+    searchEnabled.length = 0
     countCalls.length = 0
     resultState = defaultResult
     countState = { data: 1, isSuccess: true }
@@ -56,6 +67,89 @@ describe('CatalogPage search', () => {
     vi.useRealTimers()
   })
 
+  it('calculates today in the city timezone rather than the device timezone', () => {
+    const timestamp = Date.parse('2026-10-24T21:00:00Z')
+    expect(cityDate('Europe/Moscow', timestamp)).toBe('2026-10-25')
+    expect(cityDate('America/Los_Angeles', timestamp)).toBe('2026-10-24')
+  })
+
+  it('disables past dates in both fields while allowing today', () => {
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    for (const field of ['С', 'По']) {
+      fireEvent.click(screen.getByRole('button', { name: field }))
+      expect(screen.getByRole('gridcell', { name: '24 октября 2026 г.' })).toBeDisabled()
+      expect(screen.getByRole('gridcell', { name: '25 октября 2026 г.' })).toBeEnabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Закрыть календарь' }))
+    }
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('passes a valid range to list, count and map and respects both range bounds', async () => {
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    pickDate('С', 26)
+    fireEvent.click(screen.getByRole('button', { name: 'По' }))
+    expect(screen.getByRole('gridcell', { name: '25 октября 2026 г.' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('gridcell', { name: '27 октября 2026 г.' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Применить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'С' }))
+    expect(screen.getByRole('gridcell', { name: '28 октября 2026 г.' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть календарь' }))
+    const dates = { date_from: '2026-10-26', date_to: '2026-10-27' }
+    expect(searchCalls.at(-1)).toMatchObject(dates)
+    expect(searchEnabled.at(-1)).toBe(true)
+    expect(countCalls.at(-1)).toMatchObject({ params: dates, enabled: true })
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Карта' })) })
+    expect(JSON.parse(screen.getByLabelText('map-placeholder').getAttribute('data-filters')!)).toMatchObject(dates)
+  })
+
+  it('exposes expired filters at city midnight and blocks search, count and map until corrected', async () => {
+    vi.setSystemTime(new Date('2026-10-25T20:59:59Z'))
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    pickDate('С', 25)
+    fireEvent.click(screen.getByRole('button', { name: /Фильтры ·/ }))
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(screen.getByRole('alert')).toHaveTextContent('Дата начала уже прошла — выберите сегодня или более поздний день')
+    expect(screen.getByRole('button', { name: 'С' })).toHaveAttribute('aria-invalid', 'true')
+    expect(searchEnabled.at(-1)).toBe(false)
+    expect(countCalls.at(-1)?.enabled).toBe(false)
+    expect(screen.queryByText('Jazz evening')).not.toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Карта' })) })
+    expect(screen.queryByLabelText('map-placeholder')).not.toBeInTheDocument()
+    pickDate('С', 26)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('map-placeholder')).toBeInTheDocument()
+  })
+
+  it('checks an open calendar draft again after midnight', () => {
+    vi.setSystemTime(new Date('2026-10-25T20:59:59Z'))
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    fireEvent.click(screen.getByRole('button', { name: 'С' }))
+    fireEvent.click(screen.getByRole('gridcell', { name: '25 октября 2026 г.' }))
+    act(() => { vi.advanceTimersByTime(1000) })
+    fireEvent.click(screen.getByRole('button', { name: 'Применить' }))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(searchEnabled.at(-1)).toBe(false)
+    expect(countCalls.at(-1)?.enabled).toBe(false)
+  })
+
+  it('rechecks an expired end date on returning to the app and clears the error on reset', () => {
+    renderCatalog()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    pickDate('По', 25)
+    vi.setSystemTime(new Date('2026-10-26T06:00:00Z'))
+    fireEvent.focus(window)
+    expect(screen.getByRole('alert')).toHaveTextContent('Дата окончания уже прошла — выберите сегодня или более поздний день')
+    expect(searchEnabled.at(-1)).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(searchEnabled.at(-1)).toBe(true)
+    expect(searchCalls.at(-1)).toMatchObject({ date_from: undefined, date_to: undefined })
+  })
 
   it('opens the shared city picker from filters and keeps city when filters are cleared', async () => {
     const view = renderCatalog()

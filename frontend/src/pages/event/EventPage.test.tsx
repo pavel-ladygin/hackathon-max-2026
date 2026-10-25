@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../shared/api/errors'
 import { eventImageFallback } from '../../shared/lib/events'
+import { createMatchedEventPreview } from '../../features/discovery/matchedEventPreview'
 import { EventPage } from './EventPage'
 
 const mocks = vi.hoisted(() => ({
@@ -11,10 +12,11 @@ const mocks = vi.hoisted(() => ({
   openTicketLink: vi.fn(),
   shareInvite: vi.fn(),
   recordTicketClick: vi.fn(),
+  loadDetail: vi.fn(),
 }))
 
 vi.mock('../../features/discovery/queries', () => ({
-  useEventDetail: () => mocks.event,
+  useEventDetail: () => { mocks.loadDetail(); return mocks.event },
   useSetSavedEvent: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 vi.mock('../../shared/api/client', () => ({ apiClient: { recordBehavior: vi.fn(), recordTicketClick: mocks.recordTicketClick } }))
@@ -24,9 +26,9 @@ const baseEvent = {
   id: '6dcd4ce2-8f2a-4d3e-a8b7-1ef42acfc1a1', title: 'Jazz вечер', subtitle: 'Живой концерт', category_slug: 'concerts', starts_at: '2026-09-23T16:00:00Z', timezone: 'Europe/Moscow', date_label: 'Сегодня, 19:00', venue_name: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', venue: { id: 'venue-1', name: 'Клуб', address: 'г. Москва, ул. Берзарина, д. 16, метро Октябрьское Поле', metro: null, district: null }, distance_m: null, distance_label: null, price_from_minor: null, currency: 'RUB', price_label: 'Бесплатно', image_url: null, imageUrl: null, saved: false, reasons: [], description: '   ', endsAt: null, ticketAvailable: true, status: 'published', age_rating: null, dataProvenance: { source: 'demo', source_updated_at: null, is_demo: false }, images: [],
 }
 
-function renderPage(sharedEventEntry = false, onLeaveSharedEvent?: () => void) {
+function renderPage(sharedEventEntry = false, onLeaveSharedEvent?: () => void, entryState: Record<string, unknown> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[{ pathname: `/events/${baseEvent.id}`, state: sharedEventEntry ? { sharedEventEntry: true } : null }]}><Routes><Route path="/" element={<p>Главная страница</p>} /><Route path="/events/:eventId" element={<EventPage onLeaveSharedEvent={onLeaveSharedEvent} />} /></Routes></MemoryRouter></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[{ pathname: `/events/${baseEvent.id}`, state: { ...entryState, ...(sharedEventEntry ? { sharedEventEntry: true } : {}) } }]}><Routes><Route path="/" element={<p>Главная страница</p>} /><Route path="/saved" element={<p>Раздел мэтчей</p>} /><Route path="/events/:eventId" element={<EventPage onLeaveSharedEvent={onLeaveSharedEvent} />} /></Routes></MemoryRouter></QueryClientProvider>)
 }
 
 describe('EventPage', () => {
@@ -35,6 +37,7 @@ describe('EventPage', () => {
     mocks.openTicketLink.mockReset()
     mocks.shareInvite.mockReset()
     mocks.recordTicketClick.mockReset()
+    mocks.loadDetail.mockReset()
     mocks.recordTicketClick.mockResolvedValue({ external_url: 'https://tickets.example/event-1' })
   })
 
@@ -84,6 +87,55 @@ describe('EventPage', () => {
 
     expect(screen.getByText('Событие не найдено')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+  })
+
+  it('shows past match information without loading the full event or offering tickets', () => {
+    const matchedEvent = createMatchedEventPreview({ ...baseEvent, starts_at: '2000-10-24T16:00:00Z' })
+    renderPage(false, undefined, { matchedEvent })
+    expect(screen.getByRole('heading', { name: 'Мероприятие уже началось или завершилось' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Информация о событии' })).toHaveTextContent(baseEvent.title)
+    expect(screen.getByText(/24 октября 2000/)).toBeInTheDocument()
+    expect(mocks.loadDetail).not.toHaveBeenCalled()
+    expect(mocks.recordTicketClick).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Открыть билеты/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуться к мэтчам' }))
+    expect(screen.getByText('Раздел мэтчей')).toBeInTheDocument()
+  })
+
+  it('opens the normal full event and ticket action for a future match', () => {
+    const futureEvent = { ...baseEvent, starts_at: '2099-10-24T16:00:00Z' }
+    mocks.event.data = futureEvent
+    renderPage(false, undefined, { matchedEvent: createMatchedEventPreview(futureEvent) })
+    expect(screen.getByRole('heading', { name: baseEvent.title })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Открыть билеты во внешнем билетном сервисе' })).toBeEnabled()
+    expect(screen.queryByText('Этот мэтч остаётся в вашей истории')).not.toBeInTheDocument()
+    expect(mocks.loadDetail).toHaveBeenCalled()
+  })
+
+  it('keeps future match information when the detail API returns not found', () => {
+    mocks.event = { ...mocks.event, data: undefined, isError: true, error: new ApiError(404, { error: { code: 'NOT_FOUND' } }) }
+    renderPage(false, undefined, { matchedEvent: createMatchedEventPreview({ ...baseEvent, starts_at: '2099-10-24T16:00:00Z' }) })
+    expect(screen.getByRole('heading', { name: 'Событие больше недоступно' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Информация о событии' })).toHaveTextContent(baseEvent.title)
+    expect(screen.queryByText('Событие не найдено')).not.toBeInTheDocument()
+    expect(mocks.recordTicketClick).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByText('Раздел мэтчей')).toBeInTheDocument()
+  })
+
+  it('does not label a network failure as an unavailable match', () => {
+    mocks.event = { ...mocks.event, data: undefined, isError: true, error: new TypeError('offline') }
+    renderPage(false, undefined, { matchedEvent: createMatchedEventPreview({ ...baseEvent, starts_at: '2099-10-24T16:00:00Z' }) })
+    expect(screen.getByText('Не удалось загрузить событие')).toBeInTheDocument()
+    expect(screen.queryByText('Событие больше недоступно')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(mocks.event.refetch).toHaveBeenCalledOnce()
+  })
+
+  it('ignores a match preview belonging to a different event', () => {
+    renderPage(false, undefined, { matchedEvent: createMatchedEventPreview({ ...baseEvent, id: 'another-event', starts_at: '2000-10-24T16:00:00Z' }) })
+    expect(screen.queryByText('Этот мэтч остаётся в вашей истории')).not.toBeInTheDocument()
+    expect(mocks.loadDetail).toHaveBeenCalled()
   })
 
   it('renders recommendation reasons and a distinct venue address when provided', () => {

@@ -190,7 +190,7 @@ export function RoomFlowPage() {
 const intentSchema = (timezone?: string) => z.object({
   dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату').max(14, 'Не больше 14 дат').refine((dates) => new Set(dates).size === dates.length && dates.every((date) => isCanonicalDate(date) && (!timezone || date >= cityToday(timezone))), 'Выберите актуальные даты без повторов; прошедшие даты нужно изменить самостоятельно'),
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
-  category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1),
+  category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1, 'Выберите хотя бы одну категорию'),
   budget: z.number({ invalid_type_error: 'Введите бюджет' }).min(0).max(1_000_000).multipleOf(0.01, 'Укажите сумму с точностью до копейки'),
   free_text: z.string().max(300),
 })
@@ -398,7 +398,7 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
         <p className={styles.eyebrow}>{room.round_no >= 3 ? 'ТРЕТИЙ РАУНД ЗАВЕРШЁН' : 'ПУЛ ЗАКОНЧИЛСЯ'}</p><h1 className={styles.title}>Раунды этой комнаты завершены</h1><p className={styles.subtitle}>{room.round_no >= 3 ? 'Третий раунд завершён. Создайте новую комнату, когда появятся другие планы.' : 'Для этой комнаты больше нельзя запускать новый раунд. Создайте новую комнату, когда появятся другие планы.'}</p>
         <PrivacyNote>Предпочтения второго участника по-прежнему не раскрываются.</PrivacyNote>
-        <div className={`${styles.footer} ${reliabilityStyles.actions}`}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+        <div className={`${styles.footer} ${reliabilityStyles.actions}`}><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button onClick={() => navigate('/')}>На главную</Button></div>
       </PageContent></PageShell>
     )
   }
@@ -425,7 +425,7 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
         <p className={styles.subtitle}>Остальные ваши условия сохранятся</p>
       </section>}
       {restart.isError ? <AuthRecoveryAction error={restart.error} /> : null}{restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
-      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{review ? <><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending && !restartLocked.current) { restartLocked.current = true; restart.mutate() } }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : <><Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменения</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></>}</div>
+      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{review ? <><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending && !restartLocked.current) { restartLocked.current = true; restart.mutate() } }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : <><Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменения</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></>}</div>
     </PageContent></PageShell>
   )
 }
@@ -460,7 +460,7 @@ function ClosedScreen({ room }: { room: RoomSnapshot }) {
   const closer = room.closed_by?.display_name
   return <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
     <p className={styles.eyebrow}>КОМНАТА ЗАВЕРШЕНА</p><h1 className={styles.title}>Подборка закрыта</h1><p className={styles.subtitle}>{closer ? `Комнату завершил участник «${closer}».` : 'Эта комната больше не активна.'}{room.closed_at ? ` ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(room.closed_at))}` : ''}</p>
-    <div className={styles.footer}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+    <div className={styles.footer}><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button onClick={() => navigate('/')}>На главную</Button></div>
   </PageContent></PageShell>
 }
 
