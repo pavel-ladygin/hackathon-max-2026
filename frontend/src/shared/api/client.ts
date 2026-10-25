@@ -1,5 +1,5 @@
 import { mapPreferences, mapRoom, mapUser } from './mapper'
-import type { BootstrapRequestDto, CreateRoomRequestDto, InviteContextDto, MapBounds, NotificationPreferencesDto, NotificationPreferencesRequestDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
+import type { BootstrapRequestDto, CreateRoomRequestDto, InviteContextDto, MapBounds, NotificationPreferencesDto, NotificationPreferencesRequestDto, Preferences, PreferencesRequestDto, RoomIntentRequestDto, RoomIntentSubmissionOptions, RoomSnapshotDto, RoomEventsResponseDto, User, VoteResponseDto } from './types'
 import { ApiError, normalizeApiError } from './errors'
 import { createHttpDiscoveryApi, type AnalyticsEvent, type DiscoverySearchParams } from './discovery'
 
@@ -83,7 +83,7 @@ export class ApiClient {
   async getRoom(roomId: string): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}`)) }
   async closeRoom(roomId: string): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}/close`, { method: 'POST' })) }
   async acknowledgeRoomClosedNotice(roomId: string): Promise<void> { await this.request(`/rooms/${roomId}/close-notice/ack`, { method: 'POST' }) }
-  async replaceMyIntent(roomId: string, input: RoomIntentRequestDto): Promise<ReturnType<typeof mapRoom>> { return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}/intent/me`, { method: 'PUT', body: JSON.stringify(input) })) }
+  async replaceMyIntent(roomId: string, input: RoomIntentRequestDto, options: RoomIntentSubmissionOptions): Promise<ReturnType<typeof mapRoom>> { const body = { ...input, expected_round_no: options.expectedRoundNo, expected_room_version: options.expectedRoomVersion }; return mapRoom(await this.request<RoomSnapshotDto>(`/rooms/${roomId}/intent/me`, { method: 'PUT', headers: { 'Idempotency-Key': options.idempotencyKey }, body: JSON.stringify(body) })) }
   async getRoomEvents(roomId: string, params: { limit?: number; cursor?: string } = {}): Promise<RoomEventsResponseDto> { const q = new URLSearchParams(); if (params.limit) q.set('limit', String(params.limit)); if (params.cursor) q.set('cursor', params.cursor); return this.request(`/rooms/${roomId}/events${q.size ? `?${q}` : ''}`) }
   async vote(roomId: string, eventId: string, input: { pool_version: number; vote: 'like' | 'dislike' }): Promise<VoteResponseDto> { return this.request(`/rooms/${roomId}/events/${eventId}/vote`, { method: 'PUT', body: JSON.stringify(input) }) }
   async recordTicketClick(eventId: string, input: { source: string; room_id?: string | null }): Promise<{ external_url: string }> { return this.discovery.recordTicketClick(eventId, input) }

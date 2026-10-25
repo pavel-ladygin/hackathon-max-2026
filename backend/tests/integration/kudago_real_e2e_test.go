@@ -218,10 +218,15 @@ func TestKudaGoRealDataEndToEnd(t *testing.T) {
 		Location: nullable.NewNullableWithValue(api.GeoPoint{Lat: float32(lat), Lng: float32(lng)}),
 		DayTypes: []api.DayType{}, TimeSlots: []api.TimeSlot{}, ExclusionSlugs: []api.RoomIntentRequestExclusionSlugs{},
 	}
-	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, request); err != nil || transitioned {
+	firstSnapshot, err := svc.Get(ctx, contracts.Principal{UserID: firstUser}, roomID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ExpectedRoundNo, request.ExpectedRoomVersion = firstSnapshot.RoundNo, firstSnapshot.Version
+	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, request, "kudago-g6-intent-first"); err != nil || transitioned {
 		t.Fatalf("first intent transitioned=%v error=%v", transitioned, err)
 	}
-	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, request); err != nil || !transitioned {
+	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, request, "kudago-g6-intent-second"); err != nil || !transitioned {
 		t.Fatalf("second intent transitioned=%v error=%v", transitioned, err)
 	}
 

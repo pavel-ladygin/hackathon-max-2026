@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ApiError } from '../../shared/api/errors'
@@ -16,7 +16,7 @@ vi.mock('./CreateRoomForm', () => ({ CreateRoomForm: ({ pending, onSubmit }: { p
 
 function view() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/rooms/new']}><Routes><Route path="/rooms/new" element={<NewRoomPage />} /><Route path="/" element={<h1>Главная</h1>} /></Routes></MemoryRouter></QueryClientProvider>)
+  return { ...render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/rooms/new']}><Routes><Route path="/rooms/new" element={<NewRoomPage />} /><Route path="/" element={<h1>Главная</h1>} /></Routes></MemoryRouter></QueryClientProvider>), client }
 }
 
 beforeEach(() => { mocks.createRoom.mockReset() })
@@ -45,5 +45,21 @@ it('offers a home exit for ACTIVE_ROOM_EXISTS without making up an active room a
   fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
   fireEvent.click(await screen.findByRole('button', { name: 'На главную' }))
   expect(await screen.findByRole('heading', { name: 'Главная' })).toBeVisible()
+  expect(mocks.createRoom).toHaveBeenCalledTimes(1)
+})
+
+it('keeps a successfully created room without navigating back after leaving for home', async () => {
+  let finishCreate!: (value: { room: { id: string } }) => void
+  mocks.createRoom.mockReturnValue(new Promise((resolve) => { finishCreate = resolve }))
+  const { client } = view()
+  fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+  await waitFor(() => expect(mocks.createRoom).toHaveBeenCalledTimes(1))
+  fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+  expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+
+  await act(async () => { finishCreate({ room: { id: 'created-room' } }) })
+  await waitFor(() => expect(client.getMutationCache().getAll()[0].state.status).toBe('success'))
+  expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+  expect(client.getQueryData(['room', 'created-room'])).toEqual({ id: 'created-room' })
   expect(mocks.createRoom).toHaveBeenCalledTimes(1)
 })

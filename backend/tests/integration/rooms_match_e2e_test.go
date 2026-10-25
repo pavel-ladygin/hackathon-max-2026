@@ -72,7 +72,7 @@ func TestB9TwoClientMatchEndToEnd(t *testing.T) {
 			}
 
 			for _, user := range []uuid.UUID{f.creator, f.member} {
-				snapshot, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: user}, f.room, validIntentRequest())
+				snapshot, transitioned, err := replaceIntentFromSnapshot(t, svc, f, user, validIntentRequest())
 				if err != nil {
 					t.Fatalf("replace intent user %s: %v", user, err)
 				}

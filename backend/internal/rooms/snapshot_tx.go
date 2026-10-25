@@ -37,6 +37,11 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 			break
 		}
 	}
+	nextRound, err := nextRoundPreparation(ctx, repo, userID, room, membership)
+	if err != nil {
+		return result, err
+	}
+	result.NextRound = nextRound
 	pool, err := repo.Queries.GetActivePool(ctx, room.ID)
 	if err == nil {
 		voted, err := repo.Queries.CountPoolVotesByUser(ctx, roomsql.CountPoolVotesByUserParams{PoolID: pool.ID, UserID: userID})
@@ -71,6 +76,6 @@ func (s *Service) snapshot(ctx context.Context, repo *Repository, userID uuid.UU
 			return result, err
 		}
 	}
-	result.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable)
+	result.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable, nextRound)
 	return result, nil
 }

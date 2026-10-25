@@ -20,7 +20,7 @@ function RouteProbe() {
   const location = useLocation()
   const navigate = useNavigate()
   useEffect(() => { state.paths.push(location.pathname) }, [location.key, location.pathname])
-  return <><output data-testid="route">{location.pathname}</output><button onClick={() => navigate('/events')}>Test catalog</button><button onClick={() => navigate('/onboarding/profile')}>Test onboarding</button></>
+  return <><output data-testid="route">{location.pathname}</output><button onClick={() => navigate('/events')}>Test catalog</button><button onClick={() => navigate('/onboarding/profile')}>Test onboarding</button><button onClick={() => navigate('/')}>Test home</button></>
 }
 
 function bootstrap(token: string | null = null, alreadyJoined = false): Bootstrap {
@@ -127,5 +127,25 @@ describe('BUG-02 centralized launch routing', () => {
     view.rerender(<App />)
     await expectRoute('/events')
     expect(state.paths.filter(path => path === '/join/invite-a')).toHaveLength(1)
+  })
+
+  it.each([false, true])('keeps Home after bootstrap refresh and accepts a genuinely new invitation (member=%s)', async (alreadyJoined) => {
+    state.data = bootstrap('invite-a', alreadyJoined)
+    const view = render(<App />)
+    const target = alreadyJoined ? '/rooms/room-a/waiting' : '/join/invite-a'
+    await expectRoute(target)
+    fireEvent.click(screen.getByRole('button', { name: 'Test home' }))
+    await expectRoute('/')
+    // A pending join may refresh membership after the user has already left.
+    state.data = bootstrap('invite-a', true)
+    view.rerender(<App />)
+    await expectRoute('/')
+    expect(state.paths.filter(path => path.startsWith('/rooms/'))).toHaveLength(alreadyJoined ? 1 : 0)
+
+    state.revision += 1
+    view.rerender(<App />)
+    await expectRoute('/rooms/room-a/waiting')
+    fireEvent.click(screen.getByRole('button', { name: 'Test home' }))
+    await expectRoute('/')
   })
 })

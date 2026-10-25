@@ -148,11 +148,11 @@ func submitBothIntents(t *testing.T, svc *rooms.Service, f *roomFixture) (bool, 
 
 func submitBothIntentsSnapshots(t *testing.T, svc *rooms.Service, f *roomFixture) (api.RoomSnapshot, bool, error) {
 	t.Helper()
-	_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest())
+	_, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest())
 	if err != nil {
 		return api.RoomSnapshot{}, transitioned, err
 	}
-	snapshot, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.member}, f.room, validIntentRequest())
+	snapshot, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.member, validIntentRequest())
 	return snapshot, transitioned, err
 }
 
@@ -341,10 +341,10 @@ func TestB6ReconnectAfterNormalPoolRestoresOwnIntentWithoutPeerPrivateFields(t *
 	memberIntent.Location = nullable.NewNullableWithValue(api.GeoPoint{Lat: 59.93, Lng: 30.31})
 	memberIntent.RadiusM = nullable.NewNullableWithValue(4200)
 	memberIntent.FreeText = nullable.NewNullableWithValue("peer-private")
-	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, creatorIntent); err != nil {
+	if _, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, creatorIntent); err != nil {
 		t.Fatal(err)
 	}
-	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.member}, f.room, memberIntent); err != nil || !transitioned {
+	if _, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.member, memberIntent); err != nil || !transitioned {
 		t.Fatalf("second intent transitioned=%v err=%v", transitioned, err)
 	}
 	snapshot, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
@@ -385,10 +385,10 @@ func TestB6BuilderErrorRollsBackPoolAndSecondIntent(t *testing.T) {
 	}
 	builder := &poolBuilderFake{err: errors.New("builder failed")}
 	svc := poolService(t, db, builder)
-	if _, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil {
+	if _, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.member}, f.room, validIntentRequest()); err == nil {
+	if _, _, err := replaceIntentFromSnapshot(t, svc, f, f.member, validIntentRequest()); err == nil {
 		t.Fatal("builder error was swallowed")
 	}
 	var state string
@@ -480,12 +480,10 @@ func TestB6ProductionLikeBuilderDoesNotNeedNestedPoolCheckout(t *testing.T) {
 	}
 	event := f.newEvent(t)
 	svc := poolService(t, db, poolBuilderPoolProbe{db: db, event: event})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil {
+	if _, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest()); err != nil {
 		t.Fatal(err)
 	}
-	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.member}, f.room, validIntentRequest()); err != nil || !transitioned {
+	if _, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.member, validIntentRequest()); err != nil || !transitioned {
 		t.Fatalf("second intent transitioned=%v err=%v", transitioned, err)
 	}
 }
@@ -502,10 +500,10 @@ func TestB6BuilderDeterminismAndNoDuplicateConcurrentBuild(t *testing.T) {
 	event := f.newEvent(t)
 	builder := &poolBuilderFake{retryOnce: true, result: contracts.BuildResult{RankerVersion: "fake", InputFingerprint: "stable", Candidates: []contracts.Candidate{{EventID: event}}}}
 	svc := poolService(t, db, builder)
-	if _, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); err != nil || transitioned {
+	if _, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest()); err != nil || transitioned {
 		t.Fatalf("first intent transitioned=%v err=%v; want committed non-terminal intent", transitioned, err)
 	}
-	_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.member}, f.room, validIntentRequest())
+	_, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.member, validIntentRequest())
 	if err != nil || !transitioned {
 		t.Fatalf("retrying build transitioned=%v err=%v", transitioned, err)
 	}

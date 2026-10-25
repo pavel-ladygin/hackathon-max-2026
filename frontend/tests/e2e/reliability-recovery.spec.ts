@@ -73,7 +73,7 @@ async function assertViewportFits(page: Page) {
 test('recovery separates zero pool, nonmatch and exhausted rounds across viewport and keyboard states', async ({ page, isMobile }, testInfo: TestInfo) => {
   const backend = await stubSession(page, 'zero-pool')
   await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: 'Нет событий по вашим условиям' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Общих событий пока нет' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Добавить категорию' })).toHaveCount(0)
   await expect(page.getByText(/Изменения не гарантируют больше событий/)).toBeVisible()
   await expect(page.locator('body')).not.toContainText(privateMarker)
@@ -112,13 +112,13 @@ test('recovery separates zero pool, nonmatch and exhausted rounds across viewpor
 
   backend.setKind('positive-nonmatch')
   await page.goto(`/rooms/${roomId}/recovery?case=positive`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: /Вы пока не выбрали одно событие/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /События закончились, общего лайка нет/ })).toBeVisible()
 })
 
 test('positive pool explains category changes, while a third round only navigates to explicit room creation', async ({ page, isMobile }, testInfo: TestInfo) => {
   const backend = await stubSession(page, 'positive-nonmatch')
   await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: 'Вы пока не выбрали одно событие' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'События закончились, общего лайка нет' })).toBeVisible()
   const category = page.getByRole('button', { name: 'Добавить категорию' })
   await expect(category).toBeVisible()
   await expect(category).toContainText('Изменит порядок рекомендаций, но не гарантирует больше событий')
@@ -129,7 +129,8 @@ test('positive pool explains category changes, while a third round only navigate
 
   backend.setKind('third-round')
   await page.goto(`/rooms/${roomId}/recovery?case=third`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: 'Раунды этой комнаты завершены' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Лимит подборок исчерпан' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('terminal-round-three.png'), fullPage: true })
   await expect(page.getByRole('button', { name: 'Создать новую комнату' })).toBeVisible()
   await page.getByRole('button', { name: 'Создать новую комнату' }).click()
   await expect(page).toHaveURL(/\/rooms\/new$/)
@@ -144,6 +145,6 @@ test('room read retry repeats the same GET after offline failure', async ({ page
   expect(backend.gets).toHaveLength(2)
   const failedUrl = backend.gets[0]
   await page.getByRole('button', { name: 'Повторить' }).click()
-  await expect(page.getByRole('heading', { name: 'Нет событий по вашим условиям' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Общих событий пока нет' })).toBeVisible()
   expect(backend.gets).toEqual([failedUrl, failedUrl, failedUrl])
 })

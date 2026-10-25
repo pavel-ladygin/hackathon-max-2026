@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -148,20 +149,22 @@ func TestHTTPRoomTwoClientMatchAcceptance(t *testing.T) {
 	}
 
 	intent := map[string]any{
-		"dates":            []string{startsAt.Format(time.DateOnly)},
-		"day_types":        []string{},
-		"time_slots":       []string{},
-		"category_slugs":   []string{"concerts"},
-		"budget_max_minor": 1000,
-		"exclusion_slugs":  []string{},
+		"expected_round_no":     joined.RoundNo,
+		"expected_room_version": joined.Version,
+		"dates":                 []string{startsAt.Format(time.DateOnly)},
+		"day_types":             []string{},
+		"time_slots":            []string{},
+		"category_slugs":        []string{"concerts"},
+		"budget_max_minor":      1000,
+		"exclusion_slugs":       []string{},
 	}
-	for _, client := range []struct {
+	for index, client := range []struct {
 		name, token string
 	}{
 		{"creator", creator.AccessToken},
 		{"participant", participant.AccessToken},
 	} {
-		res := request(http.MethodPut, "/api/v1/rooms/"+created.Room.ID.String()+"/intent/me", client.token, intent, "")
+		res := request(http.MethodPut, "/api/v1/rooms/"+created.Room.ID.String()+"/intent/me", client.token, intent, fmt.Sprintf("acceptance-intent-%d", index))
 		if res.Code != http.StatusOK {
 			t.Fatalf("%s intent status=%d body=%s", client.name, res.Code, res.Body.String())
 		}
@@ -252,8 +255,10 @@ type createRoomHTTPResponse struct {
 
 type roomHTTPResponse struct {
 	ID           uuid.UUID `json:"id"`
+	RoundNo      int       `json:"round_no"`
 	State        string    `json:"state"`
 	Participants []any     `json:"participants"`
+	Version      int       `json:"version"`
 	Match        *struct {
 		ID      uuid.UUID `json:"id"`
 		EventID uuid.UUID `json:"event_id"`

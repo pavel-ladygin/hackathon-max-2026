@@ -28,6 +28,7 @@ func createSnapshot(room roomsql.Room, participants []roomsql.GetPublicParticipa
 		ExpiresAt: room.ExpiresAt.Time, Participants: items,
 		Invite:   nullable.NewNullableWithValue(invite),
 		MyIntent: nullable.NewNullNullable[api.MyIntent](), Pool: nullable.NewNullNullable[api.PoolSummary](),
+		NextRound:      nullable.NewNullNullable[api.NextRoundPreparation](),
 		Match:          nullable.NewNullNullable[api.MatchSummary](),
 		AllowedActions: []api.RoomSnapshotAllowedActions{api.Invite, api.EditIntent},
 	}

@@ -742,7 +742,7 @@ export interface paths {
         get?: never;
         /**
          * Полностью заменить условия подбора текущего участника
-         * @description Когда оба участника сохранят условия, сервер начнёт формировать первый или обновлённый пул событий.
+         * @description Подтверждает собственные условия для текущего или подготавливаемого раунда. После exhausted активный round_no остаётся N, пока оба участника отдельно не подтвердят условия N+1. Только затем сервер атомарно начинает N+1 и строит пул. expected_round_no и expected_room_version относятся к текущему RoomSnapshot, а не к номеру подготовки. Устаревший источник возвращает 409 без изменений. Повтор того же Idempotency-Key с тем же запросом возвращает актуальный безопасный snapshot без повторного подтверждения; другой запрос с тем же ключом возвращает IDEMPOTENCY_CONFLICT. Ключ хранится до expires_at комнаты. GET, polling и reload не подтверждают условия и не начинают раунд.
          */
         put: operations["replaceMyRoomIntent"];
         post?: never;
@@ -1397,16 +1397,18 @@ export interface components {
             /** @description Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются. */
             public_plan?: components["schemas"]["PublicPlan"] | null;
             state: components["schemas"]["RoomState"];
-            /** @description Текущий раунд подтверждения условий и формирования пула событий. */
+            /** @description Активный раунд. После exhausted увеличивается только при независимом подтверждении обоих участников; подготовка следующего раунда не расходует лимит. */
             round_no: number;
             version: number;
             participants: components["schemas"]["PublicParticipant"][];
             my_intent: components["schemas"]["MyIntent"] | null;
+            /** @description Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность; отсутствует до первого предложения и после начала следующего раунда. */
+            next_round?: components["schemas"]["NextRoundPreparation"] | null;
             pool: components["schemas"]["PoolSummary"] | null;
             match: components["schemas"]["MatchSummary"] | null;
             /** @description Доступно только создателю; для остальных участников значение null. */
             invite: components["schemas"]["RoomInvite"] | null;
-            allowed_actions: ("invite" | "join" | "edit_intent" | "wait" | "view_pool" | "vote" | "view_match" | "restart_with_new_intent")[];
+            allowed_actions: ("invite" | "join" | "edit_intent" | "wait" | "view_pool" | "vote" | "view_match" | "restart_with_new_intent" | "confirm_next_round")[];
             /** Format: date-time */
             created_at: string;
             /**
@@ -1418,7 +1420,19 @@ export interface components {
             /** Format: date-time */
             closed_at?: string | null;
         };
+        NextRoundPreparation: {
+            round_no: number;
+            my_confirmed: boolean;
+            /** @description Число подтверждений собственных условий, не число голосов. */
+            confirmed_count: number;
+            /** @description Только собственный черновик N+1; условия другого участника не раскрываются. */
+            my_intent: components["schemas"]["MyIntent"] | null;
+        };
         RoomIntentRequest: {
+            /** @description round_no исходного активного RoomSnapshot. */
+            expected_round_no: number;
+            /** @description version исходного RoomSnapshot; конфликт требует явного просмотра актуальных условий. */
+            expected_room_version: number;
             dates: string[];
             /** @description Пустой массив означает любой день. Условия внутри массива объединяются по правилу «ИЛИ». */
             day_types: components["schemas"]["DayType"][];
@@ -3220,7 +3234,9 @@ export interface operations {
     replaceMyRoomIntent: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
             path: {
                 roomId: components["parameters"]["RoomId"];
             };
@@ -3230,6 +3246,8 @@ export interface operations {
             content: {
                 /**
                  * @example {
+                 *       "expected_round_no": 1,
+                 *       "expected_room_version": 3,
                  *       "dates": [
                  *         "2026-09-19",
                  *         "2026-09-20"

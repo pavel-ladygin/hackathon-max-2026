@@ -110,7 +110,13 @@ func TestCreateRoomPublicPlanPersistsAndIsSharedInSnapshotAndPreview(t *testing.
 	if got, err := joined.PublicPlan.Get(); err != nil || !reflect.DeepEqual(got, plan) {
 		t.Fatalf("join snapshot plan=%+v err=%v; want unchanged %+v", got, err, plan)
 	}
-	updated, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, created.Room.Id, validIntentRequest())
+	intentRequest := validIntentRequest()
+	current, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, created.Room.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRequest.ExpectedRoundNo, intentRequest.ExpectedRoomVersion = current.RoundNo, current.Version
+	updated, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, created.Room.Id, intentRequest, "intent-public-plan")
 	if err != nil {
 		t.Fatal(err)
 	}

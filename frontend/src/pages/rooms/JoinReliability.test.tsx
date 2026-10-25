@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { InviteContextDto } from '../../shared/api/types'
+import type { InviteContextDto, RoomSnapshot } from '../../shared/api/types'
 import { ApiError } from '../../shared/api/errors'
 import { apiClient } from '../../shared/api/client'
 import { JoinPage } from './RoomPages'
@@ -33,6 +33,8 @@ function bootstrapResponse(context: InviteContextDto | null) {
   return { accessToken: 'access-token', user: { id: 'user-id', displayName: 'Анна', avatarUrl: null, cityId: null, locale: 'ru-RU' as const }, onboardingState: 'complete' as const, preferences: null, dailyNotificationsEnabled: false, inviteContext: context, sharedEventId: null }
 }
 
+const joinedRoom: RoomSnapshot = { id: 'joined-room', name: '', city_id: '', state: 'collecting_intents', round_no: 1, version: 1, participants: [], myIntent: null, pool: null, match: null, invite: null, allowed_actions: [], created_at: '', expires_at: '' }
+
 function renderJoin(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
   const result = render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/invite/invite-secret']}><Routes>
     <Route path="/" element={<p>Главная</p>} />
@@ -57,7 +59,7 @@ describe('JoinPage recovery and recipient telemetry', () => {
     mocks.trackFailure.mockReset()
     mocks.openMaxLink.mockReset()
     vi.mocked(apiClient.bootstrap).mockResolvedValue(bootstrapResponse(inviteContext()))
-    vi.mocked(apiClient.joinRoom).mockResolvedValue({ id: 'joined-room', name: '', city_id: '', state: 'collecting_intents', round_no: 1, version: 1, participants: [], myIntent: null, pool: null, match: null, invite: null, allowed_actions: [], created_at: '', expires_at: '' })
+    vi.mocked(apiClient.joinRoom).mockResolvedValue(joinedRoom)
   })
 
   afterEach(() => {
@@ -91,6 +93,24 @@ describe('JoinPage recovery and recipient telemetry', () => {
     expect(await screen.findByText('Вас приглашает Павел')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Присоединиться' })).toBeDisabled()
     expect(apiClient.joinRoom).not.toHaveBeenCalled()
+  })
+
+  it('does not return to the room when join succeeds after leaving for home', async () => {
+    let finishJoin!: (value: typeof joinedRoom) => void
+    vi.mocked(apiClient.joinRoom).mockReturnValue(new Promise((resolve) => { finishJoin = resolve }))
+    const { queryClient } = renderJoin()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    await screen.findByText('Вас приглашает Павел')
+    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }))
+    await waitFor(() => expect(apiClient.joinRoom).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
+    expect(screen.getByText('Главная')).toBeVisible()
+
+    await act(async () => { finishJoin(joinedRoom) })
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()[0].state.status).toBe('success'))
+    expect(screen.getByText('Главная')).toBeVisible()
+    expect(apiClient.joinRoom).toHaveBeenCalledTimes(1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['room', joinedRoom.id] })
   })
 
   it.each(['creator', 'participant'] as const)('automatically restores an existing %s without joining or displaying a full-room error', async (role) => {

@@ -33,7 +33,7 @@ function roomFor(userId: string) {
 }
 
 async function stubParticipant(browser: Browser, user: typeof creator, options: BrowserContextOptions) {
-  const context = await browser.newContext({ ...options, baseURL: 'http://127.0.0.1:4173', reducedMotion: 'reduce' })
+  const context = await browser.newContext({ ...options, reducedMotion: 'reduce' })
   const page = await context.newPage()
   // The fixture exercises the HTTP client and UI, not the remote MAX SDK.
   await page.route('https://st.max.ru/js/max-web-app.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }))
@@ -111,14 +111,14 @@ async function expectFocusedFieldClearOfSaveBar(page: Page, selector: ReturnType
   await page.screenshot({ path: screenshotPath })
 }
 
-test('two participants preview, join, and separately confirm their own plan-derived preferences', async ({ browser, viewport, isMobile, hasTouch, userAgent, deviceScaleFactor }, testInfo: TestInfo) => {
+test('two participants preview, join, and separately confirm their own plan-derived preferences', async ({ browser, baseURL, viewport, isMobile, hasTouch, userAgent, deviceScaleFactor }, testInfo: TestInfo) => {
   roomState.created = false
   roomState.members = new Set()
   roomState.intents = {}
   roomState.createBody = undefined
   roomState.joinCalls = 0
   roomState.intentCalls = []
-  const options = { viewport, isMobile, hasTouch, userAgent, deviceScaleFactor }
+  const options = { baseURL, viewport, isMobile, hasTouch, userAgent, deviceScaleFactor }
   const creatorClient = await stubParticipant(browser, creator, options)
   const recipientClient = await stubParticipant(browser, recipient, options)
 
