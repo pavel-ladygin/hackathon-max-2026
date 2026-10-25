@@ -33,7 +33,6 @@ export type CreateRoomFormProps = {
 }
 
 const defaultPlanFields = (): PublicPlanFields => ({ dates: [], time_slots: [], category_slugs: [], budget: '', anyTime: false })
-const DEFAULT_ROOM_NAME = 'Куда идём в субботу?'
 function readDraft(key: string, currentProfileCityId: string | null): Draft | null {
   try {
     const raw = window.sessionStorage.getItem(key)
@@ -56,7 +55,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
   const [restored] = useState(() => readDraft(draftKey, profileCityId ?? null))
   const [explicitCityId, setExplicitCityId] = useState<string | null>(() => restored?.citySelectedExplicitly ? restored.cityId : null)
   const cityId = explicitCityId ?? resolveCreateCity(null, profileCityId)
-  const [name, setName] = useState(() => restored?.name ?? DEFAULT_ROOM_NAME)
+  const [name, setName] = useState(() => restored?.name ?? '')
   const [publicPlanEnabled, setPublicPlanEnabled] = useState(() => restored?.publicPlanEnabled ?? false)
   const [plan, setPlan] = useState<PublicPlanFields>(() => restored?.plan ?? defaultPlanFields())
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -98,18 +97,18 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
     const next: FieldErrors = {}
     const submitToday = city ? cityToday(city.timezone) : null
     const normalizedName = name.trim()
-    if (!normalizedName) next.name = 'Введите название комнаты.'
-    else if (normalizedName.length > 80) next.name = 'Не больше 80 символов.'
-    if (!cityReady) next.city = knownCity ? 'Выберите город с доступным каталогом.' : 'Выберите доступный город.'
+    if (!normalizedName) next.name = 'Введите название комнаты'
+    else if (normalizedName.length > 80) next.name = 'Не больше 80 символов'
+    if (!cityReady) next.city = knownCity ? 'Выберите город с доступным каталогом' : 'Выберите доступный город'
     if (!publicPlanEnabled) return { errors: next }
 
-    if (!city || !submitToday) next.city = 'Сначала выберите город с известным часовым поясом.'
-    if (!plan.dates.length) next.dates = 'Добавьте хотя бы одну дату.'
-    else if (plan.dates.length > 14 || new Set(plan.dates).size !== plan.dates.length || plan.dates.some((date) => !isCanonicalDate(date) || date < (submitToday ?? '9999-12-31'))) next.dates = 'Выберите от 1 до 14 будущих дат без повторов.'
-    if (!plan.anyTime && !plan.time_slots.length) next.time = 'Выберите время или отметьте «Любое время».'
-    if (!plan.category_slugs.length) next.categories = 'Выберите хотя бы одну категорию.'
+    if (!city || !submitToday) next.city = 'Сначала выберите город с известным часовым поясом'
+    if (!plan.dates.length) next.dates = 'Добавьте хотя бы одну дату'
+    else if (plan.dates.length > 14 || new Set(plan.dates).size !== plan.dates.length || plan.dates.some((date) => !isCanonicalDate(date) || date < (submitToday ?? '9999-12-31'))) next.dates = 'Выберите от 1 до 14 будущих дат без повторов'
+    if (!plan.anyTime && !plan.time_slots.length) next.time = 'Выберите время или отметьте «Любое время»'
+    if (!plan.category_slugs.length) next.categories = 'Выберите хотя бы одну категорию'
     const budget = budgetToMinor(plan.budget)
-    if (budget === null) next.budget = 'Введите сумму от 0 до 1 000 000 ₽ с точностью до копейки.'
+    if (budget === null) next.budget = 'Введите сумму от 0 до 1 000 000 ₽ с точностью до копейки'
 
     const result = publicPlanSchema.safeParse({
       dates: plan.dates,
@@ -117,7 +116,7 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
       category_slugs: plan.category_slugs,
       budget_max_minor: budget,
     })
-    if (!result.success && !Object.keys(next).length) next.budget = 'Проверьте заполнение публичного предложения.'
+    if (!result.success && !Object.keys(next).length) next.budget = 'Проверьте заполнение публичного предложения'
     return { errors: next, public_plan: result.success ? result.data : undefined }
   }
 
@@ -148,14 +147,14 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
       </div> : null}
       <label className={styles.field} htmlFor="create-room-name">
         <span>Название комнаты</span>
-        <input id="create-room-name" className={styles.input} value={name} maxLength={80} autoComplete="off" aria-invalid={Boolean(errors.name)} aria-describedby={fieldDescription('create-room-name', errors.name)} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })) }} />
+        <input id="create-room-name" className={styles.input} value={name} placeholder="Введите название комнаты" maxLength={80} autoComplete="off" aria-invalid={Boolean(errors.name)} aria-describedby={fieldDescription('create-room-name', errors.name)} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })) }} />
         {errors.name ? <span id="create-room-name-error" className={styles.error} role="alert">{errors.name}</span> : null}
       </label>
 
       <div className={styles.field}>
         <CustomSelect id="create-room-city" label="Город комнаты" value={cityId} placeholder={invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Выберите город'} error={errors.city} options={[...(!knownCity ? [{ value: cityId, label: invalidCityProfile ? 'Город профиля не поддерживается — выберите вручную' : 'Сохранённый город недоступен — выберите вручную', disabled: true }] : []), { value: '', label: 'Выберите город' }, ...ROOM_CITIES.map((item) => ({ value: item.id, label: item.ready ? item.name : `${item.name} — город готовится`, disabled: !item.ready }))]} onChange={(value) => { setExplicitCityId(value); setErrors((current) => ({ ...current, city: undefined, dates: undefined })) }} />
-        {!knownCity ? <span id="create-room-city-help" className={styles.hint}>Город из профиля пока недоступен. Выберите город для этой комнаты.</span> : null}
-        {city && !city.ready ? <span className={styles.hint}>Каталог для Казани готовится. Создать комнату в этом городе пока нельзя.</span> : null}
+        {!knownCity ? <span id="create-room-city-help" className={styles.hint}>Город из профиля пока недоступен. Выберите город для этой комнаты</span> : null}
+        {city && !city.ready ? <span className={styles.hint}>Каталог для Казани готовится. Создать комнату в этом городе пока нельзя</span> : null}
         {city ? <span className={styles.hint}>{timeZoneLabel(city.timezone)}</span> : null}
         {errors.city ? <span id="create-room-city-error" className={styles.error} role="alert">{errors.city}</span> : null}
       </div>
@@ -163,14 +162,14 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
       <section className={styles.planSection} aria-labelledby="public-plan-heading">
         <label className={styles.enablePlan}>
           <input type="checkbox" checked={publicPlanEnabled} onChange={(event) => { setPublicPlanEnabled(event.target.checked); setErrors({}) }} />
-          <span><strong id="public-plan-heading">Добавить публичное предложение</strong><small>Его увидит приглашённый до вступления. После подключения каждый отдельно укажет свои условия.</small></span>
+          <span><strong id="public-plan-heading">Добавить публичное предложение</strong><small>Его увидит приглашённый до вступления. После подключения каждый отдельно укажет свои условия</small></span>
         </label>
 
         {publicPlanEnabled ? <div className={styles.planFields}>
           <fieldset className={styles.fieldset} aria-describedby={errors.dates ? 'create-plan-date-input-error' : 'create-plan-date-input-help'}>
             <legend>Подходящие даты</legend>
             <RoomDateChoices id="create-plan-date-input" selected={plan.dates} onChange={(dates) => changePlan({ dates })} min={today ?? undefined} error={errors.dates} disabled={pending || success || !cityReady} />
-            {!plan.dates.length ? <p className={styles.hint}>Даты не выбраны.</p> : null}
+            {!plan.dates.length ? <p className={styles.hint}>Даты не выбраны</p> : null}
           </fieldset>
 
           <fieldset id="create-plan-time" className={styles.fieldset} tabIndex={-1} aria-invalid={Boolean(errors.time)} aria-describedby={errors.time ? 'create-plan-time-error' : undefined}>
@@ -188,14 +187,14 @@ export function CreateRoomForm({ profileCityId, draftKey, pending, success, erro
           <label className={styles.field} htmlFor="create-plan-budget">
             <span>Бюджет на человека · максимум</span>
             <MoneyInput id="create-plan-budget" suffix="₽" value={plan.budget} invalid={Boolean(errors.budget)} describedBy={errors.budget ? 'create-plan-budget-error' : 'create-plan-budget-help'} onChange={(budget) => changePlan({ budget })} />
-            <span id="create-plan-budget-help" className={styles.hint}>От 0 до 1 000 000 ₽. Можно указать копейки.</span>
+            <span id="create-plan-budget-help" className={styles.hint}>От 0 до 1 000 000 ₽. Можно указать копейки</span>
             {errors.budget ? <span id="create-plan-budget-error" className={styles.error} role="alert">{errors.budget}</span> : null}
           </label>
-          <p className={styles.immutableNote}>Предложение станет неизменяемым после создания комнаты.</p>
+          <p className={styles.immutableNote}>Предложение станет неизменяемым после создания комнаты</p>
         </div> : null}
       </section>
 
-      {error ? <p className={styles.error} role="alert">{roomErrorMessage(error, 'Не удалось создать комнату.')}</p> : null}
+      {error ? <p className={styles.error} role="alert">{roomErrorMessage(error, 'Не удалось создать комнату').replace(/\.+$/, '')}</p> : null}
       <Button type="submit" disabled={pending || success || !cityReady} state={success ? 'success' : pending ? 'loading' : 'idle'} loadingLabel="Создаём…" successLabel="Комната создана">Создать комнату</Button>
     </form>
   )

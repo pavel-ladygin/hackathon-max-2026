@@ -37,10 +37,11 @@ describe('CreateRoomForm', () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     render(<CreateRoomForm {...baseProps(onSubmit)} profileCityId={MOSCOW_CITY_ID} />)
+    await user.type(screen.getByLabelText('Название комнаты'), 'Прогулка по Петербургу')
     await user.click(screen.getByRole('combobox', { name: /Город комнаты/ }))
     await user.click(screen.getByRole('option', { name: 'Санкт-Петербург' }))
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Куда идём в субботу?', city_id: SAINT_PETERSBURG_CITY_ID })
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Прогулка по Петербургу', city_id: SAINT_PETERSBURG_CITY_ID })
   })
 
   it('keeps a room draft while following a changed profile city', () => {
@@ -78,9 +79,9 @@ describe('CreateRoomForm', () => {
     await user.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
 
-    expect(screen.getAllByText('Добавьте хотя бы одну дату.')).toHaveLength(2)
-    expect(screen.getAllByText('Выберите время или отметьте «Любое время».')).toHaveLength(2)
-    expect(screen.getAllByText('Выберите хотя бы одну категорию.')).toHaveLength(2)
+    expect(screen.getAllByText('Добавьте хотя бы одну дату')).toHaveLength(2)
+    expect(screen.getAllByText('Выберите время или отметьте «Любое время»')).toHaveLength(2)
+    expect(screen.getAllByText('Выберите хотя бы одну категорию')).toHaveLength(2)
     expect(screen.getAllByText(/Введите сумму от 0 до 1 000 000/)).toHaveLength(2)
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -91,6 +92,7 @@ describe('CreateRoomForm', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onSubmit = vi.fn()
     render(<CreateRoomForm {...baseProps(onSubmit)} />)
+    await user.type(screen.getByLabelText('Название комнаты'), 'Концерт в январе')
     await user.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
     await user.click(screen.getByRole('button', { name: 'Выбор дат' }))
     await user.click(screen.getByRole('gridcell', { name: '12 января 2030 г.' }))
@@ -101,7 +103,7 @@ describe('CreateRoomForm', () => {
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
-      name: 'Куда идём в субботу?',
+      name: 'Концерт в январе',
       city_id: MOSCOW_CITY_ID,
       public_plan: { dates: ['2030-01-12'], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_075 },
     })
@@ -137,11 +139,12 @@ describe('CreateRoomForm', () => {
     const onSubmit = vi.fn()
     const props = baseProps(onSubmit)
     const { rerender } = render(<CreateRoomForm {...props} />)
+    await user.type(screen.getByLabelText('Название комнаты'), 'Встреча с друзьями')
     await user.click(screen.getByRole('button', { name: 'Создать комнату' }))
     expect(onSubmit).toHaveBeenCalledTimes(1)
     rerender(<CreateRoomForm {...props} error={new Error('Create failed')} />)
-    expect(screen.getByLabelText('Название комнаты')).toHaveValue('Куда идём в субботу?')
-    expect(screen.getByText('Не удалось создать комнату.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Название комнаты')).toHaveValue('Встреча с друзьями')
+    expect(screen.getByText('Не удалось создать комнату')).toBeInTheDocument()
   })
 
   it('converts decimal rubles to integer kopecks without floating point rounding', () => {

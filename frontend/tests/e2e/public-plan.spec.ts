@@ -124,6 +124,7 @@ test('two participants preview, join, and separately confirm their own plan-deri
     await recipientClient.page.clock.install({ time: new Date('2099-11-20T12:00:00Z') })
     await creatorPage.goto('/rooms/new', { waitUntil: 'domcontentloaded' })
     await expect(creatorPage.getByRole('heading', { name: 'Создать комнату' })).toBeVisible()
+    await creatorPage.getByLabel('Название комнаты').fill('Куда идём в субботу?')
     const citySelect = creatorPage.getByRole('combobox', { name: 'Город комнаты' })
     await expect(citySelect).toContainText('Москва')
     await activate(citySelect, isMobile)
