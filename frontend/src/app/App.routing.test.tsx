@@ -86,6 +86,18 @@ describe('BUG-02 centralized launch routing', () => {
     await expectRoute('/rooms/room-a/waiting')
   })
 
+  it.each(['/', '/events', '/join/invite-a', '/onboarding/profile'])('restores a member on a cold invite launch at %s', async (path) => {
+    state.path = path
+    state.data = bootstrap('invite-a', true)
+    const view = render(<StrictMode><App /></StrictMode>)
+    await expectRoute('/rooms/room-a/waiting')
+    fireEvent.click(screen.getByRole('button', { name: 'Test catalog' }))
+    await expectRoute('/events')
+    state.data = { ...state.data }
+    view.rerender(<StrictMode><App /></StrictMode>)
+    await expectRoute('/events')
+  })
+
   it('preserves the current room screen on a cold member reload', async () => {
     state.path = '/rooms/room-a/vote'
     state.data = bootstrap('invite-a', true)

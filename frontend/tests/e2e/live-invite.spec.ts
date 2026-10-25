@@ -5,7 +5,7 @@ const cityId = 'a0f625ee-2154-5a45-8afe-37adf955ec24'
 const user = { id: 'invite-recipient', display_name: 'Анна', avatar_url: null, city_id: cityId, locale: 'ru' }
 type BootstrapInput = { init_data: string; start_param: string | null }
 
-async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' = 'joinable', options: { alreadyJoined?: boolean; roomState?: 'collecting_intents' | 'ranking'; coldInvite?: boolean } = {}) {
+async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' = 'joinable', options: { alreadyJoined?: boolean; roomState?: 'collecting_intents' | 'ranking'; coldInvite?: boolean; role?: 'creator' | 'participant'; roomUnavailable?: boolean } = {}) {
   const bootstraps: BootstrapInput[] = []
   let joins = 0
   let joinGate: Promise<void> | null = null
@@ -25,13 +25,15 @@ async function stubSession(page: Page, status: 'joinable' | 'full' | 'expired' =
       if (body.init_data === 'signed-invite-a' && bootstrapGate) await bootstrapGate
       if (body.init_data === 'invalid-signed-data') return route.fulfill({ status: 401, json: { error: { code: 'UNAUTHORIZED', message: 'Invalid init data' } } })
       return route.fulfill({ json: {
-        access_token: 'local-test-session', user, onboarding_state: 'complete', preferences: null,
+        access_token: 'local-test-session', user: options.role === 'creator' ? { ...user, id: 'creator', display_name: 'Павел' } : user, onboarding_state: 'complete', preferences: null,
         daily_notifications_enabled: false, shared_event_id: null,
         invite_context: token ? { token, room_id: `room-${token}`, room_name: token === 'invite-a' ? 'Вечер с Павлом' : 'Вечер с Сергеем', city_id: cityId, public_plan: null, inviter: { id: 'creator', display_name: token === 'invite-a' ? 'Павел' : 'Сергей', avatar_url: null, role: 'creator', intent_ready: true }, expires_at: '2099-01-01T00:00:00Z', already_joined: options.alreadyJoined ?? false, status } : null,
       } })
     }
     if (/\/room-invites\/[^/]+\/join$/.test(path)) { joins += 1; if (joinGate) await joinGate; return route.fulfill({ json: joinedRoom }) }
-    if (path.endsWith('/rooms/room-invite-a')) return route.fulfill({ json: joinedRoom })
+    if (path.endsWith('/rooms/room-invite-a')) return options.roomUnavailable
+      ? route.fulfill({ status: 404, json: { error: { code: 'ROOM_NOT_FOUND', message: 'Room not found' } } })
+      : route.fulfill({ json: joinedRoom })
     if (path.endsWith('/feed/home')) return route.fulfill({ json: { feed_id: 'local-feed', generated_at: '2026-10-25T12:00:00Z', sections: [], active_room: null } })
     if (path.endsWith('/events/search/count')) return route.fulfill({ json: { total: 0 } })
     if (path.endsWith('/events/search')) return route.fulfill({ json: { items: [], total_estimate: 0, next_cursor: null, applied_filters: {} } })
@@ -118,6 +120,39 @@ test('BUG-02 a cold reload preserves an already joined room route', async ({ pag
   expect(session.joins).toBe(0)
 })
 
+for (const role of ['creator', 'participant'] as const) {
+  for (const path of ['/', '/join/invite-a']) {
+    for (const roomState of ['collecting_intents', 'ranking'] as const) {
+      test(`BUG-03 cold ${role} invite at ${path} restores ${roomState} without another join`, async ({ page }, testInfo) => {
+        const session = await stubSession(page, 'full', { alreadyJoined: true, coldInvite: true, role, roomState })
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        await expect(page.getByRole('heading', { name: roomState === 'ranking' ? 'Формируем общий пул…' : 'Мои предпочтения' })).toBeVisible()
+        await expect(page).toHaveURL(roomState === 'ranking' ? /\/rooms\/room-invite-a\/waiting$/ : /\/rooms\/room-invite-a\/intent$/)
+        await expect(page.getByText('Комната уже заполнена.', { exact: true })).toHaveCount(0)
+        expect(session.joins).toBe(0)
+        await page.screenshot({ path: testInfo.outputPath(`bug03-${role}-${roomState}.png`), fullPage: true })
+        await page.getByRole('button', { name: 'Назад', exact: true }).click()
+        await expect(page).toHaveURL(/\/$/)
+        await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('pageshow')) })
+        await expect(page.getByRole('button', { name: 'Создать комнату', exact: true })).toBeVisible()
+        expect(session.joins).toBe(0)
+      })
+    }
+  }
+}
+
+test('BUG-03 an existing member can leave an unavailable room for home', async ({ page }, testInfo) => {
+  const session = await stubSession(page, 'expired', { alreadyJoined: true, coldInvite: true, roomUnavailable: true })
+  await page.goto('/join/invite-a', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: 'Комната недоступна' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('bug03-room-unavailable.png'), fullPage: true })
+  await page.getByRole('button', { name: 'На главную', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('button', { name: 'Создать комнату', exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('bug03-home-after-error.png'), fullPage: true })
+  expect(session.joins).toBe(0)
+})
+
 test('BUG-02 a slow old bootstrap cannot replace the latest invitation', async ({ page }) => {
   const session = await stubSession(page)
   await page.goto('/events', { waitUntil: 'domcontentloaded' })
@@ -168,7 +203,7 @@ test('BUG-02 an older pending join cannot navigate over the latest invitation', 
 })
 
 for (const status of ['full', 'expired'] as const) {
-  test(`BUG-02 respects server ${status} status for a new invitation`, async ({ page }) => {
+  test(`BUG-02 respects server ${status} status for a new invitation`, async ({ page }, testInfo) => {
     const session = await stubSession(page, status)
     await page.goto('/events', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('searchbox', { name: 'Найти событие', exact: true })).toBeVisible()
@@ -177,6 +212,10 @@ for (const status of ['full', 'expired'] as const) {
     await expect(page.getByRole('button', { name: 'Присоединиться', exact: true })).toBeDisabled()
     await expect(page.getByText(status === 'full' ? 'Комната уже заполнена.' : 'Срок приглашения истёк.', { exact: true })).toBeVisible()
     expect(session.joins).toBe(0)
+    await page.screenshot({ path: testInfo.outputPath(`bug03-outsider-${status}.png`), fullPage: true })
+    await page.getByRole('button', { name: 'На главную', exact: true }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('button', { name: 'Создать комнату', exact: true })).toBeVisible()
   })
 }
 

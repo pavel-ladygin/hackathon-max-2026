@@ -41,8 +41,8 @@ function AppRoutes() {
   const bootStartedAt = useRef<number | null>(null)
   const bootFailure = useRef<unknown>(null)
   const consumedLaunchRevision = useRef<number | null>(null)
+  const pendingLaunchPath = useRef<{ revision: number; from: string } | null>(null)
   const bootstrap = useBootstrap()
-  const initialLaunchRevision = useRef(bootstrap.launchRevision)
   const sharedEventId = bootstrap.data?.sharedEventId
   useEffect(() => { bootStartedAt.current = performance.now() }, [])
   useEffect(() => {
@@ -59,17 +59,27 @@ function AppRoutes() {
   }, [bootstrap.data, bootstrap.error, bootstrap.isError, location.pathname])
   useEffect(() => {
     if (!bootstrap.data || bootstrap.data.onboardingState !== 'complete') return
+    // StrictMode can repeat this effect before navigation commits. Do not let
+    // the onboarding fallback replace the room selected by the same launch.
+    if (pendingLaunchPath.current?.revision === bootstrap.launchRevision && pendingLaunchPath.current.from === location.pathname) return
+    pendingLaunchPath.current = null
     if (consumedLaunchRevision.current !== bootstrap.launchRevision) {
       consumedLaunchRevision.current = bootstrap.launchRevision
       const invite = bootstrap.data.inviteContext
       if (invite?.token && !invite.already_joined) {
         const target = `/join/${encodeURIComponent(invite.token)}`
-        if (location.pathname !== target) navigate(target, { replace: true })
+        if (location.pathname !== target) {
+          pendingLaunchPath.current = { revision: bootstrap.launchRevision, from: location.pathname }
+          navigate(target, { replace: true })
+        }
         return
       }
-      if (invite?.already_joined && bootstrap.launchRevision !== initialLaunchRevision.current) {
+      if (invite?.already_joined) {
         const roomPath = `/rooms/${encodeURIComponent(invite.room_id)}`
-        if (location.pathname !== roomPath && !location.pathname.startsWith(`${roomPath}/`)) navigate(`${roomPath}/waiting`, { replace: true })
+        if (location.pathname !== roomPath && !location.pathname.startsWith(`${roomPath}/`)) {
+          pendingLaunchPath.current = { revision: bootstrap.launchRevision, from: location.pathname }
+          navigate(`${roomPath}/waiting`, { replace: true })
+        }
         return
       }
     }

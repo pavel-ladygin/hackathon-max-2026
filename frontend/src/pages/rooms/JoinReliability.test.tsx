@@ -37,7 +37,7 @@ function renderJoin(queryClient = new QueryClient({ defaultOptions: { queries: {
   const result = render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/invite/invite-secret']}><Routes>
     <Route path="/" element={<p>Главная</p>} />
     <Route path="/invite/:inviteToken" element={<JoinPage />} />
-    <Route path="/rooms/:roomId/intent" element={<IntentRoute />} />
+    <Route path="/rooms/:roomId/:roomScreen" element={<IntentRoute />} />
   </Routes></MemoryRouter></QueryClientProvider>)
   return { ...result, queryClient }
 }
@@ -93,13 +93,25 @@ describe('JoinPage recovery and recipient telemetry', () => {
     expect(apiClient.joinRoom).not.toHaveBeenCalled()
   })
 
-  it('lets an already joined recipient continue to the server room even when the invite is full', async () => {
-    vi.mocked(apiClient.bootstrap).mockResolvedValue(bootstrapResponse(inviteContext({ status: 'full', already_joined: true })))
+  it.each(['creator', 'participant'] as const)('automatically restores an existing %s without joining or displaying a full-room error', async (role) => {
+    const response = bootstrapResponse(inviteContext({ status: 'full', already_joined: true }))
+    if (role === 'creator') response.user.id = response.inviteContext!.inviter.id
+    vi.mocked(apiClient.bootstrap).mockResolvedValue(response)
     renderJoin()
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Продолжить в комнате' }))
-
     expect(await screen.findByTestId('intent-route')).toHaveTextContent('room-from-server')
+    expect(screen.queryByText('Комната уже заполнена.')).not.toBeInTheDocument()
+    expect(apiClient.joinRoom).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['full', inviteContext({ status: 'full' })],
+    ['expired', inviteContext({ status: 'expired' })],
+    ['unknown', null],
+  ] as const)('can leave a %s invitation for home', async (_status, context) => {
+    vi.mocked(apiClient.bootstrap).mockResolvedValue(bootstrapResponse(context))
+    renderJoin()
+    fireEvent.click(await screen.findByRole('button', { name: 'На главную' }))
+    expect(await screen.findByText('Главная')).toBeVisible()
     expect(apiClient.joinRoom).not.toHaveBeenCalled()
   })
 

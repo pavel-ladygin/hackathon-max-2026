@@ -137,6 +137,9 @@ export function JoinPage() {
     trackFailure('room_join_failed', error, { roomId: context?.room_id })
     if (error instanceof ApiError && (error.status === 409 || error.code === 'INVITE_EXPIRED')) await queryClient.invalidateQueries({ queryKey: ['bootstrap'] })
   } })
+  // An invite is also a return link for existing members, including when its
+  // capacity or expiry no longer permits a new participant to join.
+  if (context?.already_joined) return <Navigate to={`/rooms/${encodeURIComponent(context.room_id)}/waiting`} replace />
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
@@ -144,7 +147,7 @@ export function JoinPage() {
       {context ? <PlanSummary plan={context.public_plan} cityId={context.city_id} /> : null}
       <PrivacyNote />{join.isError ? <AuthRecoveryAction error={join.error} /> : null}{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' || expired ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending || joinBlocked} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { if (context?.already_joined) { navigate(`/rooms/${context.room_id}/intent`, { replace: true }); return } if (!join.isPending && !joinBlocked) { track('room_join_started', { roomId: context?.room_id }); join.mutate() } }}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
+      <div className={styles.footer}><Button disabled={join.isPending || joinBlocked} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { if (!join.isPending && !joinBlocked) { track('room_join_started', { roomId: context?.room_id }); join.mutate() } }}>Присоединиться</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
     </PageContent></PageShell>
   )
 }
