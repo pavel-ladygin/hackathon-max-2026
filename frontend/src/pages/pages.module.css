@@ -47,6 +47,10 @@ fieldset.fieldLabel > [role="alert"] { display: block; margin-top: 8px; }
 .avatar { display: grid; width: 74px; height: 74px; place-items: center; border: 5px solid var(--color-canvas); border-radius: 50%; background: #e7d9ca; color: #544536; font-size: var(--app-type-hero-size); font-weight: var(--app-type-semibold); }
 .avatar + .avatar { margin-left: -14px; background: #ded7ef; }
 .inviteLink { display: flex; align-items: center; gap: 10px; margin: 22px 0; padding: 10px 12px; overflow-wrap: anywhere; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: #fff; font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); }
+.waitingInvite { margin: 24px 0; }
+.waitingInvite > .eyebrow { margin-bottom: 12px; }
+.waitingInvite .inviteLink { margin: 0 0 12px; }
+.waitingInviteActions { display: grid; gap: 8px; }
 .statusList { margin: 24px 0; padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: #fff; }
 .statusRow { display: flex; align-items: center; gap: 12px; padding: 13px 0; }
 .statusRow + .statusRow { border-top: 1px solid #eeeae5; }
