@@ -61,7 +61,7 @@ export function NewRoomPage() {
   if (bootstrap.isPending) return <ScreenSkeleton variant="room" label="Загружаем профиль…" />
   return (
     <PageShell><TopBar title="Новая комната" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ ВЫБРАТЬ</p><h1 className={styles.title}>Создать комнату</h1><p className={styles.subtitle}>Выберите город и предложите план встречи. Каждый отдельно подтвердит свои пожелания.</p>
+      <p className={styles.eyebrow}>ВМЕСТЕ ЛЕГЧЕ ВЫБРАТЬ</p><h1 className={styles.title}>Создать комнату</h1><p className={styles.subtitle}>Выберите город и предложите план встречи. Каждый отдельно подтвердит свои пожелания</p>
       {create.isError ? <><AuthRecoveryAction error={create.error} /><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : null}
       <CreateRoomForm key={draftKey} profileCityId={bootstrap.data?.preferences?.cityId ?? bootstrap.data?.user.cityId} draftKey={draftKey} pending={create.isPending} success={createSuccess} error={create.error ?? undefined} onSubmit={(values) => { if (!create.isPending && !createSuccess) create.mutate(values) }} />
     </PageContent></PageShell>

@@ -74,6 +74,7 @@ describe('public room plan flow', () => {
     const onSubmit = vi.fn()
     render(<CreateRoomForm profileCityId={cityId} draftKey="public-plan-create-test" pending={false} success={false} onSubmit={onSubmit} />)
 
+    fireEvent.change(screen.getByLabelText('Название комнаты'), { target: { value: 'Куда идём в субботу?' } })
     fireEvent.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
     const date = cityToday('Europe/Moscow')
     fireEvent.click(screen.getByRole('button', { name: 'Выбор дат' }))
@@ -97,13 +98,13 @@ describe('public room plan flow', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /Добавить публичное предложение/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Создать комнату' }))
 
-    expect(screen.getAllByText('Добавьте хотя бы одну дату.').length).toBeGreaterThan(1)
-    expect(screen.getAllByText('Выберите время или отметьте «Любое время».').length).toBeGreaterThan(1)
-    expect(screen.getAllByText('Выберите хотя бы одну категорию.').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Добавьте хотя бы одну дату').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Выберите время или отметьте «Любое время»').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Выберите хотя бы одну категорию').length).toBeGreaterThan(1)
     expect(onSubmit).not.toHaveBeenCalled()
 
     rerender(<CreateRoomForm profileCityId={cityId} draftKey="public-plan-error-test" pending={false} success={false} error={new Error('Ошибка создания комнаты')} onSubmit={onSubmit} />)
-    expect(screen.getByText('Не удалось создать комнату.')).toHaveAttribute('role', 'alert')
+    expect(screen.getByText('Не удалось создать комнату')).toHaveAttribute('role', 'alert')
   })
 
   it('shows the server public plan in the creator summary and keeps legacy rooms explicit', () => {
