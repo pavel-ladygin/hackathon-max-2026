@@ -9,3 +9,36 @@ img { max-width: 100%; }
 }
 
 h1, h2, h3 { font-family: var(--font-family-heading); }
+
+/* Low-specificity defaults also cover dialogs rendered outside the MAX wrapper.
+   Component roles can override these defaults without !important. */
+:where(html[data-app-typography="mini-app"]) :is(h1, h2, h3) {
+  font-family: var(--app-type-family);
+  font-weight: var(--app-type-semibold);
+  overflow-wrap: anywhere;
+}
+:where(html[data-app-typography="mini-app"]) h1 {
+  font-size: var(--app-type-page-title-size);
+  line-height: var(--app-type-page-title-line);
+  letter-spacing: -.02em;
+}
+:where(html[data-app-typography="mini-app"]) h2 {
+  font-size: var(--app-type-section-size);
+  line-height: var(--app-type-heading-line);
+  letter-spacing: -.01em;
+}
+:where(html[data-app-typography="mini-app"]) h3 {
+  font-size: var(--app-type-body-size);
+  line-height: var(--app-type-card-line);
+}
+:where(html[data-app-typography="mini-app"]) :is(strong, b) { font-weight: var(--app-type-semibold); }
+:where(html[data-app-typography="mini-app"]) small {
+  font-size: var(--app-type-secondary-size);
+  line-height: var(--app-type-body-line);
+}
+:where(html[data-app-typography="mini-app"]) :is(input, textarea)::placeholder {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--app-type-regular);
+  opacity: 1;
+}

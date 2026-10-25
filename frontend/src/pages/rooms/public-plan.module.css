@@ -13,8 +13,9 @@
   margin: 0;
   padding: 0;
   color: var(--color-ink);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--app-type-label-size);
+  font-weight: var(--app-type-semibold);
+  line-height: 1.45;
 }
 
 .input {
@@ -25,8 +26,9 @@
   padding: 0 13px;
   background: var(--color-paper);
   color: var(--color-ink);
-  font-size: var(--font-size-input);
-  font-weight: 400;
+  font-size: var(--app-type-input-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-control-line);
 }
 
 .input[aria-invalid="true"] {
@@ -35,9 +37,9 @@
 
 .error {
   color: var(--color-danger);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-semibold);
-  line-height: 1.45;
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .errorSummary {
@@ -47,8 +49,9 @@
   padding: 13px 15px;
   background: #fff5f4;
   color: #8f251d;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
   overflow-wrap: anywhere;
 }
 
@@ -71,10 +74,10 @@
 }
 
 .hint {
-  color: var(--color-muted);
-  font-size: 12px;
-  font-weight: var(--font-weight-regular);
-  line-height: 1.5;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .planSection {
@@ -105,14 +108,14 @@
 }
 
 .enablePlan strong {
-  font-size: var(--font-size-body);
+  font-size: var(--app-type-body-size);
 }
 
 .enablePlan small {
-  color: var(--color-muted);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-regular);
-  line-height: 1.5;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .planFields {
@@ -129,8 +132,9 @@
 }
 
 .field input:not([type="checkbox"]) {
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--app-type-input-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-control-line);
 }
 
 .choices {
@@ -139,7 +143,7 @@
   gap: 8px;
 }
 
-.choices > button { font-size: 13px; font-weight: 500; }
+.choices > button { font-size: var(--app-type-control-size); font-weight: var(--app-type-medium); line-height: var(--app-type-control-line); }
 
 .choice {
   display: inline-flex;
@@ -152,8 +156,9 @@
   background: var(--color-paper);
   color: var(--color-ink);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--app-type-control-size);
+  font-weight: var(--app-type-medium);
+  line-height: var(--app-type-control-line);
 }
 
 .choice:has(input:checked) {
@@ -171,9 +176,9 @@
   border-radius: var(--radius-md);
   padding: 12px;
   background: var(--color-warm);
-  color: #625e59;
-  font-size: var(--font-size-caption);
-  line-height: 1.5;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  line-height: var(--app-type-body-line);
 }
 
 .summary {
@@ -192,18 +197,19 @@
 
 .summaryCity > span,
 .summaryDetails dt {
-  color: var(--color-muted);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-bold);
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-caption-size);
+  font-weight: var(--app-type-semibold);
 }
 
 .summaryCity strong {
-  font-size: var(--font-size-section);
+  font-size: var(--app-type-heading-size);
+  line-height: var(--app-type-heading-line);
 }
 
 .summaryCity small {
-  color: var(--color-muted);
-  font-size: var(--font-size-caption);
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-caption-size);
 }
 
 .summaryDetails {
@@ -219,16 +225,16 @@
 
 .summaryDetails dd {
   margin: 0;
-  font-size: var(--font-size-body);
-  line-height: 1.5;
+  font-size: var(--app-type-body-size);
+  line-height: var(--app-type-body-line);
 }
 
 .noPlan {
   margin: 0;
-  color: var(--color-muted);
-  font-size: var(--font-size-body-small);
-  line-height: 1.5;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  line-height: var(--app-type-body-line);
 }
 
 .fieldset { gap: 10px; }
-.form > button { font-size: 14px; font-weight: 600; }
+.form > button { font-size: var(--app-type-body-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-control-line); }

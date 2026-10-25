@@ -8,12 +8,20 @@
 
 .introTitle {
   margin-top: 7px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  font-size: var(--app-type-page-title-size);
+  font-weight: var(--app-type-semibold);
+  line-height: var(--app-type-page-title-line);
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
 }
 
 .introSubtitle {
   margin: 0;
-  line-height: 1.55;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .intentForm {
@@ -30,20 +38,21 @@
   gap: 10px;
   margin: 0;
   padding: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--app-type-label-size);
+  font-weight: var(--app-type-semibold);
+  line-height: 1.45;
 }
 
 .choiceField legend {
-  margin-bottom: 13px;
+  margin-bottom: 10px;
   padding: 0;
   font: inherit;
 }
 
 .choiceField {
   display: block;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--app-type-label-size);
+  font-weight: var(--app-type-semibold);
 }
 
 .choiceField .fieldError {
@@ -61,43 +70,48 @@
 
 .choiceOptions button {
   max-width: 100%;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--app-type-control-size);
+  font-weight: var(--app-type-medium);
+  line-height: var(--app-type-control-line);
+  overflow-wrap: anywhere;
 }
 
 .fieldError {
   margin: -1px 0 0;
   color: #b42318;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .rangeField input {
   display: block;
   width: 100%;
   margin: 2px 0 0;
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--app-type-input-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-control-line);
 }
 
 .rangeField > span[id$="-help"] {
-  color: var(--color-muted);
-  font-size: 12px;
-  font-weight: 400;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-body-line);
 }
 
 .textField textarea {
   display: block;
   width: 100%;
   margin: 0;
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--app-type-input-size);
+  font-weight: var(--app-type-regular);
+  line-height: var(--app-type-control-line);
 }
 
 .textField textarea::placeholder {
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--app-type-input-size);
+  font-weight: var(--app-type-regular);
 }
 
 .formErrors {
@@ -106,7 +120,7 @@
   margin: -8px 0 0;
 }
 
-.formErrors { font-size: 12px; font-weight: 400; }
+.formErrors { color: var(--color-danger); font-size: var(--app-type-secondary-size); font-weight: var(--app-type-regular); line-height: var(--app-type-body-line); }
 
 .intentFooter {
   position: sticky;
@@ -117,7 +131,7 @@
   background: linear-gradient(180deg, rgb(250 249 246 / 0%), var(--color-canvas) 24%);
 }
 
-.intentFooter button { font-size: 14px; font-weight: 600; }
+.intentFooter button { font-size: var(--app-type-body-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-control-line); }
 
 @media (max-width: 359px) {
   .choiceOptions {
@@ -140,5 +154,5 @@
 
 .rangeField input[type="number"] {
   min-height: 48px;
-  font-size: var(--font-size-input);
+  font-size: var(--app-type-input-size);
 }

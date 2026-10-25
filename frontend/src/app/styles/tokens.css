@@ -29,6 +29,33 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
+  /* Mini App roles are separate from MAX UI's platform typography variables.
+     Legacy font variables above remain available to the internal dashboards. */
+  --app-type-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --app-type-body-size: 1rem;
+  --app-type-secondary-size: .875rem;
+  --app-type-caption-size: max(.75rem, 12px);
+  --app-type-control-size: .875rem;
+  --app-type-label-size: .875rem;
+  --app-type-input-size: max(1rem, 16px);
+  --app-type-section-size: 1.25rem;
+  --app-type-heading-size: 1.25rem;
+  --app-type-page-title-size: 1.75rem;
+  --app-type-hero-size: 1.375rem;
+  --app-type-display-size: 2rem;
+  --app-type-body-line: 1.5;
+  --app-type-control-line: 1.5;
+  --app-type-heading-line: 1.3;
+  --app-type-page-title-line: 1.25;
+  --app-type-card-line: 1.375;
+  --app-type-caption-line: 1.5;
+  --app-type-regular: 400;
+  --app-type-medium: 500;
+  --app-type-semibold: 600;
+  --app-text-secondary: #625e59;
+  --app-text-body: #4f4a45;
+  --app-text-meta: #70685f;
+
   --color-ink: #171716;
   --color-muted: #6f6b65;
   --color-subtle: #a39b92;
@@ -83,14 +110,21 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }
 html, body, #root { min-height: 100%; margin: 0; }
-html { font-size: calc(100% * var(--font-scale, 1)); }
+/* Match :root specificity and keep the internal tools at their existing scale. */
+:root[data-app-typography="mini-app"] { font-size: calc(100% * var(--font-scale, 1)); }
 body { min-width: 320px; background: var(--color-canvas); font-size: var(--font-size-body); }
+:root[data-app-typography="mini-app"] body {
+  --color-muted: var(--app-text-secondary);
+  font-family: var(--app-type-family);
+  font-size: var(--app-type-body-size);
+  line-height: var(--app-type-body-line);
+}
 .max-app-theme[class] {
-  --family-base: var(--font-family-ui);
-  --family-headers: var(--font-family-ui);
-  font-family: var(--font-family-ui);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
+  --family-base: var(--app-type-family);
+  --family-headers: var(--app-type-family);
+  font-family: var(--app-type-family);
+  font-size: var(--app-type-body-size);
+  line-height: var(--app-type-body-line);
 }
 button, input, textarea, select { font: inherit; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }

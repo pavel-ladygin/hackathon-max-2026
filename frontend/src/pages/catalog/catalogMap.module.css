@@ -49,8 +49,9 @@
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-paper);
-  color: var(--color-muted);
-  font-size: .85rem;
+  color: var(--app-text-secondary);
+  font-size: var(--app-type-secondary-size);
+  line-height: var(--app-type-body-line);
 }
 
 .clusterMarker {
@@ -63,7 +64,7 @@
   box-shadow: 0 3px 12px rgb(39 29 21 / 28%);
   color: white;
   font: inherit;
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--app-type-semibold);
   cursor: pointer;
   transform: translate(-50%, -50%);
 }
@@ -83,7 +84,7 @@
   box-shadow: 0 2px 8px rgb(39 29 21 / 18%);
   cursor: pointer;
   font: inherit;
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--app-type-semibold);
   touch-action: manipulation;
 }
 .expandedClose { width: 44px; height: 44px; border-width: 1px; border-radius: 50%; font-size: 1.625rem; line-height: 1; }
@@ -159,7 +160,7 @@
 }
 
 .previewContent { min-width: 0; align-self: center; }
-.previewTitle { margin: 0 0 6px; font-size: 1rem; line-height: 1.25; }
+.previewTitle { min-width: 0; margin: 0 0 6px; font-size: var(--app-type-body-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-card-line); overflow-wrap: anywhere; }
 .previewTitleButton {
   padding: 0;
   border: 0;
@@ -176,8 +177,8 @@
   outline: 3px solid var(--color-accent, #ef6b6b);
   outline-offset: 3px;
 }
-.previewMeta, .previewPrice { margin: 3px 0; color: var(--color-muted); font-size: .875rem; line-height: 1.3; }
-.previewPrice { margin-bottom: 10px; color: var(--color-ink); font-weight: var(--font-weight-bold); }
+.previewMeta, .previewPrice { margin: 3px 0; color: var(--app-text-secondary); font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); overflow-wrap: anywhere; }
+.previewPrice { margin-bottom: 10px; color: var(--color-ink); font-size: var(--app-type-body-size); font-weight: var(--app-type-medium); }
 .previewClose {
   position: absolute;
   top: 8px;
@@ -253,9 +254,9 @@
   place-items: center;
   border-radius: var(--radius-sm);
   color: var(--color-muted, #6b625c);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-bold);
-  line-height: 1.1;
+  font-size: var(--app-type-caption-size);
+  font-weight: var(--app-type-medium);
+  line-height: var(--app-type-caption-line);
   text-align: center;
 }
 .markerImagePlaceholder[data-state='loading'] {
@@ -286,8 +287,8 @@
   box-shadow: 0 5px 15px rgb(39 29 21 / 16%);
   color: var(--color-ink, #171716);
   font: inherit;
-  font-size: var(--font-size-caption);
-  line-height: 1.25;
+  font-size: var(--app-type-caption-size);
+  line-height: var(--app-type-caption-line);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 4px);
@@ -345,10 +346,11 @@
   border: 0;
   border-radius: calc(var(--radius-md) - 2px);
   background: transparent;
-  color: var(--color-muted);
+  color: var(--app-text-secondary);
   font: inherit;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-bold);
+  font-size: var(--app-type-control-size);
+  font-weight: var(--app-type-medium);
+  line-height: var(--app-type-control-line);
   touch-action: manipulation;
 }
 
@@ -360,8 +362,6 @@
 @media (max-width: 767px) {
   .preview { right: 8px; bottom: 8px; left: 8px; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; max-height: 42%; padding: 10px 42px 10px 10px; }
   .previewImage { min-height: 88px; max-height: 120px; }
-  .previewTitle { font-size: .94rem; }
-  .previewMeta, .previewPrice { font-size: .8rem; }
   .segmented {
     width: 100%;
     margin-left: 0;
@@ -374,7 +374,7 @@
 }
 
 .emptyMapCard { display: grid; justify-items: center; text-align: center; }
-.emptyMapCard svg { width: 24px; height: 24px; margin-bottom: 12px; color: var(--color-muted); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.mapMessage h3 { margin: 0; font-size: var(--font-size-section); line-height: var(--line-height-heading); }
-.mapMessage p { margin: 8px 0 0; font-size: var(--font-size-body-small); line-height: var(--line-height-body); }
+.emptyMapCard svg { width: 24px; height: 24px; margin-bottom: 12px; color: var(--app-text-secondary); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mapMessage h3 { margin: 0; font-size: var(--app-type-heading-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-heading-line); }
+.mapMessage p { margin: 8px 0 0; font-size: var(--app-type-secondary-size); line-height: var(--app-type-body-line); }
 .cityFilterSection { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }

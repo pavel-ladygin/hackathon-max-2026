@@ -203,7 +203,7 @@ for (const viewport of viewports) {
         return options.getBoundingClientRect().top - legend.getBoundingClientRect().bottom
       }))
       expect(gaps.length).toBeGreaterThan(0)
-      for (const gap of gaps) expect(gap).toBeCloseTo(13, 0)
+      for (const gap of gaps) expect(gap).toBeCloseTo(10, 0)
 
       const form = page.locator('form').first()
       const boxes = await form.locator('fieldset, label, .footer').evaluateAll((nodes) => nodes

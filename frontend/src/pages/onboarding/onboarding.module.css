@@ -1,4 +1,4 @@
 .profileIntro { margin-bottom: 24px; }
-.cityTrigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 50px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 12px 14px; background: var(--color-paper); color: var(--color-ink); font-size: var(--font-size-input); font-weight: var(--font-weight-regular); line-height: var(--line-height-control); text-align: left; }
+.cityTrigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 50px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 12px 14px; background: var(--color-paper); color: var(--color-ink); font-size: var(--app-type-input-size); font-weight: var(--app-type-regular); line-height: var(--app-type-control-line); text-align: left; }
 .cityTrigger svg { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.cityHelp { color: var(--color-muted); font-size: var(--font-size-caption); font-weight: var(--font-weight-regular); line-height: 1.5; }
+.cityHelp { color: var(--app-text-secondary); font-size: var(--app-type-secondary-size); font-weight: var(--app-type-regular); line-height: var(--app-type-body-line); }
