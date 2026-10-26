@@ -48,7 +48,7 @@ export function RoomDateChoices({ id, selected, onChange, min, error, descriptio
     <DatePicker id={id} className={styles.picker} label="Выбор дат" mode="multiple" value={selected} maxSelections={14} min={min} disabled={disabled} invalid={Boolean(error)} describedBy={error ? `${id}-error` : description ? `${id}-help` : undefined} onChange={onChange} />
     <div className={styles.chips} aria-label="Выбранные даты">
       <AnimatePresence initial={false}>
-        {selected.map(value => <SelectedDateChip key={value} value={value} selected={selected} onChange={onChange} disabled={disabled} reducedMotion={Boolean(reducedMotion)} />)}
+        {[...selected].sort().map(value => <SelectedDateChip key={value} value={value} selected={selected} onChange={onChange} disabled={disabled} reducedMotion={Boolean(reducedMotion)} />)}
       </AnimatePresence>
     </div>
     {description ? <span id={`${id}-help`} className={styles.hint}>{description}</span> : null}

@@ -336,3 +336,51 @@ test.describe('desktop full-bleed layout', () => {
     expect(widths.hero).toBe(widths.content - widths.paddingLeft - widths.paddingRight)
   })
 })
+
+for (const width of [320, 375, 390, 430, 1440]) {
+  for (const textScale of [90, 100, 115]) {
+    test(`active room layout at ${width}px and ${textScale}% text`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 })
+      await stubPreferencesBackend(page)
+      await page.route('**/api/v1/feed/home**', route => route.fulfill({ json: {
+        feed_id: 'active-room-layout', generated_at: '2026-01-01T00:00:00Z',
+        active_room: { id: room.id, name: 'Очень длинное название комнаты для совместного выбора событий на выходных', city_id: user.city_id, state: 'collecting_intents' },
+        sections: [{ type: 'for_you', title: 'Для вас', items: [{ ...event }] }],
+      } }))
+      await page.goto('/')
+      const resume = page.getByRole('button', { name: 'Продолжить', exact: true })
+      await expect(resume).toBeVisible()
+      await page.evaluate(scale => { document.documentElement.style.fontSize = `${scale}%` }, textScale)
+      const section = page.locator('section').filter({ has: resume })
+      const finish = section.getByRole('button', { name: 'Завершить подбор', exact: true })
+      const geometry = await section.evaluate(element => {
+        const heading = element.querySelector('h2')!.getBoundingClientRect()
+        const buttons = Array.from(element.querySelectorAll('button')).map(button => {
+          const rect = button.getBoundingClientRect()
+          const range = document.createRange(); range.selectNodeContents(button)
+          const text = range.getBoundingClientRect()
+          return { top: rect.top, bottom: rect.bottom, width: rect.width, textHeight: text.height, lineHeight: parseFloat(getComputedStyle(button).lineHeight) }
+        })
+        const copy = element.querySelector(':scope > p')!.getBoundingClientRect()
+        const rect = element.getBoundingClientRect()
+        const next = element.nextElementSibling!.getBoundingClientRect()
+        return { headingBottom: heading.bottom, buttons, copyTop: copy.top, bottom: rect.bottom, nextTop: next.top, width: rect.width }
+      })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+      expect(geometry.buttons[1].top).toBeGreaterThanOrEqual(geometry.buttons[0].bottom + 7)
+      expect(geometry.copyTop).toBeGreaterThanOrEqual(geometry.buttons[1].bottom + 15)
+      expect(geometry.nextTop).toBeGreaterThanOrEqual(geometry.bottom + 23)
+      for (const button of geometry.buttons) expect(button.textHeight).toBeLessThanOrEqual(button.lineHeight + 1)
+      if (width <= 600) {
+        expect(geometry.buttons[0].top).toBeGreaterThanOrEqual(geometry.headingBottom + 15)
+        expect(geometry.buttons[0].width).toBeCloseTo(geometry.width, 0)
+      }
+      await page.screenshot({ path: testInfo.outputPath(`active-room-${width}-${textScale}.png`), fullPage: true })
+      await finish.click()
+      await expect(page.getByRole('dialog', { name: 'Завершить подбор?' })).toBeVisible()
+      await page.getByRole('button', { name: 'Остаться в комнате' }).click()
+      await resume.click()
+      await expect(page).toHaveURL(new RegExp(`/rooms/${room.id}/`))
+    })
+  }
+}

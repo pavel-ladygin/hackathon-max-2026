@@ -1,4 +1,8 @@
-.roomActions { display: grid; gap: 5px; width: min(280px, 36vw); flex: 0 0 auto; }
+.activeRoom { display: grid; gap: 16px; margin: 28px 0 24px; }
+.activeRoom .roomHeader { margin: 0; }
+.activeRoom h2 { overflow-wrap: anywhere; }
+.activeRoom > p { margin: 0; }
+.roomActions { display: grid; gap: 8px; width: min(280px, 36vw); flex: 0 0 auto; }
 .roomActions > button { width: 100%; }
 .endLink { min-height: 38px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-muted); font: inherit; font-size: var(--app-type-control-size); font-weight: var(--app-type-medium); line-height: var(--app-type-control-line); text-decoration: underline; text-underline-offset: 3px; transition: transform var(--motion-fast) var(--motion-ease-standard), background-color var(--motion-fast) var(--motion-ease-standard), color var(--motion-fast) var(--motion-ease-standard), box-shadow var(--motion-fast) var(--motion-ease-standard); }
 .endLink:active { transform: scale(.98); }
@@ -23,7 +27,10 @@
   .confirmEnd:hover:not(:disabled) { border-color: var(--color-danger); background: var(--color-hover); box-shadow: var(--shadow-control-soft); }
   .cancelEnd:hover:not(:disabled) { background: var(--color-hover); box-shadow: var(--shadow-control-soft); }
 }
-@media (max-width: 600px) { .roomActions { width: min(155px, 42vw); } }
+@media (max-width: 600px) {
+  .activeRoom .roomHeader { align-items: stretch; flex-direction: column; gap: 16px; }
+  .roomActions { width: 100%; }
+}
 
 .cityButton { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; padding: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: var(--app-type-section-size); font-weight: var(--app-type-semibold); line-height: var(--app-type-heading-line); text-align: left; cursor: pointer; }
 .cityButton:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 6px; }
