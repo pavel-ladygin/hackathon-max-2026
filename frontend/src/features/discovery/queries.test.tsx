@@ -91,4 +91,20 @@ describe('city-specific discovery caches', () => {
     expect(home).toHaveBeenCalledWith({ city_id: 'spb' })
     expect(queryClient.getQueryData(['home-feed', 'moscow'])).toBeDefined()
   })
+
+  it('treats a cached home feed as fresh for 20 seconds and refetches after invalidation', async () => {
+    const { useHomeFeed } = await import('./queries')
+    const home = vi.spyOn(apiClient, 'getHomeFeed').mockResolvedValue({ feed_id: 'fresh', generated_at: '', sections: [], activeRoom: null, roomClosedNotice: null })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 20_000 } } })
+    queryClient.setQueryData(['home-feed', 'moscow'], { feed_id: 'cached', generated_at: '', sections: [], activeRoom: null, roomClosedNotice: null })
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    const { result } = renderHook(() => useHomeFeed('moscow'), { wrapper })
+
+    expect(result.current.data?.feed_id).toBe('cached')
+    expect(home).not.toHaveBeenCalled()
+
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ['home-feed', 'moscow'] }) })
+    await waitFor(() => expect(result.current.data?.feed_id).toBe('fresh'))
+    expect(home).toHaveBeenCalledTimes(1)
+  })
 })

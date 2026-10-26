@@ -4,7 +4,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:4173'
 const port = new URL(baseURL).port
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: 'room-rounds-live.spec.ts',
+  testMatch: /room-rounds-(live|empty-live)\.spec\.ts/,
   workers: 1,
   timeout: 90_000,
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? './test-results/rooms-live',

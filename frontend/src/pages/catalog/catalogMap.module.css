@@ -1,3 +1,18 @@
+.dateRange {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(168px, 10.5rem)), 1fr));
+  gap: 12px 8px;
+  margin: 12px 0 8px;
+}
+
+.dateField > button[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.dateError {
+  margin-bottom: 12px;
+}
+
 .mapWrap {
   position: relative;
   min-height: 430px;

@@ -181,14 +181,14 @@ describe('room recovery and read-error reliability', () => {
     const { client } = renderAt('/rooms/room-1/recovery')
     const invalidate = vi.spyOn(client, 'invalidateQueries')
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['room', 'room-1'] }))
-    expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
+    expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-1', expect.objectContaining({ category_slugs: ['concerts', 'standup', 'cinema'] }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
     fireEvent.click(screen.getByRole('button', { name: 'Назад к изменениям' }))
     expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'true')
@@ -199,7 +199,7 @@ describe('room recovery and read-error reliability', () => {
     mocks.room.data.city_id = 'unknown-city'
     renderAt('/rooms/room-1/recovery')
 
-    expect(screen.queryByRole('button', { name: /Добавить дату|Увеличить бюджет/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /Добавить дату|Увеличить бюджет/ })).not.toBeInTheDocument()
     expect(screen.getByText(/Не удалось определить часовой пояс города/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
     expect(screen.getByRole('heading', { name: 'Главная' })).toBeInTheDocument()
@@ -214,8 +214,8 @@ describe('room recovery and read-error reliability', () => {
     const { client } = renderAt('/rooms/room-1/recovery')
     const invalidate = vi.spyOn(client, 'invalidateQueries')
 
-    fireEvent.click(screen.getByRole('button', { name: /Разрешить любое время/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешить любое время/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
@@ -260,8 +260,8 @@ describe('room recovery and read-error reliability', () => {
       <Route path="/" element={<Home />} />
     </Routes></Suspense></BrowserRouter></QueryClientProvider>
     const view = render(tree())
-    fireEvent.click(screen.getByRole('button', { name: /Разрешить любое время/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешить любое время/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
 
@@ -287,7 +287,7 @@ describe('room recovery and read-error reliability', () => {
     renderAt('/rooms/room-1/recovery')
 
     expect(screen.getByText(/Больше нечего изменить/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Добавить категорию|Увеличить бюджет|Добавить дату/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /Добавить категорию|Увеличить бюджет|Добавить дату/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'На главную' })).toBeEnabled()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
   })
@@ -303,9 +303,9 @@ describe('room recovery and read-error reliability', () => {
     mocks.replaceMyIntent.mockResolvedValue(undefined)
     renderAt(`/rooms/${participant}/recovery`)
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
 
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
@@ -318,14 +318,14 @@ describe('room recovery and read-error reliability', () => {
     mocks.replaceMyIntent.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined)
     renderAt('/rooms/room-1/recovery')
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
     const confirm = screen.getByRole('button', { name: 'Подтвердить мои условия' })
     fireEvent.click(confirm)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
-    expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
+    expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Подтвердить мои условия' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
 
@@ -341,10 +341,10 @@ describe('room recovery and read-error reliability', () => {
     mocks.room = { isPending: false, isError: false, isFetching: false, data: exhaustedRoom(3) }
     const { client, rerender } = renderAt('/rooms/room-1/recovery')
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
-    expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
 
     mocks.room = { ...mocks.room, isError: true, isFetching: false, error: new Error('offline') }
     rerender(roomTree('/rooms/room-1/recovery', client))
@@ -352,7 +352,7 @@ describe('room recovery and read-error reliability', () => {
 
     mocks.room = { ...mocks.room, isError: false, error: undefined }
     rerender(roomTree('/rooms/room-1/recovery', client))
-    expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
+    expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Подтвердить мои условия' })).toBeEnabled()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
   })

@@ -1402,7 +1402,7 @@ export interface components {
             version: number;
             participants: components["schemas"]["PublicParticipant"][];
             my_intent: components["schemas"]["MyIntent"] | null;
-            /** @description Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность; отсутствует до первого предложения и после начала следующего раунда. */
+            /** @description Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность. До первого предложения и после начала следующего раунда поле может отсутствовать или содержать JSON null; оба варианта означают отсутствие подготовки. */
             next_round?: components["schemas"]["NextRoundPreparation"] | null;
             pool: components["schemas"]["PoolSummary"] | null;
             match: components["schemas"]["MatchSummary"] | null;

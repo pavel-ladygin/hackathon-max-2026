@@ -1,9 +1,48 @@
 import { describe, expect, it } from 'vitest'
-import { availableDates, availableRelaxations, RELAXATION_CATEGORIES, relaxedIntent } from '../../features/rooms/relaxation'
+import { availableDates, availableRelaxations, combinedRelaxedIntent, RELAXATION_CATEGORIES, relaxedIntent, type RelaxationChanges } from '../../features/rooms/relaxation'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import type { RoomSnapshot } from '../../shared/api/types'
 
 const now = new Date(2026, 8, 21, 12) // Monday, 21 September 2026
+
+describe('combined room intent changes', () => {
+  const current: NonNullable<RoomSnapshot['myIntent']> = {
+    dates: ['2026-09-22'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 200_000,
+    radius_m: null, exclusion_slugs: ['outdoor'], location: null, free_text: 'Собственное пожелание',
+    version: 1, round_no: 1, submitted_at: '2026-09-20T12:00:00Z',
+  }
+
+  it.each(Array.from({ length: 15 }, (_, index) => index + 1))('combines selected fields without overwriting others (combination %i)', (mask) => {
+    const changes: RelaxationChanges = {
+      ...(mask & 1 ? { budget: 3000 } : {}),
+      ...(mask & 2 ? { category: 'cinema' as const } : {}),
+      ...(mask & 4 ? { date: '2026-09-23' } : {}),
+      ...(mask & 8 ? { time: true as const } : {}),
+    }
+    const original = structuredClone(current)
+    const result = combinedRelaxedIntent(current, changes, now)
+    expect(result).toEqual({
+      dates: mask & 4 ? ['2026-09-22', '2026-09-23'] : ['2026-09-22'],
+      day_types: [], time_slots: mask & 8 ? ['morning', 'day', 'evening', 'night'] : ['evening'],
+      category_slugs: mask & 2 ? ['concerts', 'cinema'] : ['concerts'], budget_max_minor: mask & 1 ? 300_000 : 200_000,
+      radius_m: null, exclusion_slugs: ['outdoor'], location: null, free_text: 'Собственное пожелание',
+    })
+    expect(current).toEqual(original)
+  })
+
+  it.each<RelaxationChanges>([{}, { budget: 2000 }, { budget: 10_500 }, { category: 'concerts' }, { date: '2026-09-01' }, { date: '2026-09-22' }])('rejects empty or invalid selections: %j', (changes) => {
+    expect(() => combinedRelaxedIntent(current, changes, now)).toThrow()
+  })
+
+  it('keeps date limits and expired-date recovery rules for combined changes', () => {
+    const fullDates = { ...current, dates: Array.from({ length: 14 }, (_, i) => `2026-10-${String(10 + i).padStart(2, '0')}`) }
+    expect(() => combinedRelaxedIntent(fullDates, { date: '2026-09-23', budget: 3000 }, now)).toThrow(/available/)
+    const expired = { ...current, dates: ['2026-09-01'] }
+    expect(() => combinedRelaxedIntent(expired, { date: '2026-09-23', budget: 3000 }, now)).toThrow(/available/)
+    expect(combinedRelaxedIntent(expired, { date: '2026-09-23' }, now).dates).toEqual(['2026-09-23'])
+    expect(() => combinedRelaxedIntent(current, { date: '2026-09-23', time: true }, new Date('2026-09-24T12:00:00Z'))).toThrow()
+  })
+})
 
 describe('relaxedIntent', () => {
   it('adds only the concrete date selected by the user', () => {

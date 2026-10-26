@@ -70,11 +70,72 @@ async function assertViewportFits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 }
 
+test('combines recovery changes, keeps selections on review, and sends one complete intent', async ({ page }, testInfo: TestInfo) => {
+  await page.clock.install({ time: new Date('2099-11-19T12:00:00Z') })
+  await stubSession(page, 'positive-nonmatch')
+  let snapshot: Record<string, unknown> = roomFor('positive-nonmatch')
+  const requests: Record<string, unknown>[] = []
+  await page.route(`**/api/v1/rooms/${roomId}`, (route) => route.fulfill({ json: snapshot }))
+  await page.route(`**/api/v1/rooms/${roomId}/intent/me`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    requests.push(body)
+    const ownPrepared = { ...body }; delete ownPrepared.expected_round_no; delete ownPrepared.expected_room_version
+    snapshot = { ...roomFor('positive-nonmatch'), version: 4, allowed_actions: ['wait'], next_round: { round_no: 3, my_confirmed: true, confirmed_count: 1, my_intent: { ...ownPrepared, version: 2, round_no: 3, submitted_at: '2099-11-19T12:00:00Z' } } }
+    expect(route.request().headers()['idempotency-key'].length).toBeGreaterThanOrEqual(8)
+    await route.fulfill({ json: snapshot })
+  })
+  await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
+  const review = page.getByRole('button', { name: 'Проверить изменения', exact: true })
+  await expect(review).toBeDisabled()
+  await page.getByRole('checkbox', { name: 'Увеличить бюджет' }).check()
+  await page.getByLabel('Новый лимит стоимости').selectOption('4000')
+  await page.getByRole('checkbox', { name: 'Добавить категорию' }).check()
+  await expect(review).toBeDisabled()
+  await page.getByRole('button', { name: 'Кино', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'Добавить дату' }).check()
+  await expect(review).toBeDisabled()
+  await page.getByLabel('Дополнительная дата').selectOption('2099-11-21')
+  await page.getByRole('checkbox', { name: 'Разрешить любое время' }).check()
+  await assertViewportFits(page)
+  await page.screenshot({ path: testInfo.outputPath('recovery-combined-selection.png'), fullPage: true })
+  await review.click()
+  const summary = page.getByRole('list', { name: 'Выбранные изменения' })
+  await expect(summary.getByRole('listitem')).toHaveCount(4)
+  expect(requests).toHaveLength(0)
+  const confirm = page.getByRole('button', { name: 'Подтвердить мои условия', exact: true })
+  await expect(confirm.locator('..').getByRole('button')).toHaveText(['Подтвердить мои условия', 'Назад к изменениям', 'Создать новую комнату', 'На главную'])
+  await assertViewportFits(page)
+  await page.screenshot({ path: testInfo.outputPath('recovery-combined-review.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Назад к изменениям' }).click()
+  await expect(page.getByLabel('Новый лимит стоимости')).toHaveValue('4000')
+  await expect(page.getByLabel('Дополнительная дата')).toHaveValue('2099-11-21')
+  await expect(page.getByRole('button', { name: 'Кино', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('checkbox', { name: 'Добавить категорию' }).uncheck()
+  await review.click()
+  await expect(summary.getByRole('listitem')).toHaveCount(3)
+  await expect(summary).not.toContainText('Кино')
+  await page.getByRole('button', { name: 'Назад к изменениям' }).click()
+  await page.getByRole('checkbox', { name: 'Добавить категорию' }).check()
+  await expect(page.getByRole('button', { name: 'Кино', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await review.click()
+  await confirm.click()
+  await expect(page).toHaveURL(new RegExp(`/rooms/${roomId}/recovery$`))
+  await expect(page.getByText('Условия сохранены', { exact: true })).toBeVisible()
+  expect(snapshot).toMatchObject({ state: 'exhausted', round_no: 2, next_round: { round_no: 3, confirmed_count: 1 } })
+  expect(requests).toHaveLength(1)
+  expect(requests[0]).toEqual({
+    expected_round_no: 2, expected_room_version: 3,
+    dates: ['2099-11-20', '2099-11-21'], day_types: [], time_slots: ['morning', 'day', 'evening', 'night'],
+    category_slugs: ['concerts', 'cinema'], budget_max_minor: 400_000, radius_m: null, exclusion_slugs: [], location: null, free_text: privateMarker,
+  })
+})
+
 test('recovery separates zero pool, nonmatch and exhausted rounds across viewport and keyboard states', async ({ page, isMobile }, testInfo: TestInfo) => {
   const backend = await stubSession(page, 'zero-pool')
   await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Общих событий пока нет' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Добавить категорию' })).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Добавить категорию' })).toHaveCount(0)
   await expect(page.getByText(/Изменения не гарантируют больше событий/)).toBeVisible()
   await expect(page.locator('body')).not.toContainText(privateMarker)
 
@@ -119,10 +180,10 @@ test('positive pool explains category changes, while a third round only navigate
   const backend = await stubSession(page, 'positive-nonmatch')
   await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'События закончились, общего лайка нет' })).toBeVisible()
-  const category = page.getByRole('button', { name: 'Добавить категорию' })
+  const category = page.getByRole('checkbox', { name: 'Добавить категорию' })
   await expect(category).toBeVisible()
-  await expect(category).toContainText('Изменит порядок рекомендаций, но не гарантирует больше событий')
-  expect((await category.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await expect(category.locator('..')).toContainText('Изменит порядок рекомендаций, но не гарантирует больше событий')
+  expect((await category.locator('..').boundingBox())!.height).toBeGreaterThanOrEqual(44)
   await expect(page.locator('body')).not.toContainText(privateMarker)
   await assertViewportFits(page)
   await page.screenshot({ path: testInfo.outputPath(isMobile ? 'recovery-nonmatch-mobile.png' : 'recovery-nonmatch-desktop.png'), fullPage: true })

@@ -21,6 +21,7 @@ import (
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/contracts"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/discovery"
 	api "github.com/pavel-ladygin/hackathon-max-2026/backend/internal/httpapi/openapi"
+	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/preferences"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/recommendations"
 	"github.com/pavel-ladygin/hackathon-max-2026/backend/internal/rooms"
 )
@@ -36,111 +37,143 @@ func TestRoomRoundsBrowser(t *testing.T) {
 	if config == "" {
 		config, _ = filepath.Abs("../../../frontend/playwright.rooms-live.config.ts")
 	}
-	for _, project := range []string{"mobile-chrome", "desktop-chrome"} {
-		t.Run(project, func(t *testing.T) {
-			db := openTestDB(t)
-			ctx := context.Background()
-			f := newRoomFixture(t, db)
-			f.addTwoMembers(t)
-			var event uuid.UUID
-			// Register before any setup mutation so failed setup is also cleaned.
-			t.Cleanup(func() {
-				_, _ = db.Exec(ctx, "DELETE FROM behavior_events WHERE room_id=$1", f.room)
-				_, _ = db.Exec(ctx, "DELETE FROM room_matches WHERE room_id=$1", f.room)
-				_, _ = db.Exec(ctx, "DELETE FROM rooms WHERE id=$1", f.room)
-				var venue uuid.UUID
-				_ = db.QueryRow(ctx, "SELECT venue_id FROM events WHERE id=$1", event).Scan(&venue)
-				_, _ = db.Exec(ctx, "DELETE FROM events WHERE id=$1", event)
-				_, _ = db.Exec(ctx, "DELETE FROM venues WHERE id=$1", venue)
-			})
-			moscow := uuid.MustParse("a0f625ee-2154-5a45-8afe-37adf955ec24")
-			if _, err := db.Exec(ctx, "INSERT INTO cities(id,name,timezone,center_lat,center_lng) VALUES($1,'Москва','Europe/Moscow',55.75,37.62) ON CONFLICT(id) DO NOTHING", moscow); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := db.Exec(ctx, "UPDATE rooms SET city_id=$2,name='Встреча' WHERE id=$1", f.room, moscow); err != nil {
-				t.Fatal(err)
-			}
-			event = f.newEvent(t)
-			zone, _ := time.LoadLocation("Europe/Moscow")
-			now := time.Now().In(zone)
-			firstDay := now.AddDate(0, 0, 1).Format("2006-01-02")
-			secondDay := now.AddDate(0, 0, 2).Format("2006-01-02")
-			start, _ := time.ParseInLocation("2006-01-02 15:04", secondDay+" 19:00", zone)
-			if _, err := db.Exec(ctx, "UPDATE venues SET city_id=$2 WHERE id=(SELECT venue_id FROM events WHERE id=$1)", event, moscow); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := db.Exec(ctx, "UPDATE events SET title='Концерт для двоих',starts_at=$2::timestamptz,ends_at=$2::timestamptz+interval '2 hours',timezone='Europe/Moscow',price_from_minor=100,ticket_url='https://tickets.example/rounds',ticket_available=true WHERE id=$1", event, start); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := db.Exec(ctx, "INSERT INTO event_categories(event_id,category_slug,is_primary) VALUES($1,'concerts',true)", event); err != nil {
-				t.Fatal(err)
-			}
-			for _, user := range []uuid.UUID{f.creator, f.member} {
-				if _, err := db.Exec(ctx, "INSERT INTO room_member_round_state(room_id,user_id,round_no) VALUES($1,$2,1)", f.room, user); err != nil {
-					t.Fatal(err)
-				}
-			}
-			builder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), []byte("0123456789abcdef0123456789abcdef"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			svc := newCreateServiceWithBuilder(t, db, behavior.Recorder{}, builder)
-			cursor, _ := rooms.NewRoomEventsCursorCodec([]byte("0123456789abcdef0123456789abcdef"))
-			if err := svc.EnableRoomEvents(catalog.NewRepository(db), cursor); err != nil {
-				t.Fatal(err)
-			}
-			for i, user := range []uuid.UUID{f.creator, f.member} {
-				day := firstDay
-				if i == 1 {
-					day = secondDay
-				}
-				d, _ := time.Parse("2006-01-02", day)
-				req := validIntentRequest()
-				req.Dates = []openapi_types.Date{{Time: d}}
-				req.DayTypes = []api.DayType{}
-				req.TimeSlots = []api.TimeSlot{api.Evening}
-				req.ExclusionSlugs = []api.RoomIntentRequestExclusionSlugs{}
-				req.Location = nullable.NewNullNullable[api.GeoPoint]()
-				req.RadiusM = nullable.NewNullNullable[int]()
-				req.FreeText = nullable.NewNullableWithValue("Личное пожелание " + fmt.Sprint(i))
-				if _, _, err := replaceIntentFromSnapshot(t, svc, f, user, req); err != nil {
-					t.Fatal(err)
-				}
-			}
-			initial, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
-			initialPool, poolErr := initial.Pool.Get()
-			if err != nil || poolErr != nil || initial.State != api.RoomStateExhausted || initialPool.Total != 0 {
-				t.Fatalf("incompatible dates must produce empty pool: %+v, %v", initial, err)
-			}
-			r := chi.NewRouter()
-			r.Use(func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					user, err := uuid.Parse(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-					if err != nil || user != f.creator && user != f.member {
-						http.Error(w, "test principal required", 401)
-						return
+	for _, scenario := range []string{"empty", "match"} {
+		t.Run(scenario, func(t *testing.T) {
+			for _, project := range []string{"mobile-chrome", "desktop-chrome"} {
+				t.Run(project, func(t *testing.T) {
+					db := openTestDB(t)
+					ctx := context.Background()
+					f := newRoomFixture(t, db)
+					f.addTwoMembers(t)
+					var event uuid.UUID
+					// Register before any setup mutation so failed setup is also cleaned.
+					t.Cleanup(func() {
+						_, _ = db.Exec(ctx, "DELETE FROM behavior_events WHERE room_id=$1", f.room)
+						_, _ = db.Exec(ctx, "DELETE FROM room_matches WHERE room_id=$1", f.room)
+						_, _ = db.Exec(ctx, "DELETE FROM rooms WHERE id=$1", f.room)
+						var venue uuid.UUID
+						_ = db.QueryRow(ctx, "SELECT venue_id FROM events WHERE id=$1", event).Scan(&venue)
+						_, _ = db.Exec(ctx, "DELETE FROM events WHERE id=$1", event)
+						_, _ = db.Exec(ctx, "DELETE FROM venues WHERE id=$1", venue)
+						// These two users were moved to canonical Moscow for the real
+						// Home projection. The random-city cleanup cannot find them.
+						_, _ = db.Exec(ctx, "DELETE FROM idempotency_records WHERE user_id IN ($1,$2)", f.creator, f.member)
+						_, _ = db.Exec(ctx, "DELETE FROM users WHERE id IN ($1,$2)", f.creator, f.member)
+					})
+					moscow := uuid.MustParse("a0f625ee-2154-5a45-8afe-37adf955ec24")
+					if _, err := db.Exec(ctx, "INSERT INTO cities(id,name,timezone,center_lat,center_lng) VALUES($1,'Москва','Europe/Moscow',55.75,37.62) ON CONFLICT(id) DO NOTHING", moscow); err != nil {
+						t.Fatal(err)
 					}
-					next.ServeHTTP(w, r.WithContext(contracts.WithPrincipal(r.Context(), contracts.Principal{UserID: user})))
+					if _, err := db.Exec(ctx, "UPDATE rooms SET city_id=$2,name='Встреча' WHERE id=$1", f.room, moscow); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := db.Exec(ctx, "UPDATE users SET city_id=$2 WHERE id IN ($1,$3)", f.creator, moscow, f.member); err != nil {
+						t.Fatal(err)
+					}
+					event = f.newEvent(t)
+					zone, _ := time.LoadLocation("Europe/Moscow")
+					now := time.Now().In(zone)
+					firstDay := now.AddDate(0, 0, 1).Format("2006-01-02")
+					secondDay := now.AddDate(0, 0, 2).Format("2006-01-02")
+					start, _ := time.ParseInLocation("2006-01-02 15:04", secondDay+" 19:00", zone)
+					if _, err := db.Exec(ctx, "UPDATE venues SET city_id=$2 WHERE id=(SELECT venue_id FROM events WHERE id=$1)", event, moscow); err != nil {
+						t.Fatal(err)
+					}
+					eventTitle := "Концерт для двоих"
+					if project == "mobile-chrome" {
+						eventTitle = "Длинное название концерта для двоих в осеннем городском пространстве"
+					}
+					if _, err := db.Exec(ctx, "UPDATE events SET title=$2,starts_at=$3::timestamptz,ends_at=$3::timestamptz+interval '2 hours',timezone='Europe/Moscow',price_from_minor=100,ticket_url='https://tickets.example/rounds',ticket_available=true WHERE id=$1", event, eventTitle, start); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := db.Exec(ctx, "INSERT INTO event_categories(event_id,category_slug,is_primary) VALUES($1,'concerts',true)", event); err != nil {
+						t.Fatal(err)
+					}
+					for _, user := range []uuid.UUID{f.creator, f.member} {
+						if _, err := db.Exec(ctx, "INSERT INTO room_member_round_state(room_id,user_id,round_no) VALUES($1,$2,1)", f.room, user); err != nil {
+							t.Fatal(err)
+						}
+					}
+					builder, err := recommendations.NewPoolBuilder(catalog.NewRepository(db), []byte("0123456789abcdef0123456789abcdef"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					svc := newCreateServiceWithBuilder(t, db, behavior.Recorder{}, builder)
+					cursor, _ := rooms.NewRoomEventsCursorCodec([]byte("0123456789abcdef0123456789abcdef"))
+					if err := svc.EnableRoomEvents(catalog.NewRepository(db), cursor); err != nil {
+						t.Fatal(err)
+					}
+					for i, user := range []uuid.UUID{f.creator, f.member} {
+						day := firstDay
+						if i == 1 {
+							day = secondDay
+						}
+						d, _ := time.Parse("2006-01-02", day)
+						req := validIntentRequest()
+						req.Dates = []openapi_types.Date{{Time: d}}
+						req.DayTypes = []api.DayType{}
+						req.TimeSlots = []api.TimeSlot{api.Evening}
+						req.ExclusionSlugs = []api.RoomIntentRequestExclusionSlugs{}
+						req.Location = nullable.NewNullNullable[api.GeoPoint]()
+						req.RadiusM = nullable.NewNullNullable[int]()
+						req.FreeText = nullable.NewNullableWithValue("Личное пожелание " + fmt.Sprint(i))
+						if _, _, err := replaceIntentFromSnapshot(t, svc, f, user, req); err != nil {
+							t.Fatal(err)
+						}
+					}
+					initial, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
+					initialPool, poolErr := initial.Pool.Get()
+					if err != nil || poolErr != nil || initial.State != api.RoomStateExhausted || initialPool.Total != 0 {
+						t.Fatalf("incompatible dates must produce empty pool: %+v, %v", initial, err)
+					}
+					r := chi.NewRouter()
+					r.Use(func(next http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							user, err := uuid.Parse(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+							if err != nil || user != f.creator && user != f.member {
+								http.Error(w, "test principal required", 401)
+								return
+							}
+							next.ServeHTTP(w, r.WithContext(contracts.WithPrincipal(r.Context(), contracts.Principal{UserID: user})))
+						})
+					})
+					svc.RegisterRoutes(r)
+					discoveryRepository := discovery.NewRepository(db)
+					discoveryCursor, err := discovery.NewCursorCodec([]byte("0123456789abcdef0123456789abcdef"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					// Match cmd/server wiring: Service normalizes optional filters
+					// before the repository executes PostgreSQL array predicates.
+					discoveryService := discovery.NewService(discoveryRepository, discoveryCursor)
+					discovery.NewHomeHandler(discovery.NewHomeService(discoveryService, discoveryRepository, preferences.NewService(db), discoveryRepository)).RegisterRoutes(r, func(next http.Handler) http.Handler { return next })
+					r.Get("/api/v1/events/{eventId}", discovery.NewDetailHandler(discovery.NewRepository(db)).GetEvent)
+					server := httptest.NewServer(r)
+					defer server.Close()
+					frontend, _ := filepath.Abs("../../../frontend")
+					command := exec.CommandContext(ctx, "node", filepath.Join(frontend, "node_modules/@playwright/test/cli.js"), "test", "--config", config, "--project", project, "--grep", "\\["+scenario+"\\]")
+					command.Dir = frontend
+					command.Env = append(os.Environ(), "ROOMS_LIVE_API="+server.URL, "ROOMS_LIVE_ROOM="+f.room.String(), "ROOMS_LIVE_A="+f.creator.String(), "ROOMS_LIVE_B="+f.member.String(), "ROOMS_LIVE_DATE="+secondDay, "ROOMS_LIVE_EVENT_TITLE="+eventTitle)
+					out, err := command.CombinedOutput()
+					t.Log(string(out))
+					if err != nil {
+						t.Fatalf("Playwright: %v", err)
+					}
+					var pools, votes int
+					_ = db.QueryRow(ctx, "SELECT count(*) FROM room_pools WHERE room_id=$1", f.room).Scan(&pools)
+					_ = db.QueryRow(ctx, "SELECT count(*) FROM room_votes WHERE room_id=$1", f.room).Scan(&votes)
+					wantVotes := 0
+					if scenario == "match" {
+						wantVotes = 2
+					}
+					if pools != 3 || votes != wantVotes {
+						t.Fatalf("%s persistence pools=%d votes=%d, want3/%d", scenario, pools, votes, wantVotes)
+					}
+					var highestRound int
+					if err := db.QueryRow(ctx, "SELECT coalesce(max(round_no),0) FROM room_pools WHERE room_id=$1", f.room).Scan(&highestRound); err != nil || highestRound != 3 {
+						t.Fatalf("%s must stop at round 3: max_pool_round=%d err=%v", scenario, highestRound, err)
+					}
 				})
-			})
-			svc.RegisterRoutes(r)
-			r.Get("/api/v1/events/{eventId}", discovery.NewDetailHandler(discovery.NewRepository(db)).GetEvent)
-			server := httptest.NewServer(r)
-			defer server.Close()
-			frontend, _ := filepath.Abs("../../../frontend")
-			command := exec.CommandContext(ctx, "node", filepath.Join(frontend, "node_modules/@playwright/test/cli.js"), "test", "--config", config, "--project", project)
-			command.Dir = frontend
-			command.Env = append(os.Environ(), "ROOMS_LIVE_API="+server.URL, "ROOMS_LIVE_ROOM="+f.room.String(), "ROOMS_LIVE_A="+f.creator.String(), "ROOMS_LIVE_B="+f.member.String(), "ROOMS_LIVE_DATE="+secondDay)
-			out, err := command.CombinedOutput()
-			t.Log(string(out))
-			if err != nil {
-				t.Fatalf("Playwright: %v", err)
-			}
-			var pools, votes int
-			_ = db.QueryRow(ctx, "SELECT count(*) FROM room_pools WHERE room_id=$1", f.room).Scan(&pools)
-			_ = db.QueryRow(ctx, "SELECT count(*) FROM room_votes WHERE room_id=$1", f.room).Scan(&votes)
-			if pools != 3 || votes != 2 {
-				t.Fatalf("persistence pools=%d votes=%d, want3/2", pools, votes)
 			}
 		})
 	}

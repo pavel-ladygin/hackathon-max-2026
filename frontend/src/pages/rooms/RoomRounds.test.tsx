@@ -71,6 +71,7 @@ describe('room round recovery flow', () => {
     expect(await screen.findByText('Друг предложил обновить подбор')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Оставить мои условия' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }))
+    expect(screen.getByText('Если общих событий не найдётся, эта попытка всё равно будет использована')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Оставить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     const [roomId, body, options] = mocks.replaceMyIntent.mock.calls[0]
@@ -215,5 +216,17 @@ describe('room round recovery flow', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent.mock.calls[0][1]).toMatchObject({ free_text: 'CALLER_ONLY' })
     expect(mocks.replaceMyIntent.mock.calls[0][1].free_text).not.toBe('UNSAVED_KEEP_DRAFT')
+  })
+
+  it('migrates a legacy single recovery selection and preserves it when another choice is toggled', () => {
+    mocks.room = exhausted({ pool: { ...exhausted().pool, total: 3 } })
+    window.sessionStorage.setItem('room-recovery-v1:caller-1:room-rounds:1', JSON.stringify({ selected: 'category', selectedCategory: 'cinema' }))
+    renderRoom()
+
+    const category = screen.getByRole('checkbox', { name: 'Добавить категорию' })
+    expect(category).toBeChecked()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Разрешить любое время' }))
+    expect(category).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Разрешить любое время' })).toBeChecked()
   })
 })

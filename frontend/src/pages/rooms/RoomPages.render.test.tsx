@@ -116,17 +116,17 @@ describe('room vote card transition', () => {
     mocks.room.pool.total = 3
     renderRecoveryRoom()
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить категорию/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
     expect(screen.getByRole('heading', { name: 'Выберите категорию' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'false')
     for (const label of ['Театр', 'Выставки', 'Спорт', 'Еда', 'Вечеринки', 'Фестивали', 'Прогулки', 'Другое']) expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Проверить изменение' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Проверить изменения' })).toBeDisabled()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
     expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
-    expect(screen.getByText('Добавим категорию: Кино')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
@@ -140,16 +140,14 @@ describe('room vote card transition', () => {
     mocks.room = recoveryRoom()
     renderRecoveryRoom()
 
-    fireEvent.click(screen.getByRole('button', { name: /Увеличить бюджет/ }))
-    expect(screen.getByRole('heading', { name: 'Новый лимит стоимости' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /до 2\s?500 ₽/ })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Проверить изменение' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Увеличить бюджет' }))
+    expect(screen.getByLabelText('Новый лимит стоимости')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Проверить изменения' })).toBeDisabled()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: /до 2\s?500 ₽/ }))
-    expect(screen.getByRole('button', { name: /до 2\s?500 ₽/ })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
-    expect(screen.getByText('Лимит стоимости увеличится до 2 500 ₽.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Новый лимит стоимости'), { target: { value: '2500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByText('До 2 000 ₽ → до 2 500 ₽')).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
@@ -164,23 +162,78 @@ describe('room vote card transition', () => {
     const selectedDate = availableDates(mocks.room.myIntent.dates, [], new Date())[0]
     renderRecoveryRoom()
 
-    fireEvent.click(screen.getByRole('button', { name: /Добавить дату/ }))
-    const choices = screen.getByRole('heading', { name: 'Выберите дату' }).parentElement
-    const dateChip = choices?.querySelector('button')
-    expect(dateChip).toBeTruthy()
-    expect(dateChip).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Проверить изменение' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить дату' }))
+    expect(screen.getByLabelText('Дополнительная дата')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Проверить изменения' })).toBeDisabled()
 
-    fireEvent.click(dateChip!)
-    expect(dateChip).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменение' }))
-    expect(screen.getByRole('heading', { name: 'Проверьте изменение' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Дополнительная дата'), { target: { value: selectedDate } })
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByRole('heading', { name: 'Проверьте изменения' })).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       dates: expect.arrayContaining([selectedDate]),
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
+  })
+
+  it('reviews all four changes, retains them on return, and submits them together once', async () => {
+    mocks.room = recoveryRoom()
+    mocks.room.pool.total = 3
+    mocks.room.myIntent.free_text = 'Мои личные условия'
+    const selectedDate = availableDates(mocks.room.myIntent.dates, [], new Date())[0]
+    renderRecoveryRoom()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Увеличить бюджет' }))
+    fireEvent.change(screen.getByLabelText('Новый лимит стоимости'), { target: { value: '3000' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
+    expect(screen.getByRole('button', { name: 'Проверить изменения' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить дату' }))
+    expect(screen.getByRole('button', { name: 'Проверить изменения' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Дополнительная дата'), { target: { value: selectedDate } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Разрешить любое время' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByRole('list', { name: 'Выбранные изменения' }).children).toHaveLength(4)
+    expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
+    const actions = screen.getByRole('button', { name: 'Подтвердить мои условия' }).parentElement!
+    expect(Array.from(actions.querySelectorAll('button')).map((button) => button.textContent)).toEqual([
+      'Подтвердить мои условия', 'Назад к изменениям', 'Создать новую комнату', 'На главную',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Назад к изменениям' }))
+    expect(screen.getByLabelText('Новый лимит стоимости')).toHaveValue('3000')
+    expect(screen.getByLabelText('Дополнительная дата')).toHaveValue(selectedDate)
+    expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('checkbox', { name: 'Разрешить любое время' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    const confirm = screen.getByRole('button', { name: 'Подтвердить мои условия' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
+      budget_max_minor: 300_000, category_slugs: ['concerts', 'standup', 'cinema'],
+      dates: [selectedDate, '2099-09-27'], time_slots: ['morning', 'day', 'evening', 'night'], free_text: 'Мои личные условия',
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
+  })
+
+  it('excludes a deselected change without losing the other selections', async () => {
+    mocks.room = recoveryRoom()
+    mocks.room.pool.total = 3
+    renderRecoveryRoom()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Увеличить бюджет' }))
+    fireEvent.change(screen.getByLabelText('Новый лимит стоимости'), { target: { value: '3000' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Добавить категорию' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Кино' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Увеличить бюджет' }))
+    expect(screen.queryByLabelText('Новый лимит стоимости')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    expect(screen.getByRole('list', { name: 'Выбранные изменения' }).children).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
+      budget_max_minor: 200_000, category_slugs: ['concerts', 'standup', 'cinema'], time_slots: ['evening'], dates: ['2099-09-27'],
     }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 })

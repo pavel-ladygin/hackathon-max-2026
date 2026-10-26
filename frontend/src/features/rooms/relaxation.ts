@@ -16,6 +16,32 @@ export type Relaxation = {
   categories?: Array<{ slug: CategorySlug; label: string }>
 }
 
+export type RelaxationChanges = {
+  budget?: number
+  category?: CategorySlug
+  date?: string
+  time?: true
+}
+
+export function combinedRelaxedIntent(current: RoomSnapshot['myIntent'], changes: RelaxationChanges, now = new Date(), timeZone = DEFAULT_TIME_ZONE): RoomIntentRequestDto {
+  if (!current) throw new Error('A current intent is required before relaxing room preferences')
+  const kinds = (['budget', 'category', 'date', 'time'] as const).filter((kind) => changes[kind] !== undefined)
+  const available = availableRelaxations(current, now, timeZone)
+  if (!kinds.length || kinds.some((kind) => !available.some((item) => item.id === kind))) throw new Error('Select available room intent changes')
+  const result = baseIntent(current, localDate(now, timeZone))
+  // Validate each change against the same original intent, then copy only its
+  // field so adding a category cannot overwrite a previously selected budget.
+  for (const kind of kinds) {
+    const value = changes[kind]
+    const candidate = relaxedIntent(current, kind, now, value === true ? undefined : value, timeZone)
+    if (kind === 'budget') result.budget_max_minor = candidate.budget_max_minor
+    else if (kind === 'category') result.category_slugs = candidate.category_slugs
+    else if (kind === 'date') result.dates = candidate.dates
+    else result.time_slots = candidate.time_slots
+  }
+  return result
+}
+
 export function relaxedIntent(current: RoomSnapshot['myIntent'], kind: Relaxation['id'], now = new Date(), selectedValue?: string | number, timeZone = DEFAULT_TIME_ZONE): RoomIntentRequestDto {
   if (!current) throw new Error('A current intent is required before relaxing room preferences')
   const today = localDate(now, timeZone)

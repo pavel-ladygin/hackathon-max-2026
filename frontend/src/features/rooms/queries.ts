@@ -10,6 +10,10 @@ export function useRoom(roomId: string | undefined) {
     queryFn: async () => {
       const incoming = await apiClient.getRoom(roomId!)
       const current = queryClient.getQueryData<RoomSnapshot>(['room', roomId])
+      const hasCachedHomeFeed = queryClient.getQueriesData({ queryKey: ['home-feed'] }).some(([, data]) => data !== undefined)
+      if ((current && incoming.version >= current.version && roomPhaseKey(current) !== roomPhaseKey(incoming)) || (!current && hasCachedHomeFeed && isTerminal(incoming))) {
+        void queryClient.invalidateQueries({ queryKey: ['home-feed'] })
+      }
       return current && current.version > incoming.version ? current : incoming
     },
     enabled: Boolean(roomId),
@@ -24,6 +28,11 @@ export function useRoom(roomId: string | undefined) {
     refetchIntervalInBackground: false,
   })
 }
+
+function roomPhaseKey(room: RoomSnapshot) {
+  return `${room.round_no}:${room.state}:${room.pool?.version ?? ''}:${room.pool?.my_pool_finished ?? ''}:${room.next_round?.round_no ?? ''}:${room.next_round?.my_confirmed ?? ''}`
+}
+function isTerminal(room: RoomSnapshot) { return room.state === 'matched' || room.state === 'closed' || room.state === 'exhausted' }
 
 export function useRoomEvents(roomId: string | undefined, enabled: boolean, roundNo?: number, poolVersion?: number) {
   return useQuery({

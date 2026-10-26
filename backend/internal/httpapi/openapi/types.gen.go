@@ -2279,7 +2279,7 @@ type RoomSnapshot struct {
 	MyIntent nullable.Nullable[MyIntent]     `json:"my_intent"`
 	Name     string                          `json:"name"`
 
-	// NextRound Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность; отсутствует до первого предложения и после начала следующего раунда.
+	// NextRound Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность. До первого предложения и после начала следующего раунда поле может отсутствовать или содержать JSON null; оба варианта означают отсутствие подготовки.
 	NextRound    nullable.Nullable[NextRoundPreparation] `json:"next_round,omitempty"`
 	Participants []PublicParticipant                     `json:"participants"`
 	Pool         nullable.Nullable[PoolSummary]          `json:"pool"`

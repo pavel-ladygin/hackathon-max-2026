@@ -85,6 +85,36 @@ class OpenAPIContractTest(unittest.TestCase):
         validator.validate(intent)
         self.assertFalse(validator.is_valid({**intent, "unexpected": True}))
 
+    def test_room_intent_requires_explicit_source_and_idempotency(self):
+        operation = self.spec["paths"]["/rooms/{roomId}/intent/me"]["put"]
+        self.assertIn({"$ref": "#/components/parameters/IdempotencyKey"}, operation["parameters"])
+        self.assertTrue(self.spec["components"]["parameters"]["IdempotencyKey"]["required"])
+        validator = Draft202012Validator(
+            {"$ref": BASE_URI + "#/components/schemas/RoomIntentRequest"},
+            registry=self.registry, format_checker=FormatChecker(),
+        )
+        payload = deepcopy(operation["requestBody"]["content"]["application/json"]["example"])
+        validator.validate(payload)
+        for field in ("expected_round_no", "expected_room_version"):
+            legacy = {key: value for key, value in payload.items() if key != field}
+            self.assertFalse(validator.is_valid(legacy))
+            self.assertFalse(validator.is_valid({**payload, field: None}))
+            self.assertFalse(validator.is_valid({**payload, field: 0}))
+
+    def test_preparation_is_optional_nullable_and_contains_no_peer_intent(self):
+        snapshot = self.spec["components"]["schemas"]["RoomSnapshot"]
+        self.assertNotIn("next_round", snapshot["required"])
+        validator = Draft202012Validator(
+            {"$ref": BASE_URI + "#/components/schemas/RoomSnapshot/properties/next_round"},
+            registry=self.registry,
+        )
+        validator.validate(None)
+        preparation = {"round_no": 2, "my_confirmed": False, "confirmed_count": 1, "my_intent": None}
+        validator.validate(preparation)
+        self.assertFalse(validator.is_valid({**preparation, "peer_intent": {"free_text": "private"}}))
+        self.assertFalse(validator.is_valid({**preparation, "round_no": 4}))
+        self.assertIn("confirm_next_round", snapshot["properties"]["allowed_actions"]["items"]["enum"])
+
     def test_event_submission_rejects_client_owned_identity_and_state(self):
         validator = Draft202012Validator(
             {"$ref": BASE_URI + "#/components/schemas/EventSubmissionInput"},

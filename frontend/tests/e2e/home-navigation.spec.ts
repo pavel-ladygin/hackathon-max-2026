@@ -6,7 +6,7 @@ const roomId = 'bug04-room'
 const user = { id: 'bug04-user', display_name: 'Участник', avatar_url: null, city_id: cityId, locale: 'ru' }
 
 type RoomKind = 'active' | 'zero-pool' | 'third-round' | 'error'
-type Counters = { joins: number; writes: string[]; bootstraps: number }
+type Counters = { joins: number; writes: string[]; bootstraps: number; homeReads: number }
 
 function roomSnapshot(kind: Exclude<RoomKind, 'error'>): RoomSnapshotDto {
   const exhausted = kind !== 'active'
@@ -15,7 +15,10 @@ function roomSnapshot(kind: Exclude<RoomKind, 'error'>): RoomSnapshotDto {
     id: roomId, name: 'Планы на ноябрь', city_id: cityId,
     state: exhausted ? 'exhausted' : 'collecting_intents', round_no: thirdRound ? 3 : exhausted ? 2 : 1,
     version: thirdRound ? 7 : exhausted ? 5 : 4,
-    participants: [{ id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: !exhausted }],
+    participants: [
+      { id: user.id, display_name: user.display_name, avatar_url: null, role: 'creator', intent_ready: exhausted },
+      { id: 'bug04-peer', display_name: 'Собеседник', avatar_url: null, role: 'participant', intent_ready: exhausted },
+    ],
     my_intent: exhausted ? { dates: ['2099-11-20'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 350_000, radius_m: 5_000, exclusion_slugs: [], location: null, free_text: null, version: 3, round_no: thirdRound ? 3 : 2, submitted_at: '2099-11-01T10:00:00Z' } : null,
     pool: exhausted ? { version: 5, round_no: thirdRound ? 3 : 2, state: 'exhausted', total: kind === 'zero-pool' ? 0 : 4, voted_by_me: kind === 'zero-pool' ? 0 : 4, my_pool_finished: true, room_exhausted: true, retry_after_seconds: null, exhaustion_reasons: [] } : null,
     match: null, invite: null, allowed_actions: exhausted ? thirdRound ? [] : ['restart_with_new_intent'] : ['edit_intent'],
@@ -24,7 +27,7 @@ function roomSnapshot(kind: Exclude<RoomKind, 'error'>): RoomSnapshotDto {
 }
 
 async function fixture(page: Page, options: { room?: RoomKind; inviteStatus?: 'full' | 'expired' | 'joinable'; inviteAlreadyJoined?: boolean; initialInvite?: boolean } = {}) {
-  const counters: Counters = { joins: 0, writes: [], bootstraps: 0 }
+  const counters: Counters = { joins: 0, writes: [], bootstraps: 0, homeReads: 0 }
   let roomKind = options.room ?? 'active'
   let releaseJoin: (() => void) | undefined
   let releaseSave: (() => void) | undefined
@@ -54,7 +57,10 @@ async function fixture(page: Page, options: { room?: RoomKind; inviteStatus?: 'f
       counters.writes.push(`${request.method()} ${path}`)
       if (saveGate) await saveGate
       savedIntent = request.postDataJSON() as Record<string, unknown>
-      persistedRoom = { ...roomSnapshot('active'), state: 'ranking', round_no: 2, version: 6, my_intent: { ...savedIntent, version: 4, round_no: 2, submitted_at: '2099-11-02T10:00:00Z' } as RoomSnapshotDto['my_intent'] }
+      // The first proposal keeps exhausted round N public while preparing N+1.
+      // It must not fabricate a new pool/ranking state before the peer confirms.
+      const ownPrepared = { ...savedIntent }; delete ownPrepared.expected_round_no; delete ownPrepared.expected_room_version
+      persistedRoom = { ...roomSnapshot('zero-pool'), version: 6, next_round: { round_no: 3, confirmed_count: 1, my_confirmed: true, my_intent: { ...ownPrepared, version: 4, round_no: 3, submitted_at: '2099-11-02T10:00:00Z' } as NonNullable<RoomSnapshotDto['my_intent']> } }
       return route.fulfill({ json: persistedRoom })
     }
     if (path.startsWith('/api/v1/rooms') && request.method() !== 'GET') {
@@ -66,8 +72,11 @@ async function fixture(page: Page, options: { room?: RoomKind; inviteStatus?: 'f
       return route.fulfill({ json: persistedRoom })
     }
     if (path.endsWith('/feed/home')) {
-      const hasActiveRoom = (Boolean(options.room) && roomKind !== 'error') || joined
-      return route.fulfill({ json: { feed_id: 'bug04-feed', generated_at: '2099-11-01T00:00:00Z', sections: [], active_room: hasActiveRoom ? { id: roomId, name: 'Планы на ноябрь', city_id: cityId, state: persistedRoom.state } : null } })
+      counters.homeReads += 1
+      // The actual feed deliberately excludes exhausted rooms; do not make a
+      // continuation button appear from a fixture-only active_room projection.
+      const hasActiveRoom = (joined || options.room !== undefined) && ['collecting_intents', 'ranking', 'voting'].includes(persistedRoom.state)
+      return route.fulfill({ json: { feed_id: 'bug04-feed', generated_at: '2099-11-01T00:00:00Z', sections: [{ type: 'popular', title: 'Популярное', items: [] }], active_room: hasActiveRoom ? { id: roomId, name: 'Планы на ноябрь', city_id: cityId, state: persistedRoom.state } : null } })
     }
     if (path.endsWith('/events/search/count')) return route.fulfill({ json: { total: 0 } })
     if (path.endsWith('/events/search')) return route.fulfill({ json: { items: [], total_estimate: 0, next_cursor: null, applied_filters: {} } })
@@ -87,7 +96,7 @@ async function fixture(page: Page, options: { room?: RoomKind; inviteStatus?: 'f
 test('BUG-04 null invitation context is a neutral screen with an explicit Home exit', async ({ page }, testInfo) => {
   const backend = await fixture(page)
   await page.goto('/join/bug04-invite', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: 'Вас пригласили выбрать, куда сходить' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Не удалось подтвердить приглашение' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('bug04-null-invite-before-home.png'), fullPage: true })
   await page.getByRole('button', { name: 'На главную', exact: true }).click()
   await assertHomeStable(page)
@@ -100,7 +109,7 @@ async function assertHomeStable(page: Page) {
   await expect(page).toHaveURL(/\/$/)
   await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('pageshow')) })
   await expect(page).toHaveURL(/\/$/)
-  await page.waitForLoadState('networkidle')
+  await expect.poll(() => page.getByRole('button', { name: /^(Создать комнату|Продолжить)$/ }).count()).toBe(1)
   await expect(page.getByRole('button', { name: 'Главная', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: /^(Создать комнату|Продолжить)$/ })).toBeVisible()
 }
@@ -132,9 +141,14 @@ for (const room of ['zero-pool', 'third-round', 'error'] as const) {
     await page.getByRole('button', { name: 'На главную', exact: true }).click()
     await assertHomeStable(page)
     await page.screenshot({ path: testInfo.outputPath(`bug04-${room}-home-after-error.png`), fullPage: true })
-    await page.getByRole('button', { name: 'Продолжить', exact: true }).click()
-    await expect(page).toHaveURL(new RegExp(`/rooms/${roomId}/${room === 'third-round' ? 'recovery' : room === 'error' ? 'intent' : 'recovery'}$`))
-    await expect(page.getByRole('heading', { name: room === 'third-round' ? 'Лимит подборок исчерпан' : room === 'error' ? 'Мои предпочтения' : 'Общих событий пока нет' })).toBeVisible()
+    if (room === 'error') {
+      await page.getByRole('button', { name: 'Продолжить', exact: true }).click()
+      await expect(page).toHaveURL(new RegExp(`/rooms/${roomId}/intent$`))
+      await expect(page.getByRole('heading', { name: 'Мои предпочтения' })).toBeVisible()
+    } else {
+      await expect(page.getByRole('button', { name: 'Создать комнату', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Продолжить', exact: true })).toHaveCount(0)
+    }
     expect(backend.counters.joins).toBe(0)
     expect(backend.counters.writes).toEqual([])
   })
@@ -164,8 +178,8 @@ test('BUG-04 pending join completion cannot navigate over explicit Home exit', a
 test('BUG-04 pending recovery save completes data invalidation but cannot leave Home; Continue keeps snapshot', async ({ page }, testInfo) => {
   const backend = await fixture(page, { room: 'zero-pool' })
   await page.goto(`/rooms/${roomId}/recovery`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: /Разрешить любое время/ }).click()
-  await page.getByRole('button', { name: 'Проверить изменение', exact: true }).click()
+  await page.getByRole('checkbox', { name: /Разрешить любое время/ }).check()
+  await page.getByRole('button', { name: 'Проверить изменения', exact: true }).click()
   const release = backend.deferSave()
   const savedResponse = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/rooms/${roomId}/intent/me`))
   await page.getByRole('button', { name: 'Подтвердить мои условия', exact: true }).click()
@@ -177,12 +191,11 @@ test('BUG-04 pending recovery save completes data invalidation but cannot leave 
   await assertHomeStable(page)
   await page.screenshot({ path: testInfo.outputPath('bug04-home-after-pending-save.png'), fullPage: true })
   await expect(page).toHaveURL(/\/$/)
-  await page.getByRole('button', { name: 'Продолжить', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`/rooms/${roomId}/waiting$`))
-  await expect(page.getByRole('heading', { name: 'Формируем общий пул…' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Создать комнату', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Продолжить', exact: true })).toHaveCount(0)
   expect(backend.persistedRoom.version).toBe(6)
   expect(backend.savedIntent).not.toBeNull()
-  expect(backend.persistedRoom.my_intent).toMatchObject({ ...backend.savedIntent, time_slots: ['morning', 'day', 'evening', 'night'] })
+  expect(backend.persistedRoom.next_round).toMatchObject({ round_no: 3, confirmed_count: 1, my_confirmed: true, my_intent: { time_slots: ['morning', 'day', 'evening', 'night'] } })
   expect(backend.counters.writes).toEqual([`PUT /api/v1/rooms/${roomId}/intent/me`])
 })
 

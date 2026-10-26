@@ -106,7 +106,7 @@ export function PageContent({ children, className = "" }: { children: ReactNode;
 }
 
 export function TopBar({ title, onBack, right, prominentBack = false, spacious = false }: { title?: ReactNode; onBack?: () => void; right?: ReactNode; prominentBack?: boolean; spacious?: boolean }) {
-  return <header className={`${styles.topBar} ${spacious ? styles.topBarSpacious : ""}`}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" variant={prominentBack ? "surface" : "default"} className={prominentBack ? styles.prominentBack : ""} onClick={onBack}><ArrowLeftIcon /></IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
+  return <header className={`${styles.topBar} ${spacious ? styles.topBarSpacious : ""}`}><div className={styles.topBarSide}>{onBack && <IconButton label="Назад" variant={prominentBack ? "surface" : "default"} className={`${styles.backButton} ${prominentBack ? styles.prominentBack : ""}`} onClick={onBack}><ArrowLeftIcon /></IconButton>}</div><div className={styles.topBarTitle}>{title}</div><div className={styles.topBarSide}>{right}</div></header>;
 }
 
 export function PrivacyNote({ title = "Ваши ответы видны только вам", children = "Мы показываем участникам только общие совпадения — никакой неловкости." }: { title?: string; children?: ReactNode }) {

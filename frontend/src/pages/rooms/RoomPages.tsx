@@ -10,7 +10,7 @@ import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
 import { useRoom, useRoomEvents } from '../../features/rooms/queries'
 import { RoomEventDate } from '../../features/rooms/RoomEventDate'
-import { availableRelaxations, relaxedIntent } from '../../features/rooms/relaxation'
+import { availableRelaxations, combinedRelaxedIntent, type Relaxation, type RelaxationChanges } from '../../features/rooms/relaxation'
 import { isRoomError, roomErrorMessage } from '../../features/rooms/errors'
 import { participantInitials, resolveSwipeIntent } from '../../features/rooms/animation'
 import { withMinimumDuration } from '../../shared/lib/async'
@@ -28,6 +28,7 @@ import { RoomDateChoices } from '../../shared/ui/RoomDateChoices'
 import styles from '../pages.module.css'
 import intentStyles from './intent.module.css'
 import reliabilityStyles from './reliability.module.css'
+import recoveryStyles from './recovery.module.css'
 import { track, trackFailure } from '../../shared/analytics/client'
 import { CreateRoomForm } from './CreateRoomForm'
 import { PlanSummary } from './PlanSummary'
@@ -59,6 +60,7 @@ export function NewRoomPage() {
     },
     onSuccess: async ({ room }, _values, canNavigate) => {
       queryClient.setQueryData(['room', room.id], room)
+      await queryClient.invalidateQueries({ queryKey: ['home-feed'] })
       setCreateSuccess(true)
       try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable in a WebView. */ }
       await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350))
@@ -148,7 +150,7 @@ export function JoinPage() {
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
-      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
+      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Не удалось подтвердить приглашение'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». После подключения каждый самостоятельно укажет свои условия.` : 'Вернитесь на главную и откройте актуальную ссылку-приглашение.'}</p>
       {context ? <PlanSummary plan={context.public_plan} cityId={context.city_id} /> : null}
       <PrivacyNote />{join.isError ? <AuthRecoveryAction error={join.error} /> : null}{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' || expired ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
@@ -217,7 +219,7 @@ function RoomRedirect({ to, canNavigate }: { to: string; canNavigate: () => bool
 const intentSchema = (timezone?: string) => z.object({
   dates: z.array(z.string()).min(1, 'Выберите хотя бы одну дату').max(14, 'Не больше 14 дат').refine((dates) => new Set(dates).size === dates.length && dates.every((date) => isCanonicalDate(date) && (!timezone || date >= cityToday(timezone))), 'Выберите актуальные даты без повторов; прошедшие даты нужно изменить самостоятельно'),
   time_slots: z.array(z.enum(['morning', 'day', 'evening', 'night'])),
-  category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1),
+  category_slugs: z.array(z.enum(CATEGORY_SLUGS)).min(1, 'Выберите хотя бы одну категорию'),
   budget: z.number({ invalid_type_error: 'Введите бюджет' }).min(0).max(1_000_000).multipleOf(0.01, 'Укажите сумму с точностью до копейки'),
   free_text: z.string().max(300),
 })
@@ -232,6 +234,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const city = roomCity(room.city_id)
   const timezone = city?.timezone
   const bootstrap = useBootstrap()
+  const confirmingPublicPlan = Boolean(room.public_plan && !room.myIntent)
   const errorSummary = useRef<HTMLParagraphElement>(null)
   const draftKey = `room-intent-v1:${bootstrap.data?.user.id ?? 'pending'}:${room.id}:${room.round_no}`
   const [formDefaults] = useState(() => readIntentDraft(draftKey, intentDefaults(room, timezone ? cityToday(timezone) : localDate(new Date()))))
@@ -253,7 +256,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
   const save = useMutation({
     onMutate: captureNavigation,
     mutationFn: (values: IntentForm) => { if (flow.remoteChanged && !remoteEditing) throw new Error('Confirm the updated room first'); const source = remoteEditing ? flow.live ?? room : room; return submitIntent(source, toIntent(values)) },
-    onSuccess: async (data, _values, canNavigate) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (!canNavigate?.() || !flow.adopt(data)) return; try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable. */ } navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
+    onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.() || !flow.adopt(data)) return; try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable. */ } navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
       if (!(error instanceof ApiError)) return
@@ -266,11 +269,11 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
     const prepared = source.next_round?.my_intent ?? source.myIntent
     if (!prepared) throw new Error('No saved own intent available for next-round confirmation')
     return submitIntent(source, fromSavedIntent(prepared))
-  }, onSuccess: async (data, _values, canNavigate) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (canNavigate?.()) flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (canNavigate?.()) flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${intentStyles.intentPage}`}>
-      <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>Мои предпочтения</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>Укажите, что подходит именно сейчас. Другой участник не увидит ответы.</p>
-      {room.public_plan && !room.myIntent ? <p className={styles.subtitle}>Поля заполнены из публичного предложения. Измените их для себя и подтвердите свои предпочтения. Другой участник подтверждает их отдельно.</p> : null}
+      <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>{confirmingPublicPlan ? 'Подтвердите личные пожелания' : 'Мои предпочтения'}</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>{confirmingPublicPlan ? 'Мы перенесли условия из публичного плана встречи. Проверьте их и при необходимости измените для себя' : 'Укажите, что подходит именно сейчас. Другой участник не увидит ответы.'}</p>
+      {confirmingPublicPlan ? <p className={styles.subtitle}>Каждый участник подтверждает свои пожелания отдельно</p> : null}
       <p className={styles.subtitle}>{city ? `${city.name} · ${timeZoneLabel(city.timezone)}` : 'Время зависит от выбранного города.'}</p><PrivacyNote />
       <form className={`${styles.formStack} ${intentStyles.intentForm}`} onSubmit={(event) => { void form.handleSubmit((values) => { if (!save.isPending) save.mutate(values) }, () => window.requestAnimationFrame(() => errorSummary.current?.focus()))(event) }}>
         {Object.keys(form.formState.errors).length ? <p ref={errorSummary} tabIndex={-1} className={`${styles.error} ${intentStyles.formErrors}`} role="alert">Проверьте выбранные даты, время, бюджет и интересы.</p> : null}
@@ -281,7 +284,7 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {save.isError ? <AuthRecoveryAction error={save.error} /> : null}{save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
         {confirmRemote.isError ? <><AuthRecoveryAction error={confirmRemote.error} /><p className={styles.error} role="alert">{roomErrorMessage(confirmRemote.error, 'Не удалось подтвердить условия. Повторите попытку или измените их.')}</p></> : null}
-        <div className={`${styles.footer} ${intentStyles.intentFooter}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : remotePreparation && !remoteEditing ? <RemoteChangeCard pending={confirmRemote.isPending} onKeep={() => confirmRemote.mutate()} onEdit={() => setRemoteEditing(true)} /> : <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : 'Сохранить предпочтения'}</Button>}</div>
+        <div className={`${styles.footer} ${intentStyles.intentFooter}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : remotePreparation && !remoteEditing ? <RemoteChangeCard pending={confirmRemote.isPending} onKeep={() => confirmRemote.mutate()} onEdit={() => setRemoteEditing(true)} /> : <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : confirmingPublicPlan ? 'Подтвердить пожелания' : 'Сохранить предпочтения'}</Button>}</div>
       </form>
     </PageContent></PageShell>
   )
@@ -328,6 +331,7 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
         queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
+        queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
       ])
       const current = queryClient.getQueryData<RoomSnapshot>(['room', room.id])
       // A late vote response may acknowledge only its displayed pool, never a
@@ -412,7 +416,7 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
   return (
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <Suspense fallback={<ScreenSkeleton variant="event" inline label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
-      <div className={styles.footer}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending || !event.data.ticketAvailable} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>{event.data.dataProvenance.source === 'user' ? event.data.ticketAvailable ? 'Открыть сайт мероприятия' : 'Ссылка не указана' : event.data.ticketAvailable ? 'К билетам' : 'Билеты недоступны'}</Button></div>
+      <div className={`${styles.footer} ${styles.matchActions}`}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending || !event.data.ticketAvailable} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>{event.data.dataProvenance.source === 'user' ? event.data.ticketAvailable ? 'Открыть сайт мероприятия' : 'Ссылка не указана' : event.data.ticketAvailable ? 'К билетам' : 'Билеты недоступны'}</Button></div>
       {ticket.isError ? <AuthRecoveryAction error={ticket.error} /> : null}{ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>
   )
@@ -427,24 +431,37 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const bootstrap = useBootstrap()
   const recoveryDraftKey = `room-recovery-v1:${bootstrap.data?.user.id ?? 'pending'}:${room.id}:${room.round_no}`
   const [draft] = useState(() => readRecoveryDraft(recoveryDraftKey))
-  const [selected, setSelected] = useState<string | null>(draft.selected ?? null)
+  const [selected, setSelected] = useState<Relaxation['id'][]>(() => normalizeRecoverySelections(draft.selected))
   const [selectedDate, setSelectedDate] = useState<string | null>(draft.selectedDate ?? null)
   const [selectedCategory, setSelectedCategory] = useState<CategorySlug | null>(draft.selectedCategory ?? null)
   const [selectedBudget, setSelectedBudget] = useState<number | null>(draft.selectedBudget ?? null)
   const [review, setReview] = useState(Boolean(draft.review))
+  const restartLocked = useRef(false)
   useEffect(() => {
     try { window.sessionStorage.setItem(recoveryDraftKey, JSON.stringify({ selected, selectedDate, selectedCategory, selectedBudget, review })) } catch { /* Storage may be unavailable in a WebView. */ }
   }, [recoveryDraftKey, review, selected, selectedBudget, selectedCategory, selectedDate])
   const timezone = roomCity(room.city_id)?.timezone
   const zeroPool = room.pool?.total === 0
   const suggestions = (timezone ? availableRelaxations(room.myIntent, new Date(), timezone) : []).filter((item) => !zeroPool || item.id !== 'category')
-  const selectedSuggestion = suggestions.find((item) => item.id === selected)
+  const selectedSuggestions = suggestions.filter((item) => selected.includes(item.id))
   const nextIntent = (() => {
     try {
-      return selectedSuggestion?.id === 'date' && selectedDate ? relaxedIntent(room.myIntent, 'date', new Date(), selectedDate, timezone)
-        : selectedSuggestion?.id === 'category' && selectedCategory ? relaxedIntent(room.myIntent, 'category', new Date(), selectedCategory, timezone)
-        : selectedSuggestion?.id === 'budget' && selectedBudget !== null ? relaxedIntent(room.myIntent, 'budget', new Date(), selectedBudget, timezone)
-        : selectedSuggestion?.intent ?? null
+      if (!selected.length || selectedSuggestions.length !== selected.length) return null
+      const changes: RelaxationChanges = {}
+      if (selected.includes('budget')) {
+        if (selectedBudget === null) return null
+        changes.budget = selectedBudget
+      }
+      if (selected.includes('category')) {
+        if (!selectedCategory) return null
+        changes.category = selectedCategory
+      }
+      if (selected.includes('date')) {
+        if (!selectedDate) return null
+        changes.date = selectedDate
+      }
+      if (selected.includes('time')) changes.time = true
+      return combinedRelaxedIntent(room.myIntent, changes, new Date(), timezone)
     } catch { return null } // A saved choice may expire while this screen remains open.
   })()
   const restart = useMutation({ onMutate: captureNavigation, mutationFn: () => {
@@ -452,7 +469,7 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
     const source = remoteEditing ? flow.live ?? room : room
     if (flow.remoteChanged && !remoteEditing) throw new Error('Confirm the updated room first')
     return submitIntent(source, nextIntent)
-  }, onSuccess: async (data, _values, canNavigate) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (!canNavigate?.() || !flow.adopt(data)) return; if (data.state !== 'exhausted') navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.() || !flow.adopt(data)) return; if (data.state !== 'exhausted') navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) }, onSettled: () => { restartLocked.current = false } })
   const [remoteNoticeOpen, setRemoteNoticeOpen] = useState(false)
   const [remoteEditing, setRemoteEditing] = useState(false)
   const sourceRoom = flow.live ?? room
@@ -462,28 +479,42 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
     const prepared = sourceRoom.next_round?.my_intent ?? sourceRoom.myIntent
     if (!prepared) throw new Error('No own intent available for next-round confirmation')
     return submitIntent(sourceRoom, fromSavedIntent(prepared))
-  }, onSuccess: async (data, _values, canNavigate) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (!canNavigate?.()) return; flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.()) return; flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
   if (!room.allowed_actions.includes('restart_with_new_intent') && !preparedWaiting && !remotePreparation && !flow.remoteChanged) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
         <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p><h1 className={styles.title}>{room.round_no >= 3 ? 'Лимит подборок исчерпан' : 'Раунды этой комнаты завершены'}</h1><p className={styles.subtitle}>{room.pool?.total === 0 ? 'В этом раунде общих событий не нашлось. Голосование не начиналось. Доступны три попытки подбора; можно создать новую комнату.' : 'События закончились, общего лайка нет. Создайте новую комнату, когда появятся другие планы.'}</p>
         <PrivacyNote>Предпочтения второго участника по-прежнему не раскрываются.</PrivacyNote>
-        <div className={`${styles.footer} ${reliabilityStyles.actions}`}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+        <div className={`${styles.footer} ${reliabilityStyles.actions}`}><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button onClick={() => navigate('/')}>На главную</Button></div>
       </PageContent></PageShell>
     )
   }
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p>{preparedWaiting ? <p className={styles.subtitle}>Подготовка раунда {room.round_no + 1}</p> : null}<h1 className={styles.title}>{zeroPool ? 'Общих событий пока нет' : room.pool && room.pool.total > 0 ? 'События закончились, общего лайка нет' : 'Подборка завершена'}</h1><p className={styles.subtitle}>{zeroPool ? 'По вашим условиям не нашлось общих событий. Голосование в этом раунде не начиналось.' : room.pool && room.pool.total > 0 ? 'Доступные карточки закончились. Можно пересмотреть собственные условия.' : 'Можно пересмотреть собственные условия.'} Изменения не гарантируют больше событий.</p><p className={styles.subtitle}>Вы меняете только свои пожелания. Каждый участник самостоятельно пересматривает и подтверждает свои условия.</p>
-      {!review ? <section className={styles.section}><h2 className={styles.sectionTitle}>Что изменить в подборке?</h2>{suggestions.map((item) => <button type="button" key={item.id} className={`${styles.suggestion} ${selectedSuggestion?.id === item.id ? styles.suggestionSelected : ''}`} aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setSelectedDate(null); setSelectedCategory(null); setSelectedBudget(null) }}><span><strong>{item.title}</strong>{item.id === 'budget' ? <small>Вы сами выберете новый лимит</small> : item.id === 'category' ? <small>Изменит порядок рекомендаций, но не гарантирует больше событий</small> : item.id === 'time' ? <small>Добавим утро, день и ночь</small> : <small>Вы сами выберете конкретный день</small>}</span><span aria-hidden="true">{selected === item.id ? '✓' : '○'}</span></button>)}
-        {selectedSuggestion?.id === 'date' ? <div className={styles.dateChoices}><h3>Выберите дату</h3><ChipGroup>{selectedSuggestion.dates?.map((date) => <Chip key={date} selected={selectedDate === date} onClick={() => setSelectedDate(date)}>{formatRoomDate(date)}</Chip>)}</ChipGroup></div> : null}
-        {selectedSuggestion?.id === 'category' ? <div className={styles.dateChoices}><h3>Выберите категорию</h3><ChipGroup>{selectedSuggestion.categories?.map(({ slug, label }) => <Chip key={slug} selected={selectedCategory === slug} onClick={() => setSelectedCategory(slug)}>{label}</Chip>)}</ChipGroup></div> : null}
-        {selectedSuggestion?.id === 'budget' ? <div className={styles.dateChoices}><h3>Новый лимит стоимости</h3><p className={styles.subtitle}>Сейчас до {((room.myIntent?.budget_max_minor ?? 0) / 100).toLocaleString('ru')} ₽. Выберите сумму, до которой готовы потратить.</p><div className={styles.recoveryChoiceGrid}>{selectedSuggestion.budgets?.map((amount) => <Chip key={amount} selected={selectedBudget === amount} onClick={() => setSelectedBudget(amount)}>до {amount.toLocaleString('ru')} ₽</Chip>)}</div></div> : null}
+      <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p>{preparedWaiting ? <p className={styles.subtitle}>Подготовка раунда {room.round_no + 1}</p> : null}
+      {!review ? <>
+        <h1 className={styles.title}>{zeroPool ? 'Общих событий пока нет' : room.pool && room.pool.total > 0 ? 'События закончились, общего лайка нет' : 'Подборка завершена'}</h1><p className={styles.subtitle}>{zeroPool ? 'По вашим условиям не нашлось общих событий. Голосование в этом раунде не начиналось.' : room.pool && room.pool.total > 0 ? 'Доступные карточки закончились. Можно пересмотреть собственные условия.' : 'Можно пересмотреть собственные условия.'} Изменения не гарантируют больше событий.</p><p className={styles.subtitle}>Вы меняете только свои пожелания. Каждый участник самостоятельно пересматривает и подтверждает свои условия.</p>
+        <section className={styles.section}><h2 className={styles.sectionTitle}>Что изменить в подборке?</h2><p className={styles.subtitle}>Можно выбрать несколько изменений</p>{suggestions.map((item) => {
+          const checked = selected.includes(item.id)
+          return <div key={item.id} className={`${recoveryStyles.option} ${checked ? recoveryStyles.selected : ''}`}>
+            <label className={recoveryStyles.toggle}>
+              <span><strong>{item.title}</strong>{item.id === 'budget' ? <small>Сейчас до {((room.myIntent?.budget_max_minor ?? 0) / 100).toLocaleString('ru')} ₽ на человека</small> : item.id === 'category' ? <small>Изменит порядок рекомендаций, но не гарантирует больше событий</small> : item.id === 'time' ? <small>Добавим утро, день и ночь</small> : <small>Вы сами выберете конкретный день</small>}</span>
+              <input type="checkbox" aria-label={item.title} checked={checked} onChange={() => setSelected((current) => toggleValue(current, item.id))} />
+            </label>
+            {checked && item.id === 'budget' ? <div className={recoveryStyles.details}><label className={recoveryStyles.label} htmlFor="recovery-budget">Новый лимит стоимости</label><select id="recovery-budget" className={recoveryStyles.select} value={selectedBudget ?? ''} onChange={(event) => setSelectedBudget(event.target.value ? Number(event.target.value) : null)}><option value="">Выберите сумму</option>{item.budgets?.map((amount) => <option key={amount} value={amount}>до {amount.toLocaleString('ru')} ₽</option>)}</select></div> : null}
+            {checked && item.id === 'category' ? <div className={recoveryStyles.details}><h3 className={recoveryStyles.label}>Выберите категорию</h3><ChipGroup>{item.categories?.map(({ slug, label }) => <Chip key={slug} selected={selectedCategory === slug} onClick={() => setSelectedCategory((current) => current === slug ? null : slug)}>{label}</Chip>)}</ChipGroup></div> : null}
+            {checked && item.id === 'date' ? <div className={recoveryStyles.details}><label className={recoveryStyles.label} htmlFor="recovery-date">Дополнительная дата</label><select id="recovery-date" className={recoveryStyles.select} value={selectedDate ?? ''} onChange={(event) => setSelectedDate(event.target.value || null)}><option value="">Выберите дату</option>{item.dates?.map((date) => <option key={date} value={date}>{formatRoomDate(date)}</option>)}</select></div> : null}
+          </div>
+        })}
         {suggestions.length === 0 ? <p className={styles.subtitle}>{!timezone ? 'Не удалось определить часовой пояс города. Вернитесь на главную или создайте новую комнату с выбранным городом.' : 'Больше нечего изменить в текущих условиях. Попробуйте позже или создайте новую комнату.'}</p> : null}
-      </section> : <section className={styles.section}><h2 className={styles.sectionTitle}>Проверьте изменение</h2><p className={styles.subtitle}>{selectedSuggestion?.id === 'date' ? `Добавим дату: ${selectedDate ? formatRoomDate(selectedDate) : ''}` : selectedSuggestion?.id === 'category' ? `Добавим категорию: ${selectedSuggestion.categories?.find(({ slug }) => slug === selectedCategory)?.label ?? ''}` : selectedSuggestion?.id === 'budget' ? `Лимит стоимости увеличится до ${selectedBudget?.toLocaleString('ru') ?? ''} ₽.` : 'Можно будет выбрать событие в любое время суток.'}</p><p>Вы подтвердите только свои условия. Для подбора нужно независимое подтверждение каждого участника.</p></section>}
+      </section></> : <section>
+        <p className={styles.eyebrow}>ВАШИ УСЛОВИЯ</p><h1 className={styles.title}>Проверьте изменения</h1><p className={styles.subtitle}>Вы подтвердите только свои условия. Для подбора нужно независимое подтверждение каждого участника.</p>
+        <ul className={recoveryStyles.summary} aria-label="Выбранные изменения">{selectedSuggestions.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.id === 'budget' ? `До ${((room.myIntent?.budget_max_minor ?? 0) / 100).toLocaleString('ru')} ₽ → до ${selectedBudget?.toLocaleString('ru') ?? ''} ₽` : item.id === 'category' ? `${item.categories?.find(({ slug }) => slug === selectedCategory)?.label ?? ''} — в дополнение к выбранным` : item.id === 'date' ? selectedDate ? formatRoomDate(selectedDate) : '' : 'Утро, день, вечер и ночь'}</span></li>)}</ul>
+        <p className={styles.subtitle}>Остальные ваши условия сохранятся</p>
+      </section>}
       {restart.isError ? <AuthRecoveryAction error={restart.error} /> : null}{restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
       {confirmPrepared.isError ? <><AuthRecoveryAction error={confirmPrepared.error} /><p className={styles.error} role="alert">{roomErrorMessage(confirmPrepared.error, 'Не удалось подтвердить условия. Повторите попытку или измените их.')}</p></> : null}
-      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : preparedWaiting ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong>Условия сохранены</strong><p style={{ margin: '5px 0 0', fontSize: 14 }}>Ждём, когда второй участник подтвердит условия следующей подборки.</p></section> : remotePreparation && !remoteEditing && !remoteNoticeOpen ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button onClick={() => setRemoteNoticeOpen(true)} style={{ width: 'auto', minHeight: 44 }}>Продолжить</Button></section> : remotePreparation && !remoteEditing ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Выберите действие перед следующим раундом.</p><Button disabled={confirmPrepared.isPending} onClick={() => confirmPrepared.mutate()}>Оставить мои условия</Button><Button tone="secondary" disabled={confirmPrepared.isPending} onClick={() => setRemoteEditing(true)}>Изменить условия</Button></section> : review ? <><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending) restart.mutate() }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button></> : <Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменение</Button>}<Button tone="ghost" onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" disabled={restart.isPending || confirmPrepared.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : preparedWaiting ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong>Условия сохранены</strong><p style={{ margin: '5px 0 0', fontSize: 14 }}>Ждём, когда второй участник подтвердит условия следующей подборки.</p></section> : remotePreparation && !remoteEditing && !remoteNoticeOpen ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button onClick={() => setRemoteNoticeOpen(true)} style={{ width: 'auto', minHeight: 44 }}>Продолжить</Button></section> : remotePreparation && !remoteEditing ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Выберите действие перед следующим раундом.</p><p style={{ margin: '0 0 10px', fontSize: 14 }}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button disabled={confirmPrepared.isPending} onClick={() => confirmPrepared.mutate()}>Оставить мои условия</Button><Button tone="secondary" disabled={confirmPrepared.isPending} onClick={() => setRemoteEditing(true)}>Изменить условия</Button></section> : review ? <><p className={styles.subtitle}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending && !restartLocked.current) { restartLocked.current = true; restart.mutate() } }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : <><Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменения</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></>}</div>
     </PageContent></PageShell>
   )
 }
@@ -506,7 +537,7 @@ function ClosedScreen({ room }: { room: RoomSnapshot }) {
   const closer = room.closed_by?.display_name
   return <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
     <p className={styles.eyebrow}>КОМНАТА ЗАВЕРШЕНА</p><h1 className={styles.title}>Подборка закрыта</h1><p className={styles.subtitle}>{closer ? `Комнату завершил участник «${closer}».` : 'Эта комната больше не активна.'}{room.closed_at ? ` ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(room.closed_at))}` : ''}</p>
-    <div className={styles.footer}><Button onClick={() => navigate('/')}>На главную</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button></div>
+    <div className={styles.footer}><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button onClick={() => navigate('/')}>На главную</Button></div>
   </PageContent></PageShell>
 }
 
@@ -530,7 +561,7 @@ function toIntent(values: IntentForm): RoomIntentRequestDto {
 }
 function RemoteChangeCard({ onKeep, onEdit, pending }: { onKeep: () => void; onEdit: () => void; pending: boolean }) {
   const [open, setOpen] = useState(false)
-  return !open ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button type="button" style={{ width: 'auto', minHeight: 44 }} onClick={() => setOpen(true)}>Продолжить</Button></section> : <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><Button type="button" disabled={pending} onClick={onKeep}>Оставить мои условия</Button><Button type="button" tone="secondary" disabled={pending} onClick={onEdit}>Изменить условия</Button></section>
+  return !open ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button type="button" style={{ width: 'auto', minHeight: 44 }} onClick={() => setOpen(true)}>Продолжить</Button></section> : <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button type="button" disabled={pending} onClick={onKeep}>Оставить мои условия</Button><Button type="button" tone="secondary" disabled={pending} onClick={onEdit}>Изменить условия</Button></section>
 }
 function RemoteAdoptCard({ title, onContinue }: { title: string; onContinue: () => void }) {
   return <section style={{ width: '100%', marginTop: 16, padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>{title}</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Продолжите, чтобы открыть актуальное состояние комнаты.</p><Button type="button" style={{ width: 'auto', minHeight: 44 }} onClick={onContinue}>Продолжить</Button></section>
@@ -549,12 +580,16 @@ function useIntentSubmission() {
     return apiClient.replaceMyIntent(room.id, input, { expectedRoundNo: room.round_no, expectedRoomVersion: room.version, idempotencyKey: attempt.current.key })
   }
 }
-type RecoveryDraft = { selected?: string; selectedDate?: string | null; selectedCategory?: CategorySlug | null; selectedBudget?: number | null; review?: boolean }
+type RecoveryDraft = { selected?: Relaxation['id'] | Relaxation['id'][]; selectedDate?: string | null; selectedCategory?: CategorySlug | null; selectedBudget?: number | null; review?: boolean }
 function readIntentDraft(key: string, fallback: IntentForm): IntentForm {
   try { const parsed = intentSchema().safeParse(JSON.parse(window.sessionStorage.getItem(key) ?? 'null')); return parsed.success ? parsed.data : fallback } catch { return fallback }
 }
 function readRecoveryDraft(key: string): RecoveryDraft {
   try { return JSON.parse(window.sessionStorage.getItem(key) ?? '{}') ?? {} } catch { return {} }
+}
+function normalizeRecoverySelections(value: RecoveryDraft['selected']): Relaxation['id'][] {
+  const values = Array.isArray(value) ? value : value ? [value] : []
+  return values.filter((item): item is Relaxation['id'] => item === 'budget' || item === 'category' || item === 'date' || item === 'time')
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }
