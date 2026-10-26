@@ -1507,9 +1507,19 @@ paths:
       - Rooms
       operationId: replaceMyRoomIntent
       summary: Полностью заменить условия подбора текущего участника
-      description: Когда оба участника сохранят условия, сервер начнёт формировать первый или обновлённый пул событий.
+      description: >-
+        Подтверждает собственные условия для текущего или подготавливаемого раунда.
+        После exhausted активный round_no остаётся N, пока оба участника отдельно
+        не подтвердят условия N+1. Только затем сервер атомарно начинает N+1 и
+        строит пул. expected_round_no и expected_room_version относятся к текущему
+        RoomSnapshot, а не к номеру подготовки. Устаревший источник возвращает 409
+        без изменений. Повтор того же Idempotency-Key с тем же запросом возвращает
+        актуальный безопасный snapshot без повторного подтверждения; другой запрос
+        с тем же ключом возвращает IDEMPOTENCY_CONFLICT. Ключ хранится до expires_at
+        комнаты. GET, polling и reload не подтверждают условия и не начинают раунд.
       parameters:
       - $ref: '#/components/parameters/RoomId'
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1517,6 +1527,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RoomIntentRequest'
             example:
+              expected_round_no: 1
+              expected_room_version: 3
               dates:
               - '2026-09-19'
               - '2026-09-20'
@@ -3265,7 +3277,7 @@ components:
           type: integer
           minimum: 1
           maximum: 3
-          description: Текущий раунд подтверждения условий и формирования пула событий.
+          description: Активный раунд. После exhausted увеличивается только при независимом подтверждении обоих участников; подготовка следующего раунда не расходует лимит.
         version:
           type: integer
           minimum: 1
@@ -3279,6 +3291,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/MyIntent'
           - type: 'null'
+        next_round:
+          anyOf:
+          - $ref: '#/components/schemas/NextRoundPreparation'
+          - type: 'null'
+          description: Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность. До первого предложения и после начала следующего раунда поле может отсутствовать или содержать JSON null; оба варианта означают отсутствие подготовки.
         pool:
           anyOf:
           - $ref: '#/components/schemas/PoolSummary'
@@ -3305,6 +3322,7 @@ components:
             - vote
             - view_match
             - restart_with_new_intent
+            - confirm_next_round
         created_at:
           type: string
           format: date-time
@@ -3319,10 +3337,37 @@ components:
         closed_at:
           type: [string, 'null']
           format: date-time
+    NextRoundPreparation:
+      type: object
+      additionalProperties: false
+      required:
+      - round_no
+      - my_confirmed
+      - confirmed_count
+      - my_intent
+      properties:
+        round_no:
+          type: integer
+          minimum: 2
+          maximum: 3
+        my_confirmed:
+          type: boolean
+        confirmed_count:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: Число подтверждений собственных условий, не число голосов.
+        my_intent:
+          anyOf:
+          - $ref: '#/components/schemas/MyIntent'
+          - type: 'null'
+          description: Только собственный черновик N+1; условия другого участника не раскрываются.
     RoomIntentRequest:
       type: object
       additionalProperties: false
       required:
+      - expected_round_no
+      - expected_room_version
       - dates
       - day_types
       - time_slots
@@ -3330,6 +3375,15 @@ components:
       - budget_max_minor
       - exclusion_slugs
       properties:
+        expected_round_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: round_no исходного активного RoomSnapshot.
+        expected_room_version:
+          type: integer
+          minimum: 1
+          description: version исходного RoomSnapshot; конфликт требует явного просмотра актуальных условий.
         dates:
           type: array
           minItems: 1

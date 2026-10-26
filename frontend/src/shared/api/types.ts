@@ -21,7 +21,8 @@ export interface InviteContextDto { token: string; room_id: string; room_name: s
 export interface MyIntentDto { dates: string[]; day_types: DayType[]; time_slots: TimeSlot[]; category_slugs: CategorySlug[]; budget_max_minor: number; radius_m: number | null; exclusion_slugs: string[]; location: { lat: number; lng: number } | null; free_text: string | null; version: number; round_no: number; submitted_at: string }
 export interface PoolSummaryDto { version: number; round_no: number; state: 'ranking' | 'ready' | 'exhausted'; total: number; is_small?: boolean; voted_by_me: number; my_pool_finished: boolean; room_exhausted: boolean; retry_after_seconds: number | null; exhaustion_reasons: { code: string; text: string }[] }
 export interface MatchSummaryDto { id: string; room_id: string; event_id: string; matched_at: string; participants: PublicParticipantDto[] }
-export interface RoomSnapshotDto { id: string; name: string; city_id: string; public_plan?: PublicPlan | null; state: RoomState; round_no: number; version: number; participants: PublicParticipantDto[]; my_intent: MyIntentDto | null; pool: PoolSummaryDto | null; match: MatchSummaryDto | null; invite: RoomInviteDto | null; allowed_actions: string[]; created_at: string; expires_at: string; closed_by?: { id: string; display_name: string } | null; closed_at?: string | null }
+export interface NextRoundDto { round_no: number; my_confirmed: boolean; confirmed_count: number; my_intent: MyIntentDto | null }
+export interface RoomSnapshotDto { id: string; name: string; city_id: string; public_plan?: PublicPlan | null; state: RoomState; round_no: number; version: number; participants: PublicParticipantDto[]; my_intent: MyIntentDto | null; next_round?: NextRoundDto | null; pool: PoolSummaryDto | null; match: MatchSummaryDto | null; invite: RoomInviteDto | null; allowed_actions: string[]; created_at: string; expires_at: string; closed_by?: { id: string; display_name: string } | null; closed_at?: string | null }
 export interface RoomEventDto { cursor: string; position: number; event: EventCardDto }
 export interface RoomEventsResponseDto { room_id: string; pool_version: number; round_no: number; items: RoomEventDto[]; next_cursor: string | null; total: number }
 export interface MatchDto { id: string; matched_at: string; event: EventCardDto; participants: PublicParticipantDto[] }
@@ -42,6 +43,8 @@ export interface BootstrapRequestDto { init_data: string; start_param?: string |
 export interface PreferencesRequestDto { city_id: string; interest_slugs: CategorySlug[]; budget_max_minor: number; usual_day_types: DayType[]; usual_time_slots: TimeSlot[] }
 export interface NotificationPreferencesRequestDto { daily_notifications_enabled: boolean }
 export interface RoomIntentRequestDto { dates: string[]; day_types: DayType[]; time_slots: TimeSlot[]; category_slugs: CategorySlug[]; budget_max_minor: number; radius_m: number | null; exclusion_slugs: string[]; location: { lat: number; lng: number } | null; free_text: string | null }
+export interface RoomIntentSubmissionDto extends RoomIntentRequestDto { expected_round_no: number; expected_room_version: number }
+export interface RoomIntentSubmissionOptions { expectedRoundNo: number; expectedRoomVersion: number; idempotencyKey: string }
 export interface CreateRoomRequestDto { name: string; city_id: string; public_plan?: PublicPlan | null }
 export interface ApiErrorBody { error: { code: string; message: string; request_id: string; details?: Record<string, unknown> } }
 

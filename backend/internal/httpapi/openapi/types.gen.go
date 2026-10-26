@@ -1140,6 +1140,7 @@ func (e RoomIntentRequestExclusionSlugs) Valid() bool {
 
 // Defines values for RoomSnapshotAllowedActions.
 const (
+	ConfirmNextRound     RoomSnapshotAllowedActions = "confirm_next_round"
 	EditIntent           RoomSnapshotAllowedActions = "edit_intent"
 	Invite               RoomSnapshotAllowedActions = "invite"
 	Join                 RoomSnapshotAllowedActions = "join"
@@ -1153,6 +1154,8 @@ const (
 // Valid indicates whether the value is a known member of the RoomSnapshotAllowedActions enum.
 func (e RoomSnapshotAllowedActions) Valid() bool {
 	switch e {
+	case ConfirmNextRound:
+		return true
 	case EditIntent:
 		return true
 	case Invite:
@@ -2091,6 +2094,17 @@ type MyIntent struct {
 // MyIntentExclusionSlugs defines model for MyIntent.ExclusionSlugs.
 type MyIntentExclusionSlugs string
 
+// NextRoundPreparation defines model for NextRoundPreparation.
+type NextRoundPreparation struct {
+	// ConfirmedCount Число подтверждений собственных условий, не число голосов.
+	ConfirmedCount int  `json:"confirmed_count"`
+	MyConfirmed    bool `json:"my_confirmed"`
+
+	// MyIntent Только собственный черновик N+1; условия другого участника не раскрываются.
+	MyIntent nullable.Nullable[MyIntent] `json:"my_intent"`
+	RoundNo  int                         `json:"round_no"`
+}
+
 // NotificationPreferencesRequest defines model for NotificationPreferencesRequest.
 type NotificationPreferencesRequest struct {
 	DailyNotificationsEnabled bool `json:"daily_notifications_enabled"`
@@ -2219,7 +2233,13 @@ type RoomIntentRequest struct {
 	// DayTypes Пустой массив означает любой день. Условия внутри массива объединяются по правилу «ИЛИ».
 	DayTypes       []DayType                         `json:"day_types"`
 	ExclusionSlugs []RoomIntentRequestExclusionSlugs `json:"exclusion_slugs"`
-	FreeText       nullable.Nullable[string]         `json:"free_text,omitempty"`
+
+	// ExpectedRoomVersion version исходного RoomSnapshot; конфликт требует явного просмотра актуальных условий.
+	ExpectedRoomVersion int `json:"expected_room_version"`
+
+	// ExpectedRoundNo round_no исходного активного RoomSnapshot.
+	ExpectedRoundNo int                       `json:"expected_round_no"`
+	FreeText        nullable.Nullable[string] `json:"free_text,omitempty"`
 
 	// Location Если задан радиус, это поле задаёт точку отсчёта. Значение null вместе с радиусом означает центр города комнаты. Координаты не сохраняются. дольше необходимого ranking
 	Location nullable.Nullable[GeoPoint] `json:"location,omitempty"`
@@ -2254,17 +2274,20 @@ type RoomSnapshot struct {
 	Id        openapi_types.UUID `json:"id"`
 
 	// Invite Доступно только создателю; для остальных участников значение null.
-	Invite       nullable.Nullable[RoomInvite]   `json:"invite"`
-	Match        nullable.Nullable[MatchSummary] `json:"match"`
-	MyIntent     nullable.Nullable[MyIntent]     `json:"my_intent"`
-	Name         string                          `json:"name"`
-	Participants []PublicParticipant             `json:"participants"`
-	Pool         nullable.Nullable[PoolSummary]  `json:"pool"`
+	Invite   nullable.Nullable[RoomInvite]   `json:"invite"`
+	Match    nullable.Nullable[MatchSummary] `json:"match"`
+	MyIntent nullable.Nullable[MyIntent]     `json:"my_intent"`
+	Name     string                          `json:"name"`
+
+	// NextRound Подготовка N+1 при exhausted и N меньше 3. Содержит только собственные условия и публичную готовность. До первого предложения и после начала следующего раунда поле может отсутствовать или содержать JSON null; оба варианта означают отсутствие подготовки.
+	NextRound    nullable.Nullable[NextRoundPreparation] `json:"next_round,omitempty"`
+	Participants []PublicParticipant                     `json:"participants"`
+	Pool         nullable.Nullable[PoolSummary]          `json:"pool"`
 
 	// PublicPlan Предложение из записи комнаты, доступно только для joinable preview в collecting_intents. Для legacy, full, expired и closed отсутствует. Приватные intent и координаты не включаются.
 	PublicPlan nullable.Nullable[PublicPlan] `json:"public_plan,omitempty"`
 
-	// RoundNo Текущий раунд подтверждения условий и формирования пула событий.
+	// RoundNo Активный раунд. После exhausted увеличивается только при независимом подтверждении обоих участников; подготовка следующего раунда не расходует лимит.
 	RoundNo int       `json:"round_no"`
 	State   RoomState `json:"state"`
 	Version int       `json:"version"`
@@ -2572,6 +2595,11 @@ type GetRoomEventsParams struct {
 
 	// Cursor Непрозрачный подписанный указатель на следующую страницу.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ReplaceMyRoomIntentParams defines parameters for ReplaceMyRoomIntent.
+type ReplaceMyRoomIntentParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
 // BootstrapMaxSessionJSONRequestBody defines body for BootstrapMaxSession for application/json ContentType.

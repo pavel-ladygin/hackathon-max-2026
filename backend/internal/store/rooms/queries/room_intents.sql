@@ -73,10 +73,12 @@ SELECT i.room_id, i.user_id, $3, i.date_options, i.day_types, i.time_slots,
        i.exclusion_slugs, i.free_text
 FROM room_intents i
 JOIN room_members m ON m.room_id = i.room_id AND m.user_id = i.user_id AND m.is_active = true
-WHERE i.room_id = $1 AND i.round_no = $2;
+WHERE i.room_id = $1 AND i.round_no = $2
+ON CONFLICT (room_id, user_id, round_no) DO NOTHING;
 
 -- name: InsertNextRoundStates :exec
 INSERT INTO room_member_round_state (room_id, user_id, round_no)
 SELECT m.room_id, m.user_id, $2
 FROM room_members AS m
-WHERE m.room_id = $1 AND m.is_active = true;
+WHERE m.room_id = $1 AND m.is_active = true
+ON CONFLICT (room_id, user_id, round_no) DO NOTHING;

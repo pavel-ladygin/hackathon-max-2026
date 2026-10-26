@@ -13,6 +13,7 @@ var (
 	ErrRoomFull            = errors.New("room full")
 	ErrRoomNotFound        = errors.New("room not found")
 	ErrIntentLocked        = errors.New("intent locked")
+	ErrIntentConflict      = errors.New("room intent conflict")
 	ErrAlreadyMatched      = errors.New("already matched")
 	ErrRoundLimitReached   = errors.New("round limit reached")
 	ErrPastIntentDate      = errors.New("intent date is in the past")

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RoomFlowPage } from './RoomPages'
@@ -37,7 +37,8 @@ function roomEvent(id: string, title: string) {
 
 function renderRoom() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/rooms/room-1/vote']}><Routes><Route path="/rooms/:roomId/:roomScreen" element={<RoomFlowPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  const tree = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={['/rooms/room-1/vote']}><Routes><Route path="/rooms/:roomId/:roomScreen" element={<RoomFlowPage />} /></Routes></MemoryRouter></QueryClientProvider>
+  return { ...render(tree()), tree, client }
 }
 
 function recoveryRoom() {
@@ -61,9 +62,10 @@ function renderRecoveryRoom() {
 
 describe('room vote card transition', () => {
   beforeEach(() => {
+    window.sessionStorage.clear()
     mocks.events = { data: { total: 2, items: [roomEvent('event-1', 'Первое событие')] }, isPending: false, isError: false }
     mocks.vote.mockReset()
-    mocks.replaceMyIntent.mockReset().mockResolvedValue(undefined)
+    mocks.replaceMyIntent.mockReset().mockResolvedValue(recoveryRoom())
     mocks.room = undefined
   })
 
@@ -79,6 +81,27 @@ describe('room vote card transition', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Второе событие' })).toBeInTheDocument(), { timeout: 3000 })
     expect(screen.queryByRole('heading', { name: 'Первое событие' })).not.toBeInTheDocument()
+  })
+
+  it('does not let a late vote response acknowledge a different round', async () => {
+    mocks.room = {
+      id: 'room-1', name: 'Test room', city_id: 'a0f625ee-2154-5a45-8afe-37adf955ec24', state: 'voting', round_no: 1, version: 1,
+      participants: [], myIntent: null, match: null, allowed_actions: ['vote'],
+      pool: { version: 1, total: 2, my_pool_finished: false },
+    }
+    let finish!: (value: unknown) => void
+    mocks.vote.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const { client, rerender, tree } = renderRoom()
+    fireEvent.click(screen.getByRole('button', { name: /Не подходит/ }))
+    await waitFor(() => expect(mocks.vote).toHaveBeenCalledTimes(1))
+    mocks.room = { ...mocks.room, version: 5, round_no: 2, pool: { ...mocks.room.pool, version: 2 } }
+    client.setQueryData(['room', 'room-1'], mocks.room)
+    rerender(tree())
+    expect(screen.getByText('Подборка обновилась')).toBeInTheDocument()
+    await act(async () => { finish({ match: null, pool_version: 1, room_exhausted: false, my_pool_finished: false }) })
+    expect(screen.getByText('Подборка обновилась')).toBeInTheDocument()
+    expect(screen.getByText('Раунд 1 из 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Продолжить' })).toBeEnabled()
   })
 
   it('shows all eleven API categories in room intent and recovery choices', () => {
@@ -110,7 +133,7 @@ describe('room vote card transition', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       category_slugs: ['concerts', 'standup', 'cinema'],
-    }))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 
   it('requires choosing and reviewing an exact higher budget before saving it', async () => {
@@ -131,7 +154,7 @@ describe('room vote card transition', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       budget_max_minor: 250_000,
-    }))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 
   it('requires choosing and reviewing a concrete date before saving it', async () => {
@@ -152,7 +175,7 @@ describe('room vote card transition', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       dates: expect.arrayContaining([selectedDate]),
-    }))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 
   it('reviews all four changes, retains them on return, and submits them together once', async () => {
@@ -192,7 +215,7 @@ describe('room vote card transition', () => {
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       budget_max_minor: 300_000, category_slugs: ['concerts', 'standup', 'cinema'],
       dates: [selectedDate, '2099-09-27'], time_slots: ['morning', 'day', 'evening', 'night'], free_text: 'Мои личные условия',
-    }))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 
   it('excludes a deselected change without losing the other selections', async () => {
@@ -211,6 +234,6 @@ describe('room vote card transition', () => {
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
     expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-recovery', expect.objectContaining({
       budget_max_minor: 200_000, category_slugs: ['concerts', 'standup', 'cinema'], time_slots: ['evening'], dates: ['2099-09-27'],
-    }))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 })

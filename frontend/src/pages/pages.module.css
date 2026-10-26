@@ -16,6 +16,7 @@ fieldset.fieldLabel > [role="alert"] { display: block; margin-top: 8px; }
 .range { width: 100%; accent-color: var(--color-ink); }
 .error { color: var(--color-danger); font-size: var(--app-type-secondary-size); font-weight: var(--app-type-regular); line-height: var(--app-type-body-line); }
 .footer { position: sticky; z-index: 5; bottom: 0; display: grid; gap: 8px; margin: 28px -20px -26px; padding: 22px 20px calc(20px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgb(250 249 246 / 0%), var(--color-canvas) 22%); }
+.footer.matchActions { position: static; }
 .heroHeader { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 18px; }
 .profileButton { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 50%; background: #e7d9ca; color: #544536; font-weight: var(--app-type-semibold); touch-action: manipulation; transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }
 .hero { position: relative; width: 100%; min-height: 340px; overflow: hidden; border: 0; border-radius: var(--radius-lg); background: #28231f; color: #fff; text-align: left; box-shadow: var(--shadow-card); touch-action: manipulation; transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease; }

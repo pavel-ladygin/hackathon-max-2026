@@ -92,32 +92,59 @@ func TestResolveInviteContextIsReadOnlyAndReportsJoinability(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, svc := insertPreviewInvite(t, f, time.Now().UTC().Add(time.Hour))
-	beforeMembers := 1
 	preview, err := svc.ResolveInviteContext(ctx, f.member, token)
 	if err != nil || preview == nil || preview.Status != api.Joinable || preview.AlreadyJoined || preview.Token != token || preview.Inviter.Id != f.creator {
 		t.Fatalf("joinable preview=%+v err=%v", preview, err)
 	}
 	var members int
-	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1", f.room).Scan(&members); err != nil || members != beforeMembers {
-		t.Fatalf("preview changed membership count=%d err=%v; want %d", members, err, beforeMembers)
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1", f.room).Scan(&members); err != nil || members != 1 {
+		t.Fatalf("preview changed membership count=%d err=%v; want 1", members, err)
 	}
 	if _, err := q.InsertRoomMember(ctx, roomsql.InsertRoomMemberParams{RoomID: f.room, UserID: f.member, Role: "participant"}); err != nil {
 		t.Fatal(err)
 	}
-	alreadyJoined, err := svc.ResolveInviteContext(ctx, f.member, token)
-	if err != nil || alreadyJoined == nil || !alreadyJoined.AlreadyJoined || alreadyJoined.Status != api.Joinable {
-		t.Fatalf("member preview=%+v err=%v; want already joined/joinable", alreadyJoined, err)
+	assertFullRoomPreview := func(t *testing.T, state string) {
+		t.Helper()
+		for _, tc := range []struct {
+			name          string
+			userID        uuid.UUID
+			alreadyJoined bool
+			status        api.InviteContextStatus
+		}{
+			{name: "creator", userID: f.creator, alreadyJoined: true, status: api.Joinable},
+			{name: "member", userID: f.member, alreadyJoined: true, status: api.Joinable},
+			{name: "outsider", userID: f.third, alreadyJoined: false, status: api.Full},
+		} {
+			t.Run(state+"/"+tc.name, func(t *testing.T) {
+				got, err := svc.ResolveInviteContext(ctx, tc.userID, token)
+				if err != nil || got == nil || got.AlreadyJoined != tc.alreadyJoined || got.Status != tc.status {
+					t.Fatalf("preview=%+v err=%v; want already_joined=%v status=%s", got, err, tc.alreadyJoined, tc.status)
+				}
+			})
+		}
 	}
-	full, err := svc.ResolveInviteContext(ctx, f.third, token)
-	if err != nil || full == nil || full.AlreadyJoined || full.Status != api.Full {
-		t.Fatalf("full preview=%+v err=%v; want full", full, err)
-	}
-	if _, err := db.Exec(ctx, "UPDATE room_members SET is_active=false WHERE room_id=$1 AND user_id=$2", f.room, f.member); err != nil {
+	assertFullRoomPreview(t, "collecting_intents")
+	if _, err := db.Exec(ctx, "UPDATE room_members SET is_active=false WHERE room_id=$1", f.room); err != nil {
 		t.Fatal(err)
 	}
-	inactive, err := svc.ResolveInviteContext(ctx, f.member, token)
-	if err != nil || inactive == nil || inactive.AlreadyJoined || inactive.Status != api.Full {
-		t.Fatalf("inactive member preview=%+v err=%v; want not joined/full because historical capacity is consumed", inactive, err)
+	assertFullRoomPreview(t, "retired")
+	for _, state := range []string{"matched", "exhausted"} {
+		if _, err := db.Exec(ctx, "UPDATE rooms SET state=$2 WHERE id=$1", f.room, state); err != nil {
+			t.Fatal(err)
+		}
+		assertFullRoomPreview(t, state)
+	}
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM room_members WHERE room_id=$1", f.room).Scan(&members); err != nil || members != 2 {
+		t.Fatalf("previews changed membership count=%d err=%v; want 2", members, err)
+	}
+	if _, err := db.Exec(ctx, "UPDATE room_invites SET expires_at=now()-interval '1 second' WHERE room_id=$1", f.room); err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []uuid.UUID{f.creator, f.third} {
+		expired, err := svc.ResolveInviteContext(ctx, userID, token)
+		if err != nil || expired == nil || expired.Status != api.Expired {
+			t.Fatalf("expired preview=%+v err=%v; want expired", expired, err)
+		}
 	}
 	unknown, err := svc.ResolveInviteContext(ctx, f.third, "unknown-invite-token-that-is-long-enough")
 	if err != nil || unknown != nil {

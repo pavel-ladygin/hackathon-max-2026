@@ -52,7 +52,7 @@ SELECT i.token_hash, i.expires_at, r.id AS room_id, r.name AS room_name, r.city_
        COALESCE((SELECT s.ready FROM room_member_round_state s
                  WHERE s.room_id = r.id AND s.user_id = u.id AND s.round_no = r.round_no), false)::boolean AS inviter_intent_ready,
        (SELECT count(*) FROM room_members m WHERE m.room_id = r.id) AS member_count,
-       EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = r.id AND m.user_id = $2 AND m.is_active = true) AS already_joined
+       EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = r.id AND m.user_id = $2) AS already_joined
 FROM room_invites i
 JOIN rooms r ON r.id = i.room_id
 JOIN users u ON u.id = i.created_by

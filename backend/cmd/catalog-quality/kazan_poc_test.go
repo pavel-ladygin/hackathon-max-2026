@@ -209,10 +209,15 @@ func runKazanFixtureLifecycle(t *testing.T, ctx context.Context, db *store.Pool,
 		DayTypes: []api.DayType{}, TimeSlots: []api.TimeSlot{}, ExclusionSlugs: []api.RoomIntentRequestExclusionSlugs{},
 		Location: nullable.NewNullNullable[api.GeoPoint](), RadiusM: nullable.NewNullNullable[int](),
 	}
-	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, intent); err != nil || transitioned {
+	firstSnapshot, err := svc.Get(ctx, contracts.Principal{UserID: firstUser}, roomID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.ExpectedRoundNo, intent.ExpectedRoomVersion = firstSnapshot.RoundNo, firstSnapshot.Version
+	if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, intent, "kazan-poc-intent-first"); err != nil || transitioned {
 		t.Fatalf("first fixture intent transitioned=%t err=%v", transitioned, err)
 	}
-	if snapshot, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, intent); err != nil || !transitioned || snapshot.State != api.RoomStateVoting {
+	if snapshot, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, intent, "kazan-poc-intent-second"); err != nil || !transitioned || snapshot.State != api.RoomStateVoting {
 		t.Fatalf("second fixture intent state=%s transitioned=%t err=%v", snapshot.State, transitioned, err)
 	}
 	firstCards, err := svc.GetEvents(ctx, contracts.Principal{UserID: firstUser}, roomID, rooms.RoomEventsInput{Limit: 50})

@@ -29,12 +29,17 @@ func (s *Service) ReplaceMyRoomIntent(w http.ResponseWriter, r *http.Request) {
 		writeIntentError(w, r, ErrRoomNotFound)
 		return
 	}
+	keys := r.Header.Values("Idempotency-Key")
+	if len(keys) != 1 || !utf8.ValidString(keys[0]) || utf8.RuneCountInString(keys[0]) < 8 || utf8.RuneCountInString(keys[0]) > 128 {
+		writeIntentError(w, r, ErrValidation)
+		return
+	}
 	request, err := decodeIntentRequest(w, r)
 	if err != nil {
 		writeIntentError(w, r, ErrValidation)
 		return
 	}
-	snapshot, _, err := s.ReplaceIntent(r.Context(), principal, roomID, request)
+	snapshot, _, err := s.ReplaceIntent(r.Context(), principal, roomID, request, keys[0])
 	if err != nil {
 		writeIntentError(w, r, err)
 		return
@@ -61,7 +66,7 @@ func decodeIntentRequest(w http.ResponseWriter, r *http.Request) (api.RoomIntent
 	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		return request, ErrValidation
 	}
-	for _, field := range []string{"dates", "day_types", "time_slots", "category_slugs", "budget_max_minor", "exclusion_slugs"} {
+	for _, field := range []string{"expected_round_no", "expected_room_version", "dates", "day_types", "time_slots", "category_slugs", "budget_max_minor", "exclusion_slugs"} {
 		value, exists := fields[field]
 		if !exists || bytes.Equal(value, []byte("null")) {
 			return request, ErrValidation
@@ -103,6 +108,10 @@ func writeIntentError(w http.ResponseWriter, r *http.Request, err error) {
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROUND_LIMIT_REACHED", Message: "Round limit reached"}
 	case errors.Is(err, ErrIntentLocked):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "INTENT_LOCKED", Message: "Room intent is locked"}
+	case errors.Is(err, ErrIntentConflict):
+		apiError = httpapi.Error{Status: http.StatusConflict, Code: "CONFLICT", Message: "Room changed; refresh and try again"}
+	case errors.Is(err, ErrIdempotencyConflict):
+		apiError = httpapi.Error{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT", Message: "Idempotency key was already used with another request"}
 	case errors.Is(err, ErrRoomClosed):
 		apiError = httpapi.Error{Status: http.StatusConflict, Code: "ROOM_CLOSED", Message: "Room is closed"}
 	}

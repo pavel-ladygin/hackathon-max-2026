@@ -2,9 +2,9 @@ import { timeZoneLabel } from '../../shared/lib/timeZoneLabel'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
 import { useEventDetail } from '../../features/discovery/queries'
 import { useBootstrap } from '../../features/auth/useBootstrap'
@@ -35,11 +35,15 @@ import { PlanSummary } from './PlanSummary'
 import { cityToday, isCanonicalDate, roomCity } from './public-plan'
 import { RoomInviteActions } from './RoomInviteActions'
 import { useInviteExpired, useRoomInvite } from './useRoomInvite'
-import { launchContext } from '../../shared/platform/max/launchContext'
+import { useRoomNavigationGuard } from '../../features/rooms/useRoomNavigationGuard'
 
 const MatchCelebration = lazy(() => import('../../features/rooms/MatchCelebration').then((module) => ({ default: module.MatchCelebration })))
+type RoomFlowContextValue = { live: RoomSnapshot | null; remoteChanged: boolean; adopt: (snapshot?: RoomSnapshot) => boolean }
+const RoomFlowContext = createContext<RoomFlowContextValue>({ live: null, remoteChanged: false, adopt: () => false })
+const useRoomFlow = () => useContext(RoomFlowContext)
 export function NewRoomPage() {
   const navigate = useNavigate()
+  const { captureNavigation } = useRoomNavigationGuard()
   const reducedMotion = useReducedMotion()
   const bootstrap = useBootstrap()
   const queryClient = useQueryClient()
@@ -48,18 +52,19 @@ export function NewRoomPage() {
   const draftKey = `room-create-v1:${bootstrap.data?.user.id ?? 'pending'}`
   useEffect(() => { track('room_creation_started') }, [])
   const create = useMutation({
-    onMutate: () => launchContext.getSnapshot().revision,
+    onMutate: captureNavigation,
     mutationFn: (values: Parameters<typeof apiClient.createRoom>[0]) => {
       const body = JSON.stringify(values)
       if (createAttempt.current?.body !== body) createAttempt.current = { body, key: crypto.randomUUID() }
       return apiClient.createRoom(values, createAttempt.current.key)
     },
-    onSuccess: async ({ room }, _values, launchRevision) => {
+    onSuccess: async ({ room }, _values, canNavigate) => {
       queryClient.setQueryData(['room', room.id], room)
+      await queryClient.invalidateQueries({ queryKey: ['home-feed'] })
       setCreateSuccess(true)
       try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable in a WebView. */ }
       await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 350))
-      if (launchContext.getSnapshot().revision !== launchRevision) return
+      if (!canNavigate?.()) return
       navigate(`/rooms/${room.id}/invite`)
     },
     onError: (error) => trackFailure('room_creation_failed', error),
@@ -106,6 +111,7 @@ function RoomInvite({ roomId }: { roomId: string | undefined }) {
 export function JoinPage() {
   const { inviteToken } = useParams()
   const navigate = useNavigate()
+  const { captureNavigation, canNavigate: canRestoreRoom } = useRoomNavigationGuard()
   const bootstrap = useBootstrap()
   const inviteContext = bootstrap.data?.inviteContext
   const context = inviteContext?.token === inviteToken ? inviteContext : null
@@ -122,54 +128,92 @@ export function JoinPage() {
   const expired = useInviteExpired(context?.expires_at, bootstrap.refetch)
   const joinBlocked = !context || (context.status !== 'joinable' || expired) && !context.already_joined
   const queryClient = useQueryClient()
-  const join = useMutation({ onMutate: () => launchContext.getSnapshot().revision, mutationFn: () => {
+  const join = useMutation({ onMutate: captureNavigation, mutationFn: () => {
     if (!inviteToken) throw new Error('Invite token is missing')
     return apiClient.joinRoom(inviteToken)
-  }, onSuccess: async (room, _variables, launchRevision) => {
+  }, onSuccess: async (room, _variables, canNavigate) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['bootstrap'] }),
       queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
       queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
     ])
-    if (launchContext.getSnapshot().revision !== launchRevision) return
+    if (!canNavigate?.()) return
     navigate(`/rooms/${room.id}/intent`, { replace: true })
   }, onError: async (error) => {
     trackFailure('room_join_failed', error, { roomId: context?.room_id })
     if (error instanceof ApiError && (error.status === 409 || error.code === 'INVITE_EXPIRED')) await queryClient.invalidateQueries({ queryKey: ['bootstrap'] })
   } })
+  // An invite is also a return link for existing members, including when its
+  // capacity or expiry no longer permits a new participant to join.
+  if (context?.already_joined) return <RoomRedirect to={`/rooms/${encodeURIComponent(context.room_id)}/waiting`} canNavigate={canRestoreRoom} />
   return (
     <PageShell><TopBar title="Приглашение" onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
       <div className={styles.avatars}><span className={styles.avatar}>{context?.inviter.display_name.slice(0, 1) ?? 'И'}</span><span className={styles.avatar}>+</span></div>
-      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Вас пригласили выбрать, куда сходить'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». ` : ''}После подключения каждый самостоятельно укажет свои условия.</p>
+      <p className={styles.eyebrow}>СОВМЕСТНЫЙ ВЫБОР</p><h1 className={styles.title}>{context ? `Вас приглашает ${context.inviter.display_name}` : 'Не удалось подтвердить приглашение'}</h1><p className={styles.subtitle}>{context ? `Комната «${context.room_name}». После подключения каждый самостоятельно укажет свои условия.` : 'Вернитесь на главную и откройте актуальную ссылку-приглашение.'}</p>
       {context ? <PlanSummary plan={context.public_plan} cityId={context.city_id} /> : null}
       <PrivacyNote />{join.isError ? <AuthRecoveryAction error={join.error} /> : null}{join.isError ? <p className={styles.error} role="alert">{roomErrorMessage(join.error, 'Ссылка недействительна или комната уже заполнена.')}</p> : null}
       {context?.status === 'expired' || expired ? <p className={styles.error} role="alert">Срок приглашения истёк.</p> : context?.status === 'full' ? <p className={styles.error} role="alert">Комната уже заполнена.</p> : null}
-      <div className={styles.footer}><Button disabled={join.isPending || joinBlocked} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { if (context?.already_joined) { navigate(`/rooms/${context.room_id}/intent`, { replace: true }); return } if (!join.isPending && !joinBlocked) { track('room_join_started', { roomId: context?.room_id }); join.mutate() } }}>{context?.already_joined ? 'Продолжить в комнате' : 'Присоединиться'}</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
+      <div className={styles.footer}><Button disabled={join.isPending || joinBlocked} state={join.isPending ? 'loading' : 'idle'} loadingLabel="Подключаем…" onClick={() => { if (!join.isPending && !joinBlocked) { track('room_join_started', { roomId: context?.room_id }); join.mutate() } }}>Присоединиться</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button>{!maxPlatform.isMax && inviteToken ? <Button tone="secondary" onClick={() => void maxPlatform.openMaxLink(maxAppUrl(inviteToken))}>Открыть в MAX</Button> : null}</div>
     </PageContent></PageShell>
   )
 }
 
 export function RoomFlowPage() {
+  const { roomId } = useParams()
+  return <RoomFlow key={roomId} />
+}
+
+function RoomFlow() {
   const { roomId, roomScreen } = useParams()
+  const queryClient = useQueryClient()
+  const { canNavigate } = useRoomNavigationGuard()
   const room = useRoom(roomId)
+  const [acknowledged, setAcknowledged] = useState<RoomSnapshot | null>(null)
+  const [remote, setRemote] = useState<RoomSnapshot | null>(null)
   const loadedRoomId = room.data?.id
   useEffect(() => { if (loadedRoomId) track('room_opened', { roomId: loadedRoomId }) }, [loadedRoomId])
+  // Adjust the acknowledged view during render so a remote phase cannot render
+  // an intermediate redirect or unmount a dirty form before being fenced.
+  const incoming = room.data
+  if (incoming && incoming.version >= Math.max(acknowledged?.version ?? 0, remote?.version ?? 0)) {
+    if (!acknowledged || roomPhaseKey(acknowledged) === roomPhaseKey(incoming)) {
+      if (JSON.stringify(acknowledged) !== JSON.stringify(incoming) || remote) { setAcknowledged(incoming); setRemote(null) }
+    } else if (JSON.stringify(remote) !== JSON.stringify(incoming)) setRemote(incoming)
+  }
   if (room.isPending) return <ScreenSkeleton variant="room" label="Восстанавливаем комнату…" />
   if (!room.data) return <RoomReadError title="Комната недоступна" error={room.error} retry={() => void room.refetch()} pending={room.isFetching} />
-  const expected = expectedScreen(room.data)
+  const live = remote && remote.version > room.data.version ? remote : acknowledged && acknowledged.version > room.data.version ? acknowledged : room.data
+  const shown = acknowledged ?? live
+  const livePhase = roomPhaseKey(live)
+  const shownPhase = roomPhaseKey(shown)
+  const adopt = (snapshot?: RoomSnapshot) => {
+    const cached = queryClient.getQueryData<RoomSnapshot>(['room', roomId])
+    const latest = [shown, live, cached].filter((value): value is RoomSnapshot => Boolean(value)).reduce((best, value) => value.version >= best.version ? value : best)
+    const target = snapshot ?? latest
+    if (target.id !== roomId || target.version < latest.version) return false
+    setAcknowledged(target); setRemote(null)
+    return true
+  }
+  const expected = expectedScreen(shown)
   let content
-  if (room.data.state === 'closed') content = <ClosedScreen room={room.data} />
-  else if (roomScreen !== expected) content = <Navigate to={`/rooms/${roomId}/${expected}`} replace />
-  else if (expected === 'intent') content = <IntentScreen key={`${room.data.id}:${room.data.round_no}`} room={room.data} />
-  else if (expected === 'waiting') content = <WaitingScreen room={room.data} refetch={room.refetch} />
-  else if (expected === 'vote') content = <VoteScreen room={room.data} />
-  else if (expected === 'match') content = <MatchScreen room={room.data} />
-  else content = <RecoveryScreen key={`${room.data.id}:${room.data.round_no}`} room={room.data} />
-  return <>
+  if (shown.state === 'closed') content = <ClosedScreen room={shown} />
+  else if (roomScreen !== expected) content = <RoomRedirect to={`/rooms/${roomId}/${expected}`} canNavigate={canNavigate} />
+  else if (expected === 'intent') content = <IntentScreen key={`${shown.id}:${shown.round_no}`} room={shown} />
+  else if (expected === 'waiting') content = <WaitingScreen room={shown} refetch={room.refetch} />
+  else if (expected === 'vote') content = <VoteScreen key={`${shown.id}:${shown.round_no}:${shown.pool?.version ?? ''}`} room={shown} />
+  else if (expected === 'match') content = <MatchScreen room={shown} />
+  else content = <RecoveryScreen key={`${shown.id}:${shown.round_no}`} room={shown} />
+  return <RoomFlowContext.Provider value={{ live: remote, remoteChanged: Boolean(remote && shownPhase !== livePhase), adopt }}>
     {room.isError ? <RoomReadError title="Не удалось обновить комнату" error={room.error} retry={() => void room.refetch()} pending={room.isFetching} /> : null}
     <fieldset disabled={room.isError} style={{ display: room.isError ? 'none' : 'contents', border: 0, padding: 0, margin: 0 }}>{content}</fieldset>
-  </>
+  </RoomFlowContext.Provider>
+}
+
+function RoomRedirect({ to, canNavigate }: { to: string; canNavigate: () => boolean }) {
+  const navigate = useNavigate()
+  useEffect(() => { if (canNavigate()) navigate(to, { replace: true }) }, [canNavigate, navigate, to])
+  return null
 }
 
 const intentSchema = (timezone?: string) => z.object({
@@ -183,22 +227,36 @@ type IntentForm = z.infer<ReturnType<typeof intentSchema>>
 
 function IntentScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
+  const { captureNavigation } = useRoomNavigationGuard()
+  const flow = useRoomFlow()
   const queryClient = useQueryClient()
+  const submitIntent = useIntentSubmission()
   const city = roomCity(room.city_id)
   const timezone = city?.timezone
+  const bootstrap = useBootstrap()
   const confirmingPublicPlan = Boolean(room.public_plan && !room.myIntent)
   const errorSummary = useRef<HTMLParagraphElement>(null)
-  const formDefaults = intentDefaults(room, timezone ? cityToday(timezone) : localDate(new Date()))
+  const draftKey = `room-intent-v1:${bootstrap.data?.user.id ?? 'pending'}:${room.id}:${room.round_no}`
+  const [formDefaults] = useState(() => readIntentDraft(draftKey, intentDefaults(room, timezone ? cityToday(timezone) : localDate(new Date()))))
   const form = useForm<IntentForm>({ resolver: zodResolver(intentSchema(timezone)), defaultValues: formDefaults })
   const [budgetText, setBudgetText] = useState(String(formDefaults.budget))
+  const [remoteEditing, setRemoteEditing] = useState(false)
+  useEffect(() => {
+    const unsubscribe = form.subscribe({ formState: { values: true }, callback: ({ values }) => {
+      try { window.sessionStorage.setItem(draftKey, JSON.stringify({ dates: values.dates, time_slots: values.time_slots, category_slugs: values.category_slugs, budget: values.budget, free_text: values.free_text })) } catch { /* Storage may be unavailable in a WebView. */ }
+    } })
+    return unsubscribe
+  }, [draftKey, form])
   const dates = useWatch({ control: form.control, name: 'dates' })
   const timeSlots = useWatch({ control: form.control, name: 'time_slots' })
   const categories = useWatch({ control: form.control, name: 'category_slugs' })
   const budget = useWatch({ control: form.control, name: 'budget' })
+  const sourceRoom = flow.live ?? room
+  const remotePreparation = canConfirmPreparation(sourceRoom)
   const save = useMutation({
-    onMutate: () => launchContext.getSnapshot().revision,
-    mutationFn: (values: IntentForm) => apiClient.replaceMyIntent(room.id, toIntent(values)),
-    onSuccess: async (_data, _values, launchRevision) => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); if (launchContext.getSnapshot().revision !== launchRevision) return; navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
+    onMutate: captureNavigation,
+    mutationFn: (values: IntentForm) => { if (flow.remoteChanged && !remoteEditing) throw new Error('Confirm the updated room first'); const source = remoteEditing ? flow.live ?? room : room; return submitIntent(source, toIntent(values)) },
+    onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.() || !flow.adopt(data)) return; try { window.sessionStorage.removeItem(draftKey) } catch { /* Storage may be unavailable. */ } navigate(`/rooms/${room.id}/waiting`, { replace: true }) },
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
       if (!(error instanceof ApiError)) return
@@ -206,6 +264,12 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
       for (const [field, message] of Object.entries(error.fieldErrors)) if (mapping[field]) form.setError(mapping[field], { message })
     },
   })
+  const confirmRemote = useMutation({ onMutate: captureNavigation, mutationFn: () => {
+    const source = flow.live ?? room
+    const prepared = source.next_round?.my_intent ?? source.myIntent
+    if (!prepared) throw new Error('No saved own intent available for next-round confirmation')
+    return submitIntent(source, fromSavedIntent(prepared))
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (canNavigate?.()) flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${intentStyles.intentPage}`}>
       <p className={`${styles.eyebrow} ${intentStyles.introEyebrow}`}>ВАШИ УСЛОВИЯ ДЛЯ ЭТОЙ ВСТРЕЧИ</p><h1 className={`${styles.title} ${intentStyles.introTitle}`}>{confirmingPublicPlan ? 'Подтвердите личные пожелания' : 'Мои предпочтения'}</h1><p className={`${styles.subtitle} ${intentStyles.introSubtitle}`}>{confirmingPublicPlan ? 'Мы перенесли условия из публичного плана встречи. Проверьте их и при необходимости измените для себя' : 'Укажите, что подходит именно сейчас. Другой участник не увидит ответы.'}</p>
@@ -219,7 +283,8 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
         <div className={intentStyles.rangeField}><MoneyInput id="room-budget" label="Бюджет, ₽" suffix="₽" value={budgetText} required invalid={Boolean(form.formState.errors.budget)} describedBy="room-budget-help" onChange={(value) => { setBudgetText(value); const minor = decimalToMinor(value); form.setValue('budget', minor === null ? Number.NaN : minor / 100, { shouldValidate: true, shouldDirty: true }) }} /><span id="room-budget-help" className={styles.subtitle}>До {Number(budget || 0).toLocaleString('ru', { maximumFractionDigits: 2 })} ₽ для вас</span>{form.formState.errors.budget ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.budget.message}</span> : null}</div>
         <label className={intentStyles.textField} htmlFor="room-free-text">Дополнительное пожелание<textarea id="room-free-text" className={styles.textarea} placeholder="Например: хочется спокойного места" aria-invalid={Boolean(form.formState.errors.free_text)} maxLength={300} {...form.register('free_text')} />{form.formState.errors.free_text ? <span className={intentStyles.fieldError} role="alert">{form.formState.errors.free_text.message}</span> : null}</label>
         {save.isError ? <AuthRecoveryAction error={save.error} /> : null}{save.isError ? <p className={`${styles.error} ${intentStyles.formErrors}`} role="alert">{roomErrorMessage(save.error, 'Не удалось сохранить предпочтения.')}</p> : null}
-        <div className={`${styles.footer} ${intentStyles.intentFooter}`}><Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : confirmingPublicPlan ? 'Подтвердить пожелания' : 'Сохранить предпочтения'}</Button></div>
+        {confirmRemote.isError ? <><AuthRecoveryAction error={confirmRemote.error} /><p className={styles.error} role="alert">{roomErrorMessage(confirmRemote.error, 'Не удалось подтвердить условия. Повторите попытку или измените их.')}</p></> : null}
+        <div className={`${styles.footer} ${intentStyles.intentFooter}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : remotePreparation && !remoteEditing ? <RemoteChangeCard pending={confirmRemote.isPending} onKeep={() => confirmRemote.mutate()} onEdit={() => setRemoteEditing(true)} /> : <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Сохраняем приватно…' : confirmingPublicPlan ? 'Подтвердить пожелания' : 'Сохранить предпочтения'}</Button>}</div>
       </form>
     </PageContent></PageShell>
   )
@@ -227,22 +292,26 @@ function IntentScreen({ room }: { room: RoomSnapshot }) {
 
 function WaitingScreen({ room, refetch = noRoomRefetch }: { room: RoomSnapshot; refetch?: () => unknown }) {
   const navigate = useNavigate()
+  const flow = useRoomFlow()
   const reducedMotion = useReducedMotion()
   const invite = useRoomInvite(room, refetch)
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
-      <p className={styles.eyebrow}>ОБЩАЯ ПОДБОРКА</p><h1 className={styles.title}>{room.state === 'ranking' ? 'Формируем общий пул…' : 'Ждём второго участника'}</h1><p className={styles.subtitle}>{room.state === 'voting' ? 'Вы просмотрели все события. Ждём, когда второй участник завершит выбор.' : 'Ваши пожелания сохранены. Подборка появится, когда оба участника будут готовы.'}</p>
+      <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p><h1 className={styles.title}>{room.state === 'ranking' ? 'Формируем общий пул…' : 'Ждём второго участника'}</h1><p className={styles.subtitle}>{room.state === 'voting' ? 'Вы просмотрели все события. Ждём, когда второй участник завершит выбор.' : 'Ваши пожелания сохранены. Подборка появится, когда оба участника будут готовы.'}</p>
       <div className={`${styles.statusList} ${styles.waitingParticipants}`} aria-live="polite"><AnimatePresence initial={false}>{room.participants.map((participant) => <motion.div className={styles.statusRow} key={participant.id} layout={!reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 8, scale: .92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reducedMotion ? undefined : { opacity: 0, y: -8, scale: .92 }} transition={{ duration: reducedMotion ? 0 : .24 }}><span className={styles.smallAvatar}>{participantInitials(participant.displayName)}</span><span><strong>{participant.displayName}</strong><small>{room.state === 'voting' ? 'Участник совместного выбора' : participant.intentReady ? '✓ Предпочтения заполнены' : 'Заполняет предпочтения…'}</small></span></motion.div>)}</AnimatePresence><div className={styles.participantCount}><svg className={styles.participantCountIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-2a5.5 5.5 0 0 1 11 0v2M16 5.3a3 3 0 0 1 0 5.4M20.5 19v-2a5.5 5.5 0 0 0-3.2-5" /></svg><span>{room.participants.length} / 2 участника</span></div></div>
       {invite.canInvite ? <section className={styles.waitingInvite} aria-label="Приглашение в комнату"><p className={styles.eyebrow}>ПРИГЛАШЕНИЕ В КОМНАТУ</p><div className={styles.inviteLink} data-testid="invite-url">{invite.rawUrl}</div><RoomInviteActions {...invite} className={styles.waitingInviteActions} showShareOpenedStatus={false} /></section> : null}
       {room.state !== 'voting' ? <div className={styles.explain}><strong>Как формируется подборка</strong><span>✓ Учитываем постоянные интересы</span><span>✓ Добавляем текущие условия</span><span>{room.participants.length === 2 ? '○ Ждём готовности обоих' : '○ Ждём присоединения друга'}</span></div> : null}
+      {flow.remoteChanged ? <RemoteAdoptCard title={flow.live?.state === 'matched' || flow.live?.state === 'closed' ? 'Подборка завершена' : 'Подборка обновилась'} onContinue={() => flow.adopt()} /> : null}
     </PageContent></PageShell>
   )
 }
 
 function VoteScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
+  const { captureNavigation } = useRoomNavigationGuard()
+  const flow = useRoomFlow()
   const queryClient = useQueryClient()
-  const events = useRoomEvents(room.id, true)
+  const events = useRoomEvents(room.id, true, room.round_no, room.pool?.version)
   const swipeSessionTracked = useRef(false)
   const [matchPreview, setMatchPreview] = useState(false)
   const dragX = useMotionValue(0)
@@ -251,8 +320,9 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   const dislikeOpacity = useTransform(dragX, [-90, 0], [1, 0])
   const reducedMotion = useReducedMotion()
   const vote = useMutation({
+    onMutate: captureNavigation,
     mutationFn: ({ eventId, value }: { eventId: string; value: VoteValue }) => apiClient.vote(room.id, eventId, { pool_version: room.pool?.version ?? room.version, vote: value }),
-    onSuccess: async (result) => {
+    onSuccess: async (result, _variables, canNavigate) => {
       if (result.match) {
         setMatchPreview(true)
         await new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : 650))
@@ -261,7 +331,13 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['room', room.id] }),
         queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }),
+        queryClient.invalidateQueries({ queryKey: ['home-feed'] }),
       ])
+      const current = queryClient.getQueryData<RoomSnapshot>(['room', room.id])
+      // A late vote response may acknowledge only its displayed pool, never a
+      // peer's subsequent preparation/round that appeared during the request.
+      if (canNavigate?.() && current && current.round_no === room.round_no && current.pool?.version === room.pool?.version && !current.next_round &&
+        (current.state === 'voting' || result.match && current.state === 'matched' || result.room_exhausted && current.state === 'exhausted')) flow.adopt(current)
       dragX.set(0)
     },
     onError: async (error) => { dragX.set(0); if ((error instanceof ApiError && error.status === 409) || isRoomError(error, 'STALE_POOL_VERSION') || isRoomError(error, 'VOTE_ALREADY_CAST') || isRoomError(error, 'ALREADY_MATCHED')) { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }); await queryClient.invalidateQueries({ queryKey: ['room-events', room.id] }) } },
@@ -296,18 +372,20 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
   }, [events.data, room.id, room.pool?.room_exhausted, room.pool?.voted_by_me, room.state])
   if (events.isPending) return <ScreenSkeleton variant="room" label="Загружаем общий пул…" />
   if (events.isError) {
+    if (flow.remoteChanged) return <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} /><PageContent className={styles.narrow}><RemoteAdoptCard title={remoteChangeTitle(flow.live ?? room)} onContinue={() => flow.adopt()} /><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></PageContent></PageShell>
     if (isRoomError(events.error, 'POOL_EXHAUSTED')) return <WaitingScreen room={room} />
     return <RoomReadError title={isRoomError(events.error, 'POOL_NOT_READY') ? 'Пул пока не готов' : 'Не удалось загрузить подборку'} error={events.error} retry={() => void events.refetch()} pending={events.isFetching} />
   }
   const votedByMe = room.pool?.voted_by_me ?? 0
   const poolTotal = room.pool?.total ?? events.data.total
   if (!item) return <WaitingScreen room={room} />
-  const cast = (value: VoteValue) => { if (!vote.isPending) vote.mutate({ eventId: item.event.id, value }) }
+  const cast = (value: VoteValue) => { if (!vote.isPending && !flow.remoteChanged) vote.mutate({ eventId: item.event.id, value }) }
   return (
     <PageShell><TopBar title="Совместный выбор" onBack={() => navigate('/')} right={<span>{Math.min(votedByMe + 1, poolTotal)} / {poolTotal}</span>} /><PageContent className={styles.poolWrap}>
+      <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p>
       {poolTotal > 0 && poolTotal <= 2 ? <p role="status" className={styles.subtitle}>В подборке всего {poolTotal === 1 ? '1 событие' : '2 события'}. Можно продолжить выбор.</p> : null}
       <AnimatePresence mode="wait">
-        <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
+        <motion.article key={item.event.id} className={styles.poolCard} style={{ position: 'relative', x: dragX, rotate: rotation }} drag={vote.isPending || flow.remoteChanged ? false : 'x'} dragConstraints={{ left: 0, right: 0 }} dragElastic={.75} initial={{ opacity: 0, scale: .96, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .9 }} transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 240, damping: 24 }} onDragEnd={(_, info) => { const direction = resolveSwipeIntent(info.offset.x, info.velocity.x); if (direction) cast(direction); else dragX.set(0) }}>
           <motion.span aria-hidden="true" style={{ opacity: likeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #e77888', borderRadius: 18, color: '#c74d63', padding: 12, fontWeight: 'var(--app-type-semibold)' }}>ХОЧУ ПОЙТИ</motion.span>
           <motion.span aria-hidden="true" style={{ opacity: dislikeOpacity, position: 'absolute', inset: 16, zIndex: 1, pointerEvents: 'none', border: '2px solid #b8aaa0', borderRadius: 18, color: '#776a60', padding: 12, fontWeight: 'var(--app-type-semibold)' }}>НЕ ПОДХОДИТ</motion.span>
           <EventImage className={styles.poolImage} src={eventImage(item.event.imageUrl, item.event.category_slug, 768)} fallbackSrc={eventImageFallback(item.event.category_slug)} alt={item.event.title} />
@@ -315,7 +393,8 @@ function VoteScreen({ room }: { room: RoomSnapshot }) {
         </motion.article>
       </AnimatePresence>
       <AnimatePresence>{matchPreview && <motion.div role="status" aria-live="polite" initial={{ opacity: 0, scale: .88 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: .24 }} style={{ position: 'absolute', inset: '28% 12% auto', zIndex: 4, padding: 24, borderRadius: 24, background: 'rgba(255,255,255,.96)', boxShadow: '0 18px 50px rgba(70,48,35,.2)', textAlign: 'center' }}><strong style={{ display: 'block', fontSize: 32 }}>♥</strong><strong>Это мэтч!</strong><span style={{ display: 'block', marginTop: 6 }}>Событие понравилось вам обоим</span></motion.div>}</AnimatePresence>
-      <div className={styles.voteActions}><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('dislike')}><span className={styles.voteCircle} aria-hidden="true">×</span>Не подходит</button><button type="button" className={styles.voteAction} disabled={vote.isPending} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-8.2-4.9-10.5-10C-.5 4.7 6.6.6 12 6c5.4-5.4 12.5-1.3 10.5 5C20.2 16.1 12 21 12 21Z" /></svg></span>Хочу пойти</button></div>
+      <div className={styles.voteActions}><button type="button" className={styles.voteAction} disabled={vote.isPending || flow.remoteChanged} onClick={() => cast('dislike')}><span className={styles.voteCircle} aria-hidden="true">×</span>Не подходит</button><button type="button" className={styles.voteAction} disabled={vote.isPending || flow.remoteChanged} onClick={() => cast('like')}><span className={`${styles.voteCircle} ${styles.like}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-8.2-4.9-10.5-10C-.5 4.7 6.6.6 12 6c5.4-5.4 12.5-1.3 10.5 5C20.2 16.1 12 21 12 21Z" /></svg></span>Хочу пойти</button></div>
+      {flow.remoteChanged ? <RemoteAdoptCard title={flow.live?.state === 'matched' || flow.live?.state === 'closed' ? 'Подборка завершена' : 'Подборка обновилась'} onContinue={() => flow.adopt()} /> : null}
       {vote.isError ? <AuthRecoveryAction error={vote.error} /> : null}{vote.isError ? <p className={styles.error} role="alert">{roomErrorMessage(vote.error, 'Голос не сохранился. Повторите действие.')}</p> : null}
     </PageContent></PageShell>
   )
@@ -337,7 +416,7 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
   return (
     <PageShell><TopBar title="Совпадение" onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
       <Suspense fallback={<ScreenSkeleton variant="event" inline label="Готовим сюрприз…" />}><MatchCelebration event={event.data} participants={room.match?.participants.map((participant) => ({ id: participant.id, displayName: participant.display_name, avatarUrl: participant.avatar_url, role: participant.role, intentReady: participant.intent_ready }))} /></Suspense>
-      <div className={styles.footer}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending || !event.data.ticketAvailable} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>{event.data.dataProvenance.source === 'user' ? event.data.ticketAvailable ? 'Открыть сайт мероприятия' : 'Ссылка не указана' : event.data.ticketAvailable ? 'К билетам' : 'Билеты недоступны'}</Button></div>
+      <div className={`${styles.footer} ${styles.matchActions}`}><Button onClick={() => { track('match_opened', { roomId: room.id, eventId: event.data.id }); navigate(`/events/${event.data.id}`) }}>Открыть событие</Button><Button tone="secondary" disabled={ticket.isPending || !event.data.ticketAvailable} state={ticket.isPending ? 'loading' : 'idle'} loadingLabel="Открываем…" onClick={() => ticket.mutate()}>{event.data.dataProvenance.source === 'user' ? event.data.ticketAvailable ? 'Открыть сайт мероприятия' : 'Ссылка не указана' : event.data.ticketAvailable ? 'К билетам' : 'Билеты недоступны'}</Button></div>
       {ticket.isError ? <AuthRecoveryAction error={ticket.error} /> : null}{ticket.isError ? <p className={styles.error} role="alert">{roomErrorMessage(ticket.error, 'Не удалось открыть билетный сервис. Повторите попытку.')}</p> : null}
     </PageContent></PageShell>
   )
@@ -345,13 +424,22 @@ function MatchScreen({ room }: { room: RoomSnapshot }) {
 
 function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   const navigate = useNavigate()
+  const { captureNavigation } = useRoomNavigationGuard()
+  const flow = useRoomFlow()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<Relaxation['id'][]>([])
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState<CategorySlug | null>(null)
-  const [selectedBudget, setSelectedBudget] = useState<number | null>(null)
-  const [review, setReview] = useState(false)
+  const submitIntent = useIntentSubmission()
+  const bootstrap = useBootstrap()
+  const recoveryDraftKey = `room-recovery-v1:${bootstrap.data?.user.id ?? 'pending'}:${room.id}:${room.round_no}`
+  const [draft] = useState(() => readRecoveryDraft(recoveryDraftKey))
+  const [selected, setSelected] = useState<Relaxation['id'][]>(() => normalizeRecoverySelections(draft.selected))
+  const [selectedDate, setSelectedDate] = useState<string | null>(draft.selectedDate ?? null)
+  const [selectedCategory, setSelectedCategory] = useState<CategorySlug | null>(draft.selectedCategory ?? null)
+  const [selectedBudget, setSelectedBudget] = useState<number | null>(draft.selectedBudget ?? null)
+  const [review, setReview] = useState(Boolean(draft.review))
   const restartLocked = useRef(false)
+  useEffect(() => {
+    try { window.sessionStorage.setItem(recoveryDraftKey, JSON.stringify({ selected, selectedDate, selectedCategory, selectedBudget, review })) } catch { /* Storage may be unavailable in a WebView. */ }
+  }, [recoveryDraftKey, review, selected, selectedBudget, selectedCategory, selectedDate])
   const timezone = roomCity(room.city_id)?.timezone
   const zeroPool = room.pool?.total === 0
   const suggestions = (timezone ? availableRelaxations(room.myIntent, new Date(), timezone) : []).filter((item) => !zeroPool || item.id !== 'category')
@@ -376,30 +464,26 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
       return combinedRelaxedIntent(room.myIntent, changes, new Date(), timezone)
     } catch { return null } // A saved choice may expire while this screen remains open.
   })()
-  const restart = useMutation({
-    onMutate: () => launchContext.getSnapshot().revision,
-    mutationFn: () => {
-      if (!nextIntent) throw new Error('No room intent change selected')
-      return apiClient.replaceMyIntent(room.id, nextIntent)
-    },
-    onSuccess: async (_data, _values, launchRevision) => {
-      await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
-      if (launchContext.getSnapshot().revision !== launchRevision) return
-      navigate(`/rooms/${room.id}/waiting`, { replace: true })
-    },
-    onError: async (error) => {
-      if (error instanceof ApiError && error.status === 409) {
-        await queryClient.invalidateQueries({ queryKey: ['room', room.id] })
-      }
-    },
-    onSettled: () => {
-      restartLocked.current = false
-    },
-  })
-  if (!room.allowed_actions.includes('restart_with_new_intent')) {
+  const restart = useMutation({ onMutate: captureNavigation, mutationFn: () => {
+    if (!nextIntent) throw new Error('No room intent change selected')
+    const source = remoteEditing ? flow.live ?? room : room
+    if (flow.remoteChanged && !remoteEditing) throw new Error('Confirm the updated room first')
+    return submitIntent(source, nextIntent)
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.() || !flow.adopt(data)) return; if (data.state !== 'exhausted') navigate(`/rooms/${room.id}/waiting`, { replace: true }) }, onError: async (error) => { if (error instanceof ApiError && error.status === 409) await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) }, onSettled: () => { restartLocked.current = false } })
+  const [remoteNoticeOpen, setRemoteNoticeOpen] = useState(false)
+  const [remoteEditing, setRemoteEditing] = useState(false)
+  const sourceRoom = flow.live ?? room
+  const remotePreparation = canConfirmPreparation(sourceRoom)
+  const preparedWaiting = Boolean(room.next_round?.my_confirmed)
+  const confirmPrepared = useMutation({ onMutate: captureNavigation, mutationFn: () => {
+    const prepared = sourceRoom.next_round?.my_intent ?? sourceRoom.myIntent
+    if (!prepared) throw new Error('No own intent available for next-round confirmation')
+    return submitIntent(sourceRoom, fromSavedIntent(prepared))
+  }, onSuccess: async (data, _values, canNavigate) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['room', room.id] }), queryClient.invalidateQueries({ queryKey: ['home-feed'] })]); if (!canNavigate?.()) return; flow.adopt(data) }, onError: async () => { await queryClient.invalidateQueries({ queryKey: ['room', room.id] }) } })
+  if (!room.allowed_actions.includes('restart_with_new_intent') && !preparedWaiting && !remotePreparation && !flow.remoteChanged) {
     return (
       <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={`${styles.narrow} ${styles.center}`}>
-        <p className={styles.eyebrow}>{room.round_no >= 3 ? 'ТРЕТИЙ РАУНД ЗАВЕРШЁН' : 'ПУЛ ЗАКОНЧИЛСЯ'}</p><h1 className={styles.title}>Раунды этой комнаты завершены</h1><p className={styles.subtitle}>{room.round_no >= 3 ? 'Третий раунд завершён. Создайте новую комнату, когда появятся другие планы.' : 'Для этой комнаты больше нельзя запускать новый раунд. Создайте новую комнату, когда появятся другие планы.'}</p>
+        <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p><h1 className={styles.title}>{room.round_no >= 3 ? 'Лимит подборок исчерпан' : 'Раунды этой комнаты завершены'}</h1><p className={styles.subtitle}>{room.pool?.total === 0 ? 'В этом раунде общих событий не нашлось. Голосование не начиналось. Доступны три попытки подбора; можно создать новую комнату.' : 'События закончились, общего лайка нет. Создайте новую комнату, когда появятся другие планы.'}</p>
         <PrivacyNote>Предпочтения второго участника по-прежнему не раскрываются.</PrivacyNote>
         <div className={`${styles.footer} ${reliabilityStyles.actions}`}><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button onClick={() => navigate('/')}>На главную</Button></div>
       </PageContent></PageShell>
@@ -407,8 +491,9 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
   }
   return (
     <PageShell><TopBar title={room.name} onBack={() => navigate('/')} /><PageContent className={styles.narrow}>
+      <p className={styles.eyebrow}>Раунд {room.round_no} из 3</p>{preparedWaiting ? <p className={styles.subtitle}>Подготовка раунда {room.round_no + 1}</p> : null}
       {!review ? <>
-        <p className={styles.eyebrow}>РАУНД ЗАВЕРШЁН</p><h1 className={styles.title}>{zeroPool ? 'Нет событий по вашим условиям' : room.pool && room.pool.total > 0 ? 'Вы пока не выбрали одно событие' : 'Подборка завершена'}</h1><p className={styles.subtitle}>{zeroPool ? 'В этом раунде сервер не нашёл событий по вашим условиям.' : room.pool && room.pool.total > 0 ? 'Вы оба завершили выбор, но общего лайка пока нет.' : 'Можно пересмотреть собственные условия.'} Изменения не гарантируют больше событий.</p><p className={styles.subtitle}>Вы меняете только свои пожелания. Каждый участник самостоятельно пересматривает и подтверждает свои условия.</p>
+        <h1 className={styles.title}>{zeroPool ? 'Общих событий пока нет' : room.pool && room.pool.total > 0 ? 'События закончились, общего лайка нет' : 'Подборка завершена'}</h1><p className={styles.subtitle}>{zeroPool ? 'По вашим условиям не нашлось общих событий. Голосование в этом раунде не начиналось.' : room.pool && room.pool.total > 0 ? 'Доступные карточки закончились. Можно пересмотреть собственные условия.' : 'Можно пересмотреть собственные условия.'} Изменения не гарантируют больше событий.</p><p className={styles.subtitle}>Вы меняете только свои пожелания. Каждый участник самостоятельно пересматривает и подтверждает свои условия.</p>
         <section className={styles.section}><h2 className={styles.sectionTitle}>Что изменить в подборке?</h2><p className={styles.subtitle}>Можно выбрать несколько изменений</p>{suggestions.map((item) => {
           const checked = selected.includes(item.id)
           return <div key={item.id} className={`${recoveryStyles.option} ${checked ? recoveryStyles.selected : ''}`}>
@@ -428,13 +513,14 @@ function RecoveryScreen({ room }: { room: RoomSnapshot }) {
         <p className={styles.subtitle}>Остальные ваши условия сохранятся</p>
       </section>}
       {restart.isError ? <AuthRecoveryAction error={restart.error} /> : null}{restart.isError ? <p className={styles.error} role="alert">{roomErrorMessage(restart.error, 'Не удалось обновить подборку.')}</p> : null}
-      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{review ? <><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending && !restartLocked.current) { restartLocked.current = true; restart.mutate() } }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : <><Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменения</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></>}</div>
+      {confirmPrepared.isError ? <><AuthRecoveryAction error={confirmPrepared.error} /><p className={styles.error} role="alert">{roomErrorMessage(confirmPrepared.error, 'Не удалось подтвердить условия. Повторите попытку или измените их.')}</p></> : null}
+      <div className={`${styles.footer} ${reliabilityStyles.actions}`}>{flow.remoteChanged && !remotePreparation ? <RemoteAdoptCard title={remoteChangeTitle(sourceRoom)} onContinue={() => flow.adopt()} /> : preparedWaiting ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong>Условия сохранены</strong><p style={{ margin: '5px 0 0', fontSize: 14 }}>Ждём, когда второй участник подтвердит условия следующей подборки.</p></section> : remotePreparation && !remoteEditing && !remoteNoticeOpen ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button onClick={() => setRemoteNoticeOpen(true)} style={{ width: 'auto', minHeight: 44 }}>Продолжить</Button></section> : remotePreparation && !remoteEditing ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Выберите действие перед следующим раундом.</p><p style={{ margin: '0 0 10px', fontSize: 14 }}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button disabled={confirmPrepared.isPending} onClick={() => confirmPrepared.mutate()}>Оставить мои условия</Button><Button tone="secondary" disabled={confirmPrepared.isPending} onClick={() => setRemoteEditing(true)}>Изменить условия</Button></section> : review ? <><p className={styles.subtitle}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button disabled={restart.isPending || !nextIntent} state={restart.isPending ? 'loading' : 'idle'} loadingLabel="Сохраняем…" onClick={() => { if (!restart.isPending && !restartLocked.current) { restartLocked.current = true; restart.mutate() } }}>Подтвердить мои условия</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => setReview(false)}>Назад к изменениям</Button><Button tone="secondary" disabled={restart.isPending} onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></> : <><Button disabled={!nextIntent} onClick={() => { setReview(true); restart.reset() }}>Проверить изменения</Button><Button tone="secondary" onClick={() => navigate('/rooms/new')}>Создать новую комнату</Button><Button tone="ghost" onClick={() => navigate('/')}>На главную</Button></>}</div>
     </PageContent></PageShell>
   )
 }
 
 function AuthRecoveryAction({ error }: { error: unknown }) {
-  return error instanceof ApiError && error.status === 401 ? <Button tone="secondary" onClick={() => window.location.reload()}>Восстановить вход в MAX</Button> : null
+  return error instanceof ApiError && error.status === 401 ? <Button type="button" tone="secondary" onClick={() => window.location.reload()}>Восстановить вход в MAX</Button> : null
 }
 
 function RoomReadError({ title, error, retry, pending = false }: { title: string; error: unknown; retry: () => void; pending?: boolean }) {
@@ -468,9 +554,42 @@ function expectedScreen(room: RoomSnapshot) {
   if (room.state === 'ranking') return 'waiting'
   return room.allowed_actions.includes('edit_intent') ? 'intent' : 'waiting'
 }
+function roomPhaseKey(room: RoomSnapshot) { return `${room.round_no}:${room.state}:${room.pool?.version ?? ''}:${room.pool?.my_pool_finished ?? ''}:${room.next_round?.round_no ?? ''}:${room.next_round?.my_confirmed ?? ''}:${expectedScreen(room)}` }
 
 function toIntent(values: IntentForm): RoomIntentRequestDto {
   return { dates: values.dates, day_types: [], time_slots: values.time_slots, category_slugs: values.category_slugs, budget_max_minor: Math.round(values.budget * 100), radius_m: null, exclusion_slugs: [], location: null, free_text: values.free_text.trim() || null }
+}
+function RemoteChangeCard({ onKeep, onEdit, pending }: { onKeep: () => void; onEdit: () => void; pending: boolean }) {
+  const [open, setOpen] = useState(false)
+  return !open ? <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Друг предложил обновить подбор</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Вы можете оставить свои условия или изменить их перед следующим раундом</p><Button type="button" style={{ width: 'auto', minHeight: 44 }} onClick={() => setOpen(true)}>Продолжить</Button></section> : <section style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>Как продолжить?</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Если общих событий не найдётся, эта попытка всё равно будет использована</p><Button type="button" disabled={pending} onClick={onKeep}>Оставить мои условия</Button><Button type="button" tone="secondary" disabled={pending} onClick={onEdit}>Изменить условия</Button></section>
+}
+function RemoteAdoptCard({ title, onContinue }: { title: string; onContinue: () => void }) {
+  return <section style={{ width: '100%', marginTop: 16, padding: '12px 14px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-paper)' }}><strong style={{ display: 'block', marginBottom: 5, fontSize: 15 }}>{title}</strong><p style={{ margin: '0 0 10px', fontSize: 14 }}>Продолжите, чтобы открыть актуальное состояние комнаты.</p><Button type="button" style={{ width: 'auto', minHeight: 44 }} onClick={onContinue}>Продолжить</Button></section>
+}
+function fromSavedIntent(intent: NonNullable<RoomSnapshot['myIntent']>): RoomIntentRequestDto {
+  const { dates, day_types, time_slots, category_slugs, budget_max_minor, radius_m, exclusion_slugs, location, free_text } = intent
+  return { dates, day_types, time_slots, category_slugs, budget_max_minor, radius_m, exclusion_slugs, location, free_text }
+}
+function canConfirmPreparation(room: RoomSnapshot) { return room.state === 'exhausted' && Boolean(room.next_round && !room.next_round.my_confirmed && room.allowed_actions.includes('confirm_next_round')) }
+function remoteChangeTitle(room: RoomSnapshot) { return room.state === 'closed' ? 'Комната закрыта' : room.state === 'matched' ? 'Совпадение найдено' : 'Подборка обновилась' }
+function useIntentSubmission() {
+  const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
+  return (room: RoomSnapshot, input: RoomIntentRequestDto) => {
+    const fingerprint = JSON.stringify([room.id, room.round_no, room.version, input])
+    if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: crypto.randomUUID() }
+    return apiClient.replaceMyIntent(room.id, input, { expectedRoundNo: room.round_no, expectedRoomVersion: room.version, idempotencyKey: attempt.current.key })
+  }
+}
+type RecoveryDraft = { selected?: Relaxation['id'] | Relaxation['id'][]; selectedDate?: string | null; selectedCategory?: CategorySlug | null; selectedBudget?: number | null; review?: boolean }
+function readIntentDraft(key: string, fallback: IntentForm): IntentForm {
+  try { const parsed = intentSchema().safeParse(JSON.parse(window.sessionStorage.getItem(key) ?? 'null')); return parsed.success ? parsed.data : fallback } catch { return fallback }
+}
+function readRecoveryDraft(key: string): RecoveryDraft {
+  try { return JSON.parse(window.sessionStorage.getItem(key) ?? '{}') ?? {} } catch { return {} }
+}
+function normalizeRecoverySelections(value: RecoveryDraft['selected']): Relaxation['id'][] {
+  const values = Array.isArray(value) ? value : value ? [value] : []
+  return values.filter((item): item is Relaxation['id'] => item === 'budget' || item === 'category' || item === 'date' || item === 'time')
 }
 
 function toggleValue<T>(items: T[], value: T) { return items.includes(value) ? items.filter((item) => item !== value) : [...items, value] }

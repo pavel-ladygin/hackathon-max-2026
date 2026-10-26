@@ -64,7 +64,7 @@ describe('public room plan flow', () => {
     mocks.bootstrapData = undefined
     mocks.room = undefined
     mocks.joinRoom.mockReset().mockResolvedValue(roomFixture())
-    mocks.replaceMyIntent.mockReset().mockResolvedValue(undefined)
+    mocks.replaceMyIntent.mockReset().mockResolvedValue(roomFixture())
     window.sessionStorage.clear()
   })
 
@@ -150,7 +150,7 @@ describe('public room plan flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить пожелания' }))
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-server', expect.objectContaining({
       dates: ['2099-11-20'], day_types: [], time_slots: ['evening'], category_slugs: ['concerts'], budget_max_minor: 250_025,
-    })))
+    }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) })))
     firstView.unmount()
 
     const savedIntent: MyIntentDto = { dates: ['2099-11-25'], day_types: ['weekday'], time_slots: ['morning'], category_slugs: ['theatre'], budget_max_minor: 400_000, radius_m: null, exclusion_slugs: [], location: null, free_text: null, version: 1, round_no: 1, submitted_at: '2099-01-01T00:00:00Z' }

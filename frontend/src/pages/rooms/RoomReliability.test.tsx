@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RoomFlowPage } from './RoomPages'
 import { ApiError } from '../../shared/api/errors'
@@ -87,6 +88,7 @@ describe('room recovery and read-error reliability', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-10-20T09:00:00+03:00'))
+    window.sessionStorage.clear()
     mocks.room = { isPending: false, isError: false, data: room() }
     mocks.roomIds = []
     mocks.roomRefetch.mockReset().mockResolvedValue(undefined)
@@ -94,7 +96,7 @@ describe('room recovery and read-error reliability', () => {
     mocks.eventIds = []
     mocks.eventRefetch.mockReset().mockResolvedValue(undefined)
     mocks.events = { isPending: false, isError: false, data: { total: 1, items: [eventCard()] } }
-    mocks.replaceMyIntent.mockReset()
+    mocks.replaceMyIntent.mockReset().mockImplementation(async () => mocks.room?.data ?? room())
     mocks.vote.mockReset().mockResolvedValue({ accepted_vote: 'dislike', pool_version: 1, my_pool_finished: false, room_exhausted: false, match: null })
     mocks.createRoom.mockReset()
   })
@@ -131,8 +133,8 @@ describe('room recovery and read-error reliability', () => {
   })
 
   it.each([
-    [0, 'Нет событий по вашим условиям'],
-    [3, 'Вы пока не выбрали одно событие'],
+    [0, 'Общих событий пока нет'],
+    [3, 'События закончились, общего лайка нет'],
     [null, 'Подборка завершена'],
   ] as const)('uses the pool total strictly (%s)', (_total, heading) => {
     mocks.room = { isPending: false, isError: false, data: exhaustedRoom(_total) }
@@ -167,7 +169,7 @@ describe('room recovery and read-error reliability', () => {
   it.each([0, 3])('offers the terminal new-room exit after round three with pool total %i', async (total) => {
     mocks.room = { isPending: false, isError: false, data: exhaustedRoom(total, 3) }
     renderAt('/rooms/room-1/recovery')
-    expect(screen.getByRole('heading', { name: 'Раунды этой комнаты завершены' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Лимит подборок исчерпан' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Создать новую комнату/ })).toBeEnabled()
     expect(screen.queryByRole('button', { name: /Подтвердить мои условия/ })).not.toBeInTheDocument()
     expect(mocks.createRoom).not.toHaveBeenCalled()
@@ -187,7 +189,7 @@ describe('room recovery and read-error reliability', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['room', 'room-1'] }))
     expect(screen.getByText('Кино — в дополнение к выбранным')).toBeInTheDocument()
-    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-1', expect.objectContaining({ category_slugs: ['concerts', 'standup', 'cinema'] }))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-1', expect.objectContaining({ category_slugs: ['concerts', 'standup', 'cinema'] }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
     fireEvent.click(screen.getByRole('button', { name: 'Назад к изменениям' }))
     expect(screen.getByRole('button', { name: 'Кино' })).toHaveAttribute('aria-pressed', 'true')
   })
@@ -202,6 +204,81 @@ describe('room recovery and read-error reliability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
     expect(screen.getByRole('heading', { name: 'Главная' })).toBeInTheDocument()
     expect(mocks.replaceMyIntent).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 3])('keeps home after a pending recovery save finishes (pool total %i)', async (total) => {
+    mocks.room = { isPending: false, isError: false, data: exhaustedRoom(total) }
+    const savedSnapshot = structuredClone(mocks.room.data)
+    let finishSave!: () => void
+    mocks.replaceMyIntent.mockReturnValue(new Promise<void>((resolve) => { finishSave = resolve }))
+    const { client } = renderAt('/rooms/room-1/recovery')
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешить любое время/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
+    expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+
+    await act(async () => { finishSave() })
+    await waitFor(() => expect(client.getMutationCache().getAll()[0].state.status).toBe('success'))
+    expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['room', 'room-1'] })
+    expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1)
+    expect(mocks.room.data).toEqual(savedSnapshot)
+    expect(mocks.createRoom).not.toHaveBeenCalled()
+  })
+
+  it('keeps home after a pending preference save finishes', async () => {
+    mocks.room = { isPending: false, isError: false, data: room({ state: 'collecting_intents', allowed_actions: ['edit_intent'] }) }
+    let finishSave!: () => void
+    mocks.replaceMyIntent.mockReturnValue(new Promise<void>((resolve) => { finishSave = resolve }))
+    const { client } = renderAt('/rooms/room-1/intent')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить предпочтения' }))
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+
+    await act(async () => { finishSave() })
+    await waitFor(() => expect(client.getMutationCache().getAll()[0].state.status).toBe('success'))
+    expect(screen.getByRole('heading', { name: 'Главная' })).toBeVisible()
+    expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([false, true])('does not override Home while its lazy screen is still loading (snapshot update=%s)', async (updateSnapshot) => {
+    window.history.replaceState(null, '', '/rooms/room-1/recovery')
+    mocks.room = { isPending: false, isError: false, data: exhaustedRoom(0) }
+    let finishSave!: () => void
+    mocks.replaceMyIntent.mockReturnValue(new Promise<void>((resolve) => { finishSave = resolve }))
+    let finishHome!: (value: { default: () => React.JSX.Element }) => void
+    const Home = lazy(() => new Promise<{ default: () => React.JSX.Element }>((resolve) => { finishHome = resolve }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const tree = () => <QueryClientProvider client={client}><BrowserRouter><Suspense fallback={<p>Загрузка главной</p>}><Routes>
+      <Route path="/rooms/:roomId/:roomScreen" element={<RoomFlowPage />} />
+      <Route path="/" element={<Home />} />
+    </Routes></Suspense></BrowserRouter></QueryClientProvider>
+    const view = render(tree())
+    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешить любое время/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить изменения' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
+    await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
+    expect(window.location.pathname).toBe('/')
+    // BrowserRouter has pushed Home, but the previous screen still renders.
+    expect(screen.getByRole('button', { name: 'На главную' })).toBeVisible()
+    if (updateSnapshot) {
+      mocks.room.data = room({ state: 'ranking', allowed_actions: ['wait'] })
+      view.rerender(tree())
+    }
+    await act(async () => { finishSave() })
+    await waitFor(() => expect(client.getMutationCache().getAll()[0].state.status).toBe('success'))
+    const destination = window.location.pathname
+    await act(async () => { finishHome({ default: () => <h1>Главная</h1> }) })
+    expect(destination).toBe('/')
+    expect(await screen.findByRole('heading', { name: 'Главная' })).toBeVisible()
   })
 
   it('does not prefill or submit recovery when the caller has no saved intent', () => {
@@ -232,7 +309,7 @@ describe('room recovery and read-error reliability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Подтвердить мои условия' }))
 
     await waitFor(() => expect(mocks.replaceMyIntent).toHaveBeenCalledTimes(1))
-    expect(mocks.replaceMyIntent).toHaveBeenCalledWith(participant, expect.objectContaining({ free_text: ownMarker, category_slugs: ['concerts', 'standup', 'cinema'] }))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith(participant, expect.objectContaining({ free_text: ownMarker, category_slugs: ['concerts', 'standup', 'cinema'] }), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
     expect(JSON.stringify(mocks.replaceMyIntent.mock.calls[0][1])).not.toContain(otherMarker)
   })
 
@@ -257,7 +334,7 @@ describe('room recovery and read-error reliability', () => {
     const secondIntent = mocks.replaceMyIntent.mock.calls[1][1]
     expect(firstIntent.category_slugs).toEqual(['concerts', 'standup', 'cinema'])
     expect(secondIntent).toEqual(firstIntent)
-    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-1', expect.any(Object))
+    expect(mocks.replaceMyIntent).toHaveBeenCalledWith('room-1', expect.any(Object), expect.objectContaining({ expectedRoundNo: 1, expectedRoomVersion: 1, idempotencyKey: expect.any(String) }))
   })
 
   it('keeps reviewed recovery selection mounted through a background room read error', () => {

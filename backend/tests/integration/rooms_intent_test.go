@@ -36,6 +36,17 @@ func validIntentRequest() api.RoomIntentRequest {
 	}
 }
 
+func replaceIntentFromSnapshot(t *testing.T, svc *rooms.Service, f *roomFixture, user uuid.UUID, request api.RoomIntentRequest) (api.RoomSnapshot, bool, error) {
+	t.Helper()
+	current, err := svc.Get(context.Background(), contracts.Principal{UserID: user}, f.room)
+	if err != nil {
+		t.Fatalf("get current intent source: %v", err)
+	}
+	request.ExpectedRoundNo = current.RoundNo
+	request.ExpectedRoomVersion = current.Version
+	return svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, request, "intent-"+uuid.NewString())
+}
+
 func setupIntentRoom(t *testing.T, recorder contracts.BehaviorRecorder) (*roomFixture, *rooms.Service) {
 	t.Helper()
 	db := openTestDB(t)
@@ -105,7 +116,7 @@ func TestReplaceIntentValidation(t *testing.T) {
 			request := base
 			request.Dates = append([]openapi_types.Date(nil), base.Dates...)
 			mutate(&request)
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, request)
+			_, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, request)
 			if !errors.Is(err, rooms.ErrValidation) && !errors.Is(err, rooms.ErrPastIntentDate) {
 				t.Fatalf("error=%v; want validation", err)
 			}
@@ -117,7 +128,7 @@ func TestReplaceIntentUpsertPrivacyTransitionAndBehavior(t *testing.T) {
 	f, svc := setupIntentRoom(t, behavior.Recorder{})
 	ctx := context.Background()
 	first := validIntentRequest()
-	snapshot, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, first)
+	snapshot, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.creator, first)
 	if err != nil || transitioned || snapshot.State != api.RoomStateCollectingIntents {
 		t.Fatalf("first submit snapshot=%+v transitioned=%v err=%v", snapshot, transitioned, err)
 	}
@@ -128,12 +139,12 @@ func TestReplaceIntentUpsertPrivacyTransitionAndBehavior(t *testing.T) {
 	replacement := validIntentRequest()
 	replacement.BudgetMaxMinor = 777
 	replacement.FreeText = nullable.NewNullableWithValue("replacement-private")
-	snapshot, transitioned, err = svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, replacement)
+	snapshot, transitioned, err = replaceIntentFromSnapshot(t, svc, f, f.creator, replacement)
 	stored, getErr := snapshot.MyIntent.Get()
 	if err != nil || getErr != nil || transitioned || stored.Version != 2 || stored.BudgetMaxMinor != 777 {
 		t.Fatalf("replacement=%+v transitioned=%v err=%v/%v", stored, transitioned, err, getErr)
 	}
-	peer, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.member}, f.room, first)
+	peer, transitioned, err := replaceIntentFromSnapshot(t, svc, f, f.member, first)
 	if err != nil || !transitioned || peer.State != api.RoomStateVoting || peer.Version != 3 {
 		t.Fatalf("second submit snapshot=%+v transitioned=%v err=%v", peer, transitioned, err)
 	}
@@ -153,6 +164,27 @@ func TestReplaceIntentUpsertPrivacyTransitionAndBehavior(t *testing.T) {
 	}
 }
 
+func TestReplaceIntentIdempotencyReplayDoesNotBypassExpiredRoom(t *testing.T) {
+	f, svc := setupIntentRoom(t, behavior.Recorder{})
+	ctx := context.Background()
+	request := validIntentRequest()
+	current, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ExpectedRoundNo, request.ExpectedRoomVersion = current.RoundNo, current.Version
+	const key = "intent-expiry-replay"
+	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, request, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(ctx, "UPDATE rooms SET expires_at=now()-interval '1 second' WHERE id=$1", f.room); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, request, key); !errors.Is(err, rooms.ErrRoomNotFound) {
+		t.Fatalf("expired idempotent replay error=%v; want %v", err, rooms.ErrRoomNotFound)
+	}
+}
+
 func TestReplaceIntentStateAndAccessErrors(t *testing.T) {
 	for name, state := range map[string]string{"ranking": "ranking", "voting": "voting", "matched": "matched", "round limit": "exhausted"} {
 		t.Run(name, func(t *testing.T) {
@@ -164,7 +196,7 @@ func TestReplaceIntentStateAndAccessErrors(t *testing.T) {
 			if _, err := f.db.Exec(context.Background(), "UPDATE rooms SET state=$2, round_no=$3 WHERE id=$1", f.room, state, round); err != nil {
 				t.Fatal(err)
 			}
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest())
+			_, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest())
 			want := rooms.ErrIntentLocked
 			if state == "matched" {
 				want = rooms.ErrAlreadyMatched
@@ -180,7 +212,9 @@ func TestReplaceIntentStateAndAccessErrors(t *testing.T) {
 	f, svc := setupIntentRoom(t, behavior.Recorder{})
 	for name, principal := range map[string]contracts.Principal{"anonymous": {}, "outsider": {UserID: f.third}} {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := svc.ReplaceIntent(context.Background(), principal, f.room, validIntentRequest())
+			request := validIntentRequest()
+			request.ExpectedRoundNo, request.ExpectedRoomVersion = 1, 1
+			_, _, err := svc.ReplaceIntent(context.Background(), principal, f.room, request, "intent-access-test")
 			want := rooms.ErrRoomNotFound
 			if name == "anonymous" {
 				want = rooms.ErrUnauthenticated
@@ -194,7 +228,7 @@ func TestReplaceIntentStateAndAccessErrors(t *testing.T) {
 
 func TestReplaceIntentRecorderFailureRollsBack(t *testing.T) {
 	f, svc := setupIntentRoom(t, failingRecorder{err: errors.New("recorder unavailable")})
-	_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, validIntentRequest())
+	_, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, validIntentRequest())
 	if err == nil {
 		t.Fatal("recorder failure unexpectedly committed")
 	}
@@ -224,7 +258,9 @@ func TestReplaceIntentConcurrentParticipants(t *testing.T) {
 		go func(user uuid.UUID) {
 			defer wg.Done()
 			<-start
-			_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, validIntentRequest())
+			request := validIntentRequest()
+			request.ExpectedRoundNo, request.ExpectedRoomVersion = 1, 1
+			_, transitioned, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: user}, f.room, request, "intent-concurrent-"+user.String())
 			results <- result{transitioned: transitioned, err: err}
 		}(user)
 	}
@@ -266,7 +302,7 @@ func TestReplaceIntentConcurrentSameUserSerializesVersions(t *testing.T) {
 			<-start
 			request := validIntentRequest()
 			request.BudgetMaxMinor = budget
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.creator}, f.room, request)
+			_, _, err := replaceIntentFromSnapshot(t, svc, f, f.creator, request)
 			results <- err
 		}(budget)
 	}
@@ -308,7 +344,9 @@ func TestReplaceIntentTerminalAndHiddenRoomDoNotMutate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f, svc := setupIntentRoom(t, behavior.Recorder{})
 			tc.setup(t, f)
-			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: tc.user(f)}, f.room, validIntentRequest())
+			request := validIntentRequest()
+			request.ExpectedRoundNo, request.ExpectedRoomVersion = 1, 1
+			_, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: tc.user(f)}, f.room, request, "intent-terminal-test")
 			if !errors.Is(err, tc.wanted) {
 				t.Fatalf("error=%v; want %v", err, tc.wanted)
 			}
@@ -329,7 +367,13 @@ func TestReplaceIntentHTTPStrictDecodeAndTransitionResponse(t *testing.T) {
 		})
 	})
 	svc.RegisterRoutes(router)
-	valid, _ := json.Marshal(validIntentRequest())
+	request := validIntentRequest()
+	current, err := svc.Get(context.Background(), contracts.Principal{UserID: f.creator}, f.room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ExpectedRoundNo, request.ExpectedRoomVersion = current.RoundNo, current.Version
+	valid, _ := json.Marshal(request)
 	validJSON := string(valid)
 	locationJSON := `"location":{"lat":55.75,"lng":37.62}`
 	cases := map[string]string{
@@ -350,11 +394,13 @@ func TestReplaceIntentHTTPStrictDecodeAndTransitionResponse(t *testing.T) {
 			}
 		})
 	}
-	if _, _, err := svc.ReplaceIntent(context.Background(), contracts.Principal{UserID: f.member}, f.room, validIntentRequest()); err != nil {
+	if _, _, err := replaceIntentFromSnapshot(t, svc, f, f.member, validIntentRequest()); err != nil {
 		t.Fatal(err)
 	}
 	res := httptest.NewRecorder()
-	router.ServeHTTP(res, httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/rooms/%s/intent/me", f.room), strings.NewReader(validJSON)))
+	httpRequest := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/rooms/%s/intent/me", f.room), strings.NewReader(validJSON))
+	httpRequest.Header.Set("Idempotency-Key", "intent-http-transition")
+	router.ServeHTTP(res, httpRequest)
 	if res.Code != http.StatusOK || res.Header().Get("Retry-After") != "" || res.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("transition response status=%d headers=%v body=%s", res.Code, res.Header(), res.Body.String())
 	}

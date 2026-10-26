@@ -270,7 +270,7 @@ func TestGenericEventFlowsFromNormalizationIntoCatalogAndRoomMatch(t *testing.T)
 		intent := validIntentRequest()
 		intent.Dates[0].Time = intentDate
 		intent.BudgetMaxMinor = 200000
-		if _, _, err := roomSvc.ReplaceIntent(ctx, contracts.Principal{UserID: user}, f.room, intent); err != nil {
+		if _, _, err := replaceIntentFromSnapshot(t, roomSvc, f, user, intent); err != nil {
 			t.Fatalf("replace room intent for %s: %v", user, err)
 		}
 	}

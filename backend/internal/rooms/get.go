@@ -78,6 +78,11 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 				break
 			}
 		}
+		nextRound, err := nextRoundPreparation(ctx, repo, principal.UserID, room, membership)
+		if err != nil {
+			return err
+		}
+		snapshot.NextRound = nextRound
 
 		pool, err := repo.Queries.GetActivePool(ctx, room.ID)
 		if err == nil {
@@ -118,7 +123,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 				return err
 			}
 		}
-		snapshot.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable)
+		snapshot.AllowedActions = roomActions(room, myPoolFinished, myIntentReady, inviteAvailable, nextRound)
 		return nil
 	})
 	return snapshot, err
@@ -127,6 +132,7 @@ func (s *Service) Get(ctx context.Context, principal contracts.Principal, roomID
 func baseRoomSnapshot(room roomsql.Room, participants []roomsql.GetPublicParticipantsRow) api.RoomSnapshot {
 	snapshot := createSnapshot(room, participants, InviteMaterial{})
 	snapshot.Invite = nullable.NewNullNullable[api.RoomInvite]()
+	snapshot.NextRound = nullable.NewNullNullable[api.NextRoundPreparation]()
 	snapshot.AllowedActions = []api.RoomSnapshotAllowedActions{}
 	return snapshot
 }
@@ -170,7 +176,7 @@ func apiIntent(intent roomsql.RoomIntent) api.MyIntent {
 	return result
 }
 
-func roomActions(room roomsql.Room, myPoolFinished, myIntentReady, inviteAvailable bool) []api.RoomSnapshotAllowedActions {
+func roomActions(room roomsql.Room, myPoolFinished, myIntentReady, inviteAvailable bool, nextRound nullable.Nullable[api.NextRoundPreparation]) []api.RoomSnapshotAllowedActions {
 	actions := make([]api.RoomSnapshotAllowedActions, 0, 3)
 	switch api.RoomState(room.State) {
 	case api.RoomStateCollectingIntents:
@@ -197,9 +203,48 @@ func roomActions(room roomsql.Room, myPoolFinished, myIntentReady, inviteAvailab
 	case api.RoomStateMatched:
 		actions = append(actions, api.ViewMatch)
 	case api.RoomStateExhausted:
-		if room.RoundNo < 3 {
+		preparation, err := nextRound.Get()
+		if err == nil {
+			if preparation.MyConfirmed {
+				actions = append(actions, api.Wait)
+			} else {
+				actions = append(actions, api.RestartWithNewIntent, api.ConfirmNextRound)
+			}
+		} else if room.RoundNo < 3 {
 			actions = append(actions, api.RestartWithNewIntent)
 		}
 	}
 	return actions
+}
+
+func nextRoundPreparation(ctx context.Context, repo *Repository, userID uuid.UUID, room roomsql.Room, membership roomsql.RoomMember) (nullable.Nullable[api.NextRoundPreparation], error) {
+	if room.State != string(RoomStateExhausted) || room.RoundNo >= 3 || !membership.IsActive {
+		return nullable.NewNullNullable[api.NextRoundPreparation](), nil
+	}
+	nextRound := room.RoundNo + 1
+	states, err := repo.Queries.GetRoomRoundStates(ctx, roomsql.GetRoomRoundStatesParams{RoomID: room.ID, RoundNo: nextRound})
+	if err != nil {
+		return nil, err
+	}
+	if len(states) == 0 {
+		return nullable.NewNullNullable[api.NextRoundPreparation](), nil
+	}
+	preparation := api.NextRoundPreparation{
+		RoundNo: int(nextRound), MyIntent: nullable.NewNullNullable[api.MyIntent](),
+	}
+	for _, state := range states {
+		if state.Ready {
+			preparation.ConfirmedCount++
+		}
+		if state.UserID == userID {
+			preparation.MyConfirmed = state.Ready
+		}
+	}
+	intent, err := repo.Queries.GetRoomIntent(ctx, roomsql.GetRoomIntentParams{RoomID: room.ID, UserID: userID, RoundNo: nextRound})
+	if err == nil {
+		preparation.MyIntent = nullable.NewNullableWithValue(apiIntent(intent))
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	return nullable.NewNullableWithValue(preparation), nil
 }

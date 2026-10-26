@@ -123,10 +123,15 @@ func TestProviderRealRoomEndToEnd(t *testing.T) {
 				BudgetMaxMinor: 100_000_000, DayTypes: []api.DayType{}, TimeSlots: []api.TimeSlot{},
 				ExclusionSlugs: []api.RoomIntentRequestExclusionSlugs{}, Location: nullable.NewNullNullable[api.GeoPoint](), RadiusM: nullable.NewNullNullable[int](),
 			}
-			if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, request); err != nil || transitioned {
+			firstSnapshot, err := svc.Get(ctx, contracts.Principal{UserID: firstUser}, roomID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.ExpectedRoundNo, request.ExpectedRoomVersion = firstSnapshot.RoundNo, firstSnapshot.Version
+			if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: firstUser}, roomID, request, fmt.Sprintf("provider-real-intent-first-%d", iteration)); err != nil || transitioned {
 				t.Fatalf("first intent transitioned=%t err=%v", transitioned, err)
 			}
-			if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, request); err != nil || !transitioned {
+			if _, transitioned, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: secondUser}, roomID, request, fmt.Sprintf("provider-real-intent-second-%d", iteration)); err != nil || !transitioned {
 				t.Fatalf("second intent transitioned=%t err=%v", transitioned, err)
 			}
 

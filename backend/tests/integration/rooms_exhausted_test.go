@@ -175,7 +175,13 @@ func TestRoomCloseIsIdempotentRetiresBothMembersAndLeavesUnreadNotice(t *testing
 	if notice, err := homeRooms.GetRoomCloseNotice(ctx, f.member); err != nil || notice != nil {
 		t.Fatalf("notice after ack=%+v err=%v; want none", notice, err)
 	}
-	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, validIntentRequest()); !errors.Is(err, rooms.ErrRoomClosed) {
+	request := validIntentRequest()
+	closedSnapshot, err := svc.Get(ctx, contracts.Principal{UserID: f.creator}, f.room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.ExpectedRoundNo, request.ExpectedRoomVersion = closedSnapshot.RoundNo, closedSnapshot.Version
+	if _, _, err := svc.ReplaceIntent(ctx, contracts.Principal{UserID: f.creator}, f.room, request, "intent-closed-room"); !errors.Is(err, rooms.ErrRoomClosed) {
 		t.Fatalf("intent after close err=%v; want ROOM_CLOSED", err)
 	}
 	if _, err := svc.Vote(ctx, contracts.Principal{UserID: f.creator}, f.room, events[0], api.VoteRequest{PoolVersion: int(pool.Version), Vote: api.Like}); !errors.Is(err, rooms.ErrRoomClosed) {
