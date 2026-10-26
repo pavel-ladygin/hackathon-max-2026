@@ -3,6 +3,20 @@ import { describe, expect, it, vi } from 'vitest'
 import { RoomDateChoices } from './RoomDateChoices'
 
 describe('RoomDateChoices', () => {
+  it('keeps saved dates chronological without mutating their source order', () => {
+    const selected = ['2099-01-14', '2099-01-12', '2099-01-13']
+    Object.freeze(selected)
+    const onChange = vi.fn()
+    const { rerender } = render(<RoomDateChoices id="dates" selected={selected} onChange={onChange} />)
+    const labels = () => screen.getAllByRole('button', { name: /^Удалить/ }).map(button => button.textContent)
+    expect(labels()).toEqual(['Пн, 12 янв.×', 'Вт, 13 янв.×', 'Ср, 14 янв.×'])
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить Вт, 13 янв.' }))
+    expect(onChange).toHaveBeenCalledWith(['2099-01-14', '2099-01-12'])
+    rerender(<RoomDateChoices id="dates" selected={['2099-01-13', '2099-01-14', '2099-01-12']} onChange={onChange} />)
+    expect(labels()).toEqual(['Пн, 12 янв.×', 'Вт, 13 янв.×', 'Ср, 14 янв.×'])
+    expect(selected).toEqual(['2099-01-14', '2099-01-12', '2099-01-13'])
+  })
+
   it('shows selected dates as removable black chips and removes on the whole-chip click', () => {
     const selected = ['2099-01-12']
     const onChange = vi.fn()
